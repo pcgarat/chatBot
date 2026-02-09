@@ -13,7 +13,7 @@ Con Make (recomendado):
 
 ```bash
 cd chatBot
-make up      # crea el entorno virtual e instala dependencias
+make up      # crea el entorno virtual, instala dependencias e inicia la aplicación
 make help    # ver todos los comandos
 ```
 
@@ -28,15 +28,16 @@ pip install -r requirements.txt
 
 ## Comandos Make
 
-| Comando   | Descripción                                      |
-|----------|---------------------------------------------------|
-| `make up`    | Crear entorno virtual e instalar dependencias   |
-| `make down`  | Eliminar el entorno virtual                      |
-| `make start` | Iniciar el servidor (puerto 8000)               |
-| `make stop`  | Detener el servidor                             |
-| `make test`  | Ejecutar los tests                              |
-| `make status`| Ver estado del entorno y del servidor           |
-| `make help`  | Mostrar ayuda                                  |
+| Comando    | Descripción                                                         |
+|------------|---------------------------------------------------------------------|
+| `make up`    | Crear entorno virtual, instalar dependencias e iniciar la aplicación |
+| `make down`  | Detener la aplicación y eliminar el entorno virtual                 |
+| `make start` | Iniciar el servidor (puerto 8000)                                    |
+| `make stop`  | Detener el servidor                                                 |
+| `make reload`| make down + make up (reinicio completo)                             |
+| `make test`  | Ejecutar los tests                                                  |
+| `make status`| Ver estado del entorno y del servidor                               |
+| `make help`  | Mostrar ayuda                                                      |
 
 ## Configuración (opcional)
 
@@ -44,14 +45,25 @@ Copia `.env.example` a `.env` y ajusta si lo necesitas:
 
 - `OLLAMA_HOST`: URL de Ollama (por defecto `http://localhost:11434`).
 - `DATABASE_URL`: ruta de la base de datos SQLite (por defecto `sqlite:///./chatbot.db`).
-
 ## Ejecución
 
+`make up` ya inicia la aplicación. Si el entorno existe y solo quieres arrancar el servidor:
+
 ```bash
-make start   # o: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+make start
 ```
 
-Abre en el navegador: http://localhost:8000. Para detener el servidor: `make stop`.
+Abre en el navegador: http://localhost:8000. Para detener: `make stop`. Para reinicio completo (borrar venv y volver a subir): `make reload`.
+
+**Modo verbose (-v):** para ver en la terminal todo lo que se envía a Ollama (modelo + mensajes, tal cual):
+
+```bash
+python run.py -v
+# o
+make start-verbose
+# o
+VERBOSE=1 make start
+```
 
 ## Uso
 

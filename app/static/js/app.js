@@ -3,18 +3,22 @@
   let currentConversationId = null;
   let messages = [];
   let models = [];
+  let currentAbortController = null;
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
     conversationTitle: document.getElementById("conversation-title"),
     modelSelect: document.getElementById("model-select"),
     systemInstructionGlobal: document.getElementById("system-instruction-global"),
+    injectInstructionEveryCheck: document.getElementById("inject-instruction-every-check"),
+    injectInstructionEveryN: document.getElementById("inject-instruction-every-n"),
     messagesContainer: document.getElementById("messages-container"),
     instructionOverride: document.getElementById("instruction-override"),
     messageInput: document.getElementById("message-input"),
     btnNewChat: document.getElementById("btn-new-chat"),
     btnSave: document.getElementById("btn-save"),
     btnSend: document.getElementById("btn-send"),
+    btnCancelMessage: document.getElementById("btn-cancel-message"),
   };
 
   function showError(msg) {
@@ -23,6 +27,14 @@
     toast.textContent = msg;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
+  }
+
+  function showNotice(msg) {
+    const toast = document.createElement("div");
+    toast.className = "notice-toast";
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
   }
 
   async function fetchJson(url, options = {}) {
@@ -185,27 +197,91 @@
     el.instructionOverride.value = "";
     renderMessages();
 
-    const loadingEl = document.createElement("div");
-    loadingEl.className = "message assistant loading";
-    loadingEl.textContent = "Pensando...";
-    el.messagesContainer.appendChild(loadingEl);
+    const msgEl = document.createElement("div");
+    msgEl.className = "message assistant";
+    msgEl.innerHTML = '<div class="role-label">Asistente</div><div class="content"></div>';
+    el.messagesContainer.appendChild(msgEl);
+    const contentEl = msgEl.querySelector(".content");
     el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
 
+    currentAbortController = new AbortController();
+    setCancelButtonState();
     try {
-      const response = await fetchJson(`${API}/conversations/${currentConversationId}/messages`, {
+      const systemInstructionGlobal = (el.systemInstructionGlobal && el.systemInstructionGlobal.value) ? el.systemInstructionGlobal.value.trim() : "";
+      const injectEvery = (el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked) ? (parseInt(el.injectInstructionEveryN.value, 10) || 1) : 0;
+      const res = await fetch(`${API}/conversations/${currentConversationId}/messages/stream`, {
         method: "POST",
-        body: JSON.stringify({ content, instruction_override: instructionOverride }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          instruction_override: instructionOverride,
+          system_instruction_global: systemInstructionGlobal,
+          inject_instruction_every: injectEvery || null,
+        }),
+        signal: currentAbortController.signal,
       });
-      loadingEl.remove();
-      messages.push({ role: "assistant", content: response.content });
-      renderMessages();
-      loadConversations();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullContent = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.error) throw new Error(data.error);
+            if (data.injecting_instruction) {
+              showNotice("Se están enviando las instrucciones globales.");
+            }
+            if (data.content !== undefined) {
+              fullContent += data.content;
+              contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
+              el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+            }
+            if (data.done) {
+              messages.push({ role: "assistant", content: fullContent });
+              loadConversations();
+            }
+          } catch (e) {
+            if (e instanceof SyntaxError) continue;
+            throw e;
+          }
+        }
+      }
+      currentAbortController = null;
+      setCancelButtonState();
     } catch (e) {
-      loadingEl.remove();
-      messages.pop();
-      renderMessages();
-      showError("Error al enviar: " + e.message);
+      if (e.name === "AbortError") {
+        msgEl.remove();
+        messages.pop();
+        renderMessages();
+        if (currentConversationId) {
+          fetch(`${API}/conversations/${currentConversationId}/messages/last`, { method: "DELETE" }).catch(() => {});
+        }
+        showNotice("Mensaje anulado.");
+      } else {
+        msgEl.remove();
+        messages.pop();
+        renderMessages();
+        showError("Error al enviar: " + e.message);
+      }
+      currentAbortController = null;
+      setCancelButtonState();
     }
+  }
+
+  function cancelLastMessage() {
+    if (!currentAbortController) return;
+    currentAbortController.abort();
   }
 
   function onModelChange() {
@@ -217,9 +293,22 @@
     }
   }
 
+  if (el.injectInstructionEveryN) {
+    el.injectInstructionEveryN.disabled = !(el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked);
+  }
+  el.injectInstructionEveryCheck.addEventListener("change", function () {
+    if (el.injectInstructionEveryN) el.injectInstructionEveryN.disabled = !el.injectInstructionEveryCheck.checked;
+  });
+  if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
+
+  function setCancelButtonState() {
+    if (el.btnCancelMessage) el.btnCancelMessage.disabled = !currentAbortController;
+  }
+
   el.btnNewChat.addEventListener("click", newConversation);
   el.btnSave.addEventListener("click", saveConversation);
   el.btnSend.addEventListener("click", sendMessage);
+  if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   el.modelSelect.addEventListener("change", onModelChange);
 
   el.messageInput.addEventListener("keydown", function (e) {
