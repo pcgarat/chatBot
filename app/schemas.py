@@ -14,12 +14,14 @@ class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"
     model_id: str = "llama3.2"
     system_instruction_global: Optional[str] = None
+    inject_instruction_every: Optional[int] = None  # null/0 = cada mensaje; >0 = solo cada X mensajes de usuario
 
 
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     model_id: Optional[str] = None
     system_instruction_global: Optional[str] = None
+    inject_instruction_every: Optional[int] = None
 
 
 class MessageInChat(BaseModel):
@@ -32,6 +34,7 @@ class ConversationOut(BaseModel):
     title: str
     model_id: str
     system_instruction_global: Optional[str] = None
+    inject_instruction_every: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     messages: list[MessageInChat] = []

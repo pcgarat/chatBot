@@ -35,12 +35,14 @@ def create_conversation(body: ConversationCreate, db: Session = Depends(get_db))
         title=body.title,
         model_id=body.model_id,
         system_instruction_global=body.system_instruction_global,
+        inject_instruction_every=body.inject_instruction_every,
     )
     return ConversationOut(
         id=conv.id,
         title=conv.title,
         model_id=conv.model_id,
         system_instruction_global=conv.system_instruction_global,
+        inject_instruction_every=conv.inject_instruction_every,
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=[],
@@ -58,6 +60,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         title=conv.title,
         model_id=conv.model_id,
         system_instruction_global=conv.system_instruction_global,
+        inject_instruction_every=conv.inject_instruction_every,
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=messages,
@@ -74,6 +77,7 @@ def update_conversation(
         title=body.title,
         model_id=body.model_id,
         system_instruction_global=body.system_instruction_global,
+        inject_instruction_every=body.inject_instruction_every,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
@@ -83,6 +87,7 @@ def update_conversation(
         title=conv.title,
         model_id=conv.model_id,
         system_instruction_global=conv.system_instruction_global,
+        inject_instruction_every=conv.inject_instruction_every,
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=messages,
@@ -221,11 +226,12 @@ async def send_message_stream(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
 
+    inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
+    crud.update_conversation(db, conversation_id, inject_instruction_every=inject_every)
     existing = crud.get_messages(db, conversation_id)
     user_count = sum(1 for m in existing if m.role == "user")
-    inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     ollama_messages, injecting = _build_ollama_messages(
         conv, existing, body.content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
@@ -254,12 +260,13 @@ def send_message(
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
+    crud.update_conversation(db, conversation_id, inject_instruction_every=inject_every)
 
     existing = crud.get_messages(db, conversation_id)
     user_count = sum(1 for m in existing if m.role == "user")
-    inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     ollama_messages, _ = _build_ollama_messages(
         conv, existing, body.content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,

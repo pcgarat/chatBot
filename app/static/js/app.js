@@ -19,6 +19,7 @@
     btnSave: document.getElementById("btn-save"),
     btnSend: document.getElementById("btn-send"),
     btnCancelMessage: document.getElementById("btn-cancel-message"),
+    btnClearMemory: document.getElementById("btn-clear-memory"),
   };
 
   function showError(msg) {
@@ -71,19 +72,49 @@
     }
   }
 
+  const deleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
+
   function renderConversationsList(list) {
     el.conversationsList.innerHTML = list
       .map(
         (c) =>
           `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}">
-            <div class="conv-title">${escapeHtml(c.title)}</div>
+            <div class="conv-row">
+              <span class="conv-title">${escapeHtml(c.title)}</span>
+              <button type="button" class="conv-delete-btn" data-id="${escapeHtml(c.id)}" title="Eliminar conversación" aria-label="Eliminar conversación">${deleteIconSvg}</button>
+            </div>
             <div class="conv-meta">${escapeHtml(c.model_id)} · ${formatDate(c.updated_at)}</div>
           </div>`
       )
       .join("");
     el.conversationsList.querySelectorAll(".conversation-item").forEach((node) => {
-      node.addEventListener("click", () => openConversation(node.dataset.id));
+      node.addEventListener("click", (e) => {
+        if (e.target.closest(".conv-delete-btn")) return;
+        openConversation(node.dataset.id);
+      });
     });
+    el.conversationsList.querySelectorAll(".conv-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteConversation(btn.dataset.id);
+      });
+    });
+  }
+
+  async function deleteConversation(id) {
+    try {
+      const res = await fetch(`${API}/conversations/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      if (currentConversationId === id) setCurrentConversation(null);
+      loadConversations();
+      showNotice("Conversación eliminada.");
+    } catch (e) {
+      showError("Error al eliminar: " + e.message);
+    }
   }
 
   function formatDate(iso) {
@@ -108,13 +139,19 @@
       el.conversationTitle.value = conv.title;
       el.modelSelect.value = conv.model_id;
       el.systemInstructionGlobal.value = conv.system_instruction_global || "";
+      const injectEvery = conv.inject_instruction_every;
+      if (el.injectInstructionEveryCheck) el.injectInstructionEveryCheck.checked = !!(injectEvery && injectEvery > 0);
+      if (el.injectInstructionEveryN) el.injectInstructionEveryN.value = (injectEvery && injectEvery > 0) ? injectEvery : 5;
       messages = conv.messages || [];
     } else {
       el.conversationTitle.value = "Nueva conversación";
       el.modelSelect.value = models[0] || "llama3.2";
       el.systemInstructionGlobal.value = "";
+      if (el.injectInstructionEveryCheck) el.injectInstructionEveryCheck.checked = false;
+      if (el.injectInstructionEveryN) el.injectInstructionEveryN.value = 5;
       messages = [];
     }
+    if (el.injectInstructionEveryN) el.injectInstructionEveryN.disabled = !(el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked);
     renderMessages();
     loadConversations();
   }
@@ -131,12 +168,14 @@
   async function newConversation() {
     try {
       const model = el.modelSelect.value || (models[0] || "llama3.2");
+      const injectEvery = (el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked) ? (parseInt(el.injectInstructionEveryN.value, 10) || 1) : null;
       const conv = await fetchJson(`${API}/conversations`, {
         method: "POST",
         body: JSON.stringify({
           title: "Nueva conversación",
           model_id: model,
           system_instruction_global: el.systemInstructionGlobal.value.trim() || null,
+          inject_instruction_every: injectEvery,
         }),
       });
       setCurrentConversation(conv);
@@ -151,12 +190,14 @@
       return;
     }
     try {
+      const injectEvery = (el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked) ? (parseInt(el.injectInstructionEveryN.value, 10) || 1) : null;
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
         body: JSON.stringify({
           title: el.conversationTitle.value.trim() || "Nueva conversación",
           model_id: el.modelSelect.value,
           system_instruction_global: el.systemInstructionGlobal.value.trim() || null,
+          inject_instruction_every: injectEvery,
         }),
       });
       setCurrentConversation(conv);
@@ -284,7 +325,24 @@
     currentAbortController.abort();
   }
 
-  function onModelChange() {
+  async function clearMemory() {
+    if (currentAbortController) currentAbortController.abort();
+    try {
+      const data = await fetchJson(`${API}/ollama/clear-memory`, { method: "POST" });
+      const n = (data && data.unloaded && data.unloaded.length) || 0;
+      showNotice(n ? `Memoria limpiada: ${n} modelo(s) descargado(s) de VRAM/RAM.` : "No había modelos cargados en memoria.");
+    } catch (e) {
+      showError("Error al limpiar memoria: " + e.message);
+    }
+  }
+
+  async function onModelChange() {
+    try {
+      await fetchJson(`${API}/ollama/clear-memory`, { method: "POST" });
+    } catch (e) {
+      showError("Error al limpiar memoria de Ollama: " + (e.message || "desconocido"));
+      return;
+    }
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
@@ -309,6 +367,7 @@
   el.btnSave.addEventListener("click", saveConversation);
   el.btnSend.addEventListener("click", sendMessage);
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
+  if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
   el.modelSelect.addEventListener("change", onModelChange);
 
   el.messageInput.addEventListener("keydown", function (e) {

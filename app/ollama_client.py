@@ -61,6 +61,34 @@ def chat(model: str, messages: list[dict[str, Any]]) -> str:
         raise
 
 
+def list_running_models() -> list[str]:
+    """Lista los nombres de los modelos actualmente cargados en VRAM/RAM (no en disco)."""
+    import urllib.request
+    import urllib.error
+    url = f"{settings.ollama_host.rstrip('/')}/api/ps"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, KeyError):
+        raise
+    models = data.get("models") or []
+    return [_model_name(m) for m in models if _model_name(m)]
+
+
+def unload_model_from_memory(model: str) -> None:
+    """Descarga el modelo de VRAM/RAM (liberar memoria). No borra el modelo del disco."""
+    import urllib.request
+    import urllib.error
+    url = f"{settings.ollama_host.rstrip('/')}/api/generate"
+    payload = json.dumps({"model": model, "keep_alive": 0}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method="POST", headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            resp.read()
+    except (urllib.error.URLError, OSError, json.JSONDecodeError):
+        raise
+
+
 def chat_stream(model: str, messages: list[dict[str, Any]]) -> Iterator[str]:
     """Igual que chat pero hace streaming: va devolviendo trozos de contenido."""
     _dump_sent_to_ollama(model, messages)
