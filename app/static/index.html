@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat IA con Ollama</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>Chat IA</h1>
+        <button type="button" id="btn-new-chat" class="btn btn-primary">Nueva conversación</button>
+      </div>
+      <div class="conversations-list" id="conversations-list"></div>
+    </aside>
+    <main class="chat-area">
+      <div class="chat-header">
+        <input type="text" id="conversation-title" class="conversation-title-input" placeholder="Título de la conversación" />
+        <div class="header-actions">
+          <label class="model-label">
+            Modelo:
+            <select id="model-select"></select>
+          </label>
+          <button type="button" id="btn-save" class="btn btn-secondary">Guardar</button>
+        </div>
+      </div>
+      <div class="instructions-panel">
+        <label class="instructions-label">Instrucciones para todos los mensajes (no se muestran en el chat):</label>
+        <textarea id="system-instruction-global" rows="2" placeholder="Ej: Responde siempre en tono formal y breve."></textarea>
+      </div>
+      <div class="messages-container" id="messages-container"></div>
+      <div class="input-area">
+        <div class="instruction-once-row">
+          <label>Instrucción solo para este mensaje (opcional):</label>
+          <input type="text" id="instruction-override" placeholder="Ej: Responde en una sola frase." />
+        </div>
+        <div class="send-row">
+          <textarea id="message-input" rows="2" placeholder="Escribe tu mensaje..."></textarea>
+          <button type="button" id="btn-send" class="btn btn-primary">Enviar</button>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
