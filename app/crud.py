@@ -94,3 +94,14 @@ def touch_conversation(db: Session, conversation_id: str) -> None:
     if conv:
         conv.updated_at = datetime.utcnow()
         db.commit()
+
+
+def delete_last_message(db: Session, conversation_id: str) -> bool:
+    """Elimina el último mensaje de la conversación (el más reciente). Devuelve True si se eliminó uno."""
+    msgs = get_messages(db, conversation_id)
+    if not msgs:
+        return False
+    last = msgs[-1]
+    db.delete(last)
+    db.commit()
+    return True

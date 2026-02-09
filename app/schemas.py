@@ -54,6 +54,8 @@ class ConversationListItem(BaseModel):
 class MessageSend(BaseModel):
     content: str = Field(..., min_length=1)
     instruction_override: Optional[str] = None
+    system_instruction_global: Optional[str] = None
+    inject_instruction_every: Optional[int] = None  # Si > 0: enviar instrucción global solo cada X mensajes de usuario
 
 
 class MessageResponse(BaseModel):
