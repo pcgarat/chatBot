@@ -12,6 +12,7 @@
     systemInstructionGlobal: document.getElementById("system-instruction-global"),
     injectInstructionEveryCheck: document.getElementById("inject-instruction-every-check"),
     injectInstructionEveryN: document.getElementById("inject-instruction-every-n"),
+    saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
     messagesContainer: document.getElementById("messages-container"),
     instructionOverride: document.getElementById("instruction-override"),
     messageInput: document.getElementById("message-input"),
@@ -21,6 +22,8 @@
     btnCancelMessage: document.getElementById("btn-cancel-message"),
     btnClearMemory: document.getElementById("btn-clear-memory"),
   };
+
+  const saveToChromaIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z\"/><polyline points=\"17 21 17 13 7 13 7 21\"/><polyline points=\"7 3 7 8 15 8\"/></svg>";
 
   function showError(msg) {
     const toast = document.createElement("div");
@@ -142,7 +145,7 @@
       const injectEvery = conv.inject_instruction_every;
       if (el.injectInstructionEveryCheck) el.injectInstructionEveryCheck.checked = !!(injectEvery && injectEvery > 0);
       if (el.injectInstructionEveryN) el.injectInstructionEveryN.value = (injectEvery && injectEvery > 0) ? injectEvery : 5;
-      messages = conv.messages || [];
+      messages = (conv.messages || []).map((m) => ({ role: m.role, content: m.content, id: m.id || null }));
     } else {
       el.conversationTitle.value = "Nueva conversación";
       el.modelSelect.value = models[0] || "llama3.2";
@@ -206,6 +209,22 @@
     }
   }
 
+  async function saveMessageToChromadb(conversationId, messageId) {
+    const btn = document.querySelector(`[data-save-chromadb="${messageId}"]`);
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(`${API}/conversations/${conversationId}/messages/${messageId}/save-to-chromadb`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      showNotice("Mensaje guardado en ChromaDB.");
+    } catch (e) {
+      showError("Error al guardar en ChromaDB: " + e.message);
+      if (btn) btn.disabled = false;
+    }
+  }
+
   function renderMessages() {
     if (messages.length === 0) {
       el.messagesContainer.innerHTML = '<div class="empty-state">Escribe un mensaje para empezar.</div>';
@@ -213,13 +232,25 @@
     }
     el.messagesContainer.innerHTML = messages
       .map(
-        (m) =>
-          `<div class="message ${m.role}">
+        (m) => {
+          const saveBtn = m.id
+            ? `<div class="message-footer"><button type="button" class="msg-save-chromadb-btn" data-save-chromadb="${escapeHtml(m.id)}" title="Guardar en ChromaDB">${saveToChromaIconSvg}</button></div>`
+            : "";
+          return `<div class="message ${m.role}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
             <div class="role-label">${m.role === "user" ? "Tú" : "Asistente"}</div>
             <div class="content">${escapeHtml(m.content).replace(/\n/g, "<br>")}</div>
-          </div>`
+            ${saveBtn}
+          </div>`;
+        }
       )
       .join("");
+    el.messagesContainer.querySelectorAll(".msg-save-chromadb-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const msgId = btn.dataset.saveChromadb;
+        if (msgId && currentConversationId) saveMessageToChromadb(currentConversationId, msgId);
+      });
+    });
     el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
   }
 
@@ -250,6 +281,7 @@
     try {
       const systemInstructionGlobal = (el.systemInstructionGlobal && el.systemInstructionGlobal.value) ? el.systemInstructionGlobal.value.trim() : "";
       const injectEvery = (el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked) ? (parseInt(el.injectInstructionEveryN.value, 10) || 1) : 0;
+      const saveToChromadb = (el.saveToChromadbSelect && el.saveToChromadbSelect.value) ? el.saveToChromadbSelect.value : "user";
       const res = await fetch(`${API}/conversations/${currentConversationId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -258,6 +290,7 @@
           instruction_override: instructionOverride,
           system_instruction_global: systemInstructionGlobal,
           inject_instruction_every: injectEvery || null,
+          save_to_chromadb: saveToChromadb,
         }),
         signal: currentAbortController.signal,
       });
@@ -280,6 +313,9 @@
           try {
             const data = JSON.parse(line);
             if (data.error) throw new Error(data.error);
+            if (data.user_message_id && messages.length > 0) {
+              messages[messages.length - 1].id = data.user_message_id;
+            }
             if (data.injecting_instruction) {
               showNotice("Se están enviando las instrucciones globales.");
             }
@@ -289,7 +325,9 @@
               el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
             }
             if (data.done) {
-              messages.push({ role: "assistant", content: fullContent });
+              msgEl.remove();
+              messages.push({ role: "assistant", content: fullContent, id: data.id || null });
+              renderMessages();
               loadConversations();
             }
           } catch (e) {
