@@ -78,6 +78,18 @@ def get_messages(db: Session, conversation_id: str) -> list[Message]:
     )
 
 
+def get_message(db: Session, conversation_id: str, message_id: str) -> Message | None:
+    """Obtiene un mensaje por id dentro de una conversación."""
+    return (
+        db.query(Message)
+        .filter(
+            Message.conversation_id == conversation_id,
+            Message.id == message_id,
+        )
+        .first()
+    )
+
+
 def add_message(
     db: Session,
     conversation_id: str,

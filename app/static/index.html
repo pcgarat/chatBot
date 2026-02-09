@@ -13,16 +13,31 @@
         <h1>Chat IA</h1>
         <button type="button" id="btn-new-chat" class="btn btn-primary">Nueva conversación</button>
       </div>
-      <div class="sidebar-option inject-every">
-        <label class="inject-every-label">
-          <input type="checkbox" id="inject-instruction-every-check" />
-          Enviar instrucciones solo cada
-        </label>
-        <input type="number" id="inject-instruction-every-n" min="1" value="5" class="inject-every-n" />
-        <span>mensajes</span>
+      <div class="sidebar-option instructions-panel">
+        <label class="instructions-label">Instrucciones para todos los mensajes (no se muestran en el chat):</label>
+        <textarea id="system-instruction-global" rows="2" placeholder="Ej: Responde siempre en tono formal y breve."></textarea>
+        <div class="inject-every">
+          <label class="inject-every-label">
+            <input type="checkbox" id="inject-instruction-every-check" />
+            <span class="inject-every-text">Enviar instrucciones solo cada</span>
+          </label>
+          <input type="number" id="inject-instruction-every-n" min="1" value="5" class="inject-every-n" />
+          <span class="inject-every-suffix">mensajes</span>
+        </div>
       </div>
-      <button type="button" id="btn-cancel-message" class="btn btn-cancel" title="Anular último mensaje y cerrar conexión con Ollama">Cancelar último mensaje</button>
-      <button type="button" id="btn-clear-memory" class="btn btn-cancel" title="Cerrar conexiones y descargar todos los modelos de VRAM/RAM en Ollama (no borra del disco)">Limpiar memoria</button>
+      <div class="sidebar-option sidebar-actions">
+        <button type="button" id="btn-cancel-message" class="btn btn-secondary btn-block" title="Anular último mensaje y cerrar conexión con Ollama">Cancelar último mensaje</button>
+        <button type="button" id="btn-clear-memory" class="btn btn-secondary btn-block" title="Cerrar conexiones y descargar todos los modelos de VRAM/RAM en Ollama (no borra del disco)">Limpiar memoria</button>
+      </div>
+      <div class="sidebar-option chromadb-save-option">
+        <label class="chromadb-label">Guardar en ChromaDB (RAG):</label>
+        <select id="save-to-chromadb-select">
+          <option value="none">Nada</option>
+          <option value="user" selected>Mensajes introducidos</option>
+          <option value="assistant">Respuestas</option>
+          <option value="both">Ambas</option>
+        </select>
+      </div>
       <div class="conversations-list" id="conversations-list"></div>
     </aside>
     <main class="chat-area">
@@ -35,10 +50,6 @@
           </label>
           <button type="button" id="btn-save" class="btn btn-secondary">Guardar</button>
         </div>
-      </div>
-      <div class="instructions-panel">
-        <label class="instructions-label">Instrucciones para todos los mensajes (no se muestran en el chat):</label>
-        <textarea id="system-instruction-global" rows="2" placeholder="Ej: Responde siempre en tono formal y breve."></textarea>
       </div>
       <div class="messages-container" id="messages-container"></div>
       <div class="input-area">

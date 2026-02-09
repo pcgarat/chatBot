@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,7 @@ class ConversationUpdate(BaseModel):
 class MessageInChat(BaseModel):
     role: str
     content: str
+    id: Optional[str] = None
 
 
 class ConversationOut(BaseModel):
@@ -53,12 +54,17 @@ class ConversationListItem(BaseModel):
         from_attributes = True
 
 
+# Qué guardar en ChromaDB: "none" nada, "user" solo mensajes usuario, "assistant" solo respuestas, "both" ambos
+SaveToChromadbKind = Literal["none", "user", "assistant", "both"]
+
+
 # ----- Messages -----
 class MessageSend(BaseModel):
     content: str = Field(..., min_length=1)
     instruction_override: Optional[str] = None
     system_instruction_global: Optional[str] = None
     inject_instruction_every: Optional[int] = None  # Si > 0: enviar instrucción global solo cada X mensajes de usuario
+    save_to_chromadb: SaveToChromadbKind = "user"  # qué indexar en Chroma: none, user, assistant, both
 
 
 class MessageResponse(BaseModel):

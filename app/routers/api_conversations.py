@@ -54,7 +54,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    messages = [MessageInChat(role=m.role, content=m.content) for m in conv.messages]
+    messages = [MessageInChat(role=m.role, content=m.content, id=m.id) for m in conv.messages]
     return ConversationOut(
         id=conv.id,
         title=conv.title,
@@ -81,7 +81,7 @@ def update_conversation(
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    messages = [MessageInChat(role=m.role, content=m.content) for m in conv.messages]
+    messages = [MessageInChat(role=m.role, content=m.content, id=m.id) for m in conv.messages]
     return ConversationOut(
         id=conv.id,
         title=conv.title,
@@ -109,6 +109,16 @@ def delete_last_message(conversation_id: str, db: Session = Depends(get_db)):
     ok = crud.delete_last_message(db, conversation_id)
     if not ok:
         raise HTTPException(status_code=404, detail="No hay mensajes en la conversación")
+    return None
+
+
+@router.post("/conversations/{conversation_id}/messages/{message_id}/save-to-chromadb", status_code=204)
+def save_message_to_chromadb(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+    """Guarda un mensaje concreto en ChromaDB (para el icono de guardar bajo cada mensaje)."""
+    msg = crud.get_message(db, conversation_id, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    rag.add_message(conversation_id, msg.id, msg.role, msg.content, msg.created_at)
     return None
 
 
@@ -161,9 +171,13 @@ async def _stream_generator_async(
     model_id: str,
     ollama_messages: list,
     injecting: bool,
+    user_message_id: str | None = None,
+    save_to_chromadb: str = "user",
 ):
     """Generador async que hace streaming a Ollama vía httpx. Al desconectar el cliente
     (GeneratorExit) se cierra la conexión a Ollama para que deje de generar."""
+    if user_message_id:
+        yield json.dumps({"user_message_id": user_message_id}) + "\n"
     if injecting:
         yield json.dumps({"injecting_instruction": True}) + "\n"
 
@@ -212,6 +226,8 @@ async def _stream_generator_async(
         try:
             msg = crud.add_message(db, conversation_id, role="assistant", content="".join(full_content))
             crud.touch_conversation(db, conversation_id)
+            if save_to_chromadb in ("assistant", "both"):
+                rag.add_message(conversation_id, msg.id, "assistant", msg.content, msg.created_at)
             return msg.id
         finally:
             db.close()
@@ -259,23 +275,34 @@ async def send_message_stream(
         content=body.content,
         instruction_override=body.instruction_override,
     )
-    # Insertar en Chroma en segundo plano mientras Ollama responde (no bloquear el primer token)
-    def _add_user_to_rag():
-        rag.add_message(conversation_id, user_msg.id, "user", body.content, user_msg.created_at)
+    save_to_chromadb = (body.save_to_chromadb or "user").strip().lower()
+    if save_to_chromadb not in ("none", "user", "assistant", "both"):
+        save_to_chromadb = "user"
+    # Insertar en Chroma en segundo plano solo si la opción lo permite
+    if save_to_chromadb in ("user", "both"):
+        def _add_user_to_rag():
+            rag.add_message(conversation_id, user_msg.id, "user", body.content, user_msg.created_at)
 
-    def _on_rag_done(fut):
-        try:
-            fut.result()
-        except Exception as e:
-            import sys
-            print(f"--- RAG add_message (background) ERROR: {e!r} ---", file=sys.stderr)
+        def _on_rag_done(fut):
+            try:
+                fut.result()
+            except Exception as e:
+                import sys
+                print(f"--- RAG add_message (background) ERROR: {e!r} ---", file=sys.stderr)
 
-    loop = asyncio.get_event_loop()
-    fut = loop.run_in_executor(None, _add_user_to_rag)
-    fut.add_done_callback(_on_rag_done)
+        loop = asyncio.get_event_loop()
+        fut = loop.run_in_executor(None, _add_user_to_rag)
+        fut.add_done_callback(_on_rag_done)
 
     return StreamingResponse(
-        _stream_generator_async(conversation_id, conv.model_id, ollama_messages, injecting),
+        _stream_generator_async(
+            conversation_id,
+            conv.model_id,
+            ollama_messages,
+            injecting,
+            user_message_id=user_msg.id,
+            save_to_chromadb=save_to_chromadb,
+        ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -326,8 +353,14 @@ def send_message(
         content=body.content,
         instruction_override=body.instruction_override,
     )
-    rag.add_message(conversation_id, user_msg.id, "user", body.content, user_msg.created_at)
+    save_to_chromadb = (body.save_to_chromadb or "user").strip().lower()
+    if save_to_chromadb not in ("none", "user", "assistant", "both"):
+        save_to_chromadb = "user"
+    if save_to_chromadb in ("user", "both"):
+        rag.add_message(conversation_id, user_msg.id, "user", body.content, user_msg.created_at)
     assistant_msg = crud.add_message(db, conversation_id, role="assistant", content=assistant_content)
     crud.touch_conversation(db, conversation_id)
+    if save_to_chromadb in ("assistant", "both"):
+        rag.add_message(conversation_id, assistant_msg.id, "assistant", assistant_msg.content, assistant_msg.created_at)
 
     return MessageResponse(role="assistant", content=assistant_msg.content, id=assistant_msg.id)
