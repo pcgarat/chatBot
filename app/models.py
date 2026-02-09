@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -17,10 +17,16 @@ class Conversation(Base):
     title = Column(String(512), nullable=False, default="Nueva conversación")
     model_id = Column(String(128), nullable=False, default="llama3.2")
     system_instruction_global = Column(Text, nullable=True)
+    inject_instruction_every = Column(Integer, nullable=True)  # null/0 = cada mensaje; >0 = solo cada X mensajes de usuario
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    messages = relationship("Message", back_populates="conversation", order_by="Message.created_at")
+    messages = relationship(
+        "Message",
+        back_populates="conversation",
+        order_by="Message.created_at",
+        cascade="all, delete-orphan",
+    )
 
 
 class Message(Base):

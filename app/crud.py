@@ -4,17 +4,22 @@ from sqlalchemy.orm import Session
 
 from app.models import Conversation, Message
 
+# Sentinel para "no actualizar inject_instruction_every" en update_conversation
+_INJECT_UNSET = object()
+
 
 def create_conversation(
     db: Session,
     title: str = "Nueva conversación",
     model_id: str = "llama3.2",
     system_instruction_global: str | None = None,
+    inject_instruction_every: int | None = None,
 ) -> Conversation:
     conv = Conversation(
         title=title,
         model_id=model_id,
         system_instruction_global=system_instruction_global,
+        inject_instruction_every=inject_instruction_every if inject_instruction_every and inject_instruction_every > 0 else None,
     )
     db.add(conv)
     db.commit()
@@ -36,6 +41,7 @@ def update_conversation(
     title: str | None = None,
     model_id: str | None = None,
     system_instruction_global: str | None = None,
+    inject_instruction_every: int | None = _INJECT_UNSET,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
@@ -46,6 +52,8 @@ def update_conversation(
         conv.model_id = model_id
     if system_instruction_global is not None:
         conv.system_instruction_global = system_instruction_global
+    if inject_instruction_every is not _INJECT_UNSET:
+        conv.inject_instruction_every = inject_instruction_every if (inject_instruction_every and inject_instruction_every > 0) else None
     conv.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(conv)

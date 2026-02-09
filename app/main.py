@@ -5,12 +5,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
-from app.routers import api_conversations, api_models
+from app.routers import api_conversations, api_models, api_ollama
 
 app = FastAPI(title="Chat IA con Ollama", version="1.0.0")
 
 app.include_router(api_models.router)
 app.include_router(api_conversations.router)
+app.include_router(api_ollama.router)
 
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
