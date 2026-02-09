@@ -13,6 +13,15 @@
         <h1>Chat IA</h1>
         <button type="button" id="btn-new-chat" class="btn btn-primary">Nueva conversación</button>
       </div>
+      <div class="sidebar-option inject-every">
+        <label class="inject-every-label">
+          <input type="checkbox" id="inject-instruction-every-check" />
+          Enviar instrucciones solo cada
+        </label>
+        <input type="number" id="inject-instruction-every-n" min="1" value="5" class="inject-every-n" />
+        <span>mensajes</span>
+      </div>
+      <button type="button" id="btn-cancel-message" class="btn btn-cancel" title="Anular último mensaje y cerrar conexión con Ollama">Cancelar último mensaje</button>
       <div class="conversations-list" id="conversations-list"></div>
     </aside>
     <main class="chat-area">

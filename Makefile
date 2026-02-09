@@ -8,26 +8,30 @@ PYTEST := $(VENV)/bin/pytest
 PORT ?= 8000
 PIDFILE := .server.pid
 
-.PHONY: help up down start stop test status
+.PHONY: help up down start start-verbose stop reload test status
 
 help:
 	@echo "Chat IA con Ollama - Comandos disponibles:"
 	@echo ""
-	@echo "  make up      Crear entorno virtual e instalar dependencias"
-	@echo "  make down    Eliminar el entorno virtual"
+	@echo "  make up      Crear entorno virtual, instalar dependencias e iniciar la aplicación"
+	@echo "  make down    Detener la aplicación y eliminar el entorno virtual"
 	@echo "  make start   Iniciar el servidor (puerto $(PORT))"
 	@echo "  make stop    Detener el servidor"
+	@echo "  make reload  make down + make up (reinicio completo)"
 	@echo "  make test    Ejecutar los tests"
 	@echo "  make status  Mostrar estado del entorno y del servidor"
+	@echo "  make start-verbose  Iniciar con -v (volcar en stderr lo enviado a Ollama)"
 	@echo "  make help    Mostrar esta ayuda"
 	@echo ""
 
 up:
-	@echo "Creando entorno virtual..."
-	python3 -m venv $(VENV)
+	@if [ ! -d $(VENV) ]; then echo "Creando entorno virtual..."; python3 -m venv $(VENV); fi
 	@echo "Instalando dependencias..."
-	$(PIP) install -r requirements.txt
-	@echo "Listo. Activa el entorno con: source $(VENV)/bin/activate"
+	@$(PIP) install -r requirements.txt
+	@$(MAKE) start
+
+reload: down
+	$(MAKE) up
 
 down:
 	@-[ -f $(PIDFILE) ] && ($(MAKE) stop || true)
@@ -40,7 +44,7 @@ start: $(VENV)/bin/uvicorn
 		pid=$$(cat $(PIDFILE)); \
 		if kill -0 $$pid 2>/dev/null; then \
 			echo "El servidor ya está en marcha (PID $$pid). Usa 'make stop' para detenerlo."; \
-			exit 1; \
+			exit 0; \
 		fi; \
 		rm -f $(PIDFILE); \
 	fi
@@ -48,6 +52,19 @@ start: $(VENV)/bin/uvicorn
 	@$(UVICORN) app.main:app --host 0.0.0.0 --port $(PORT) & echo $$! > $(PIDFILE)
 	@sleep 1
 	@echo "Servidor iniciado (PID $$(cat $(PIDFILE))). Usa 'make stop' para detenerlo."
+
+start-verbose: $(VENV)/bin/uvicorn
+	@if [ -f $(PIDFILE) ]; then \
+		pid=$$(cat $(PIDFILE)); \
+		if kill -0 $$pid 2>/dev/null; then \
+			$(MAKE) stop; \
+		fi; \
+		rm -f $(PIDFILE); \
+	fi
+	@echo "Iniciando servidor con -v en http://0.0.0.0:$(PORT) ..."
+	@VERBOSE=1 $(PYTHON) run.py -v --host 0.0.0.0 --port $(PORT) & echo $$! > $(PIDFILE)
+	@sleep 1
+	@echo "Servidor iniciado con modo verbose (PID $$(cat $(PIDFILE))). Usa 'make stop' para detenerlo."
 
 stop:
 	@if [ -f $(PIDFILE) ]; then \

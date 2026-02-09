@@ -51,6 +51,63 @@ body {
   font-weight: 600;
 }
 
+.sidebar-option.inject-every {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.inject-every-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.inject-every-label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+}
+
+.inject-every-n {
+  width: 3rem;
+  padding: 0.25rem 0.4rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.inject-every-n:disabled {
+  opacity: 0.6;
+}
+
+.btn-cancel {
+  width: 100%;
+  margin: 0 1rem 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .conversations-list {
   flex: 1;
   overflow-y: auto;
@@ -325,6 +382,21 @@ body {
   padding: 0.75rem 1.5rem;
   background: #7f1d1d;
   color: #fecaca;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  z-index: 100;
+  max-width: 90%;
+}
+
+.notice-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.75rem 1.5rem;
+  background: var(--bg-message-user);
+  color: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: 8px;
   font-size: 0.9rem;
   z-index: 100;
