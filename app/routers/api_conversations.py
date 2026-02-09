@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app import crud, ollama_client
+from app import crud, ollama_client, rag
 from app.config import settings
 from app.db import get_db
 from app.schemas import (
@@ -99,6 +99,7 @@ def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
     ok = crud.delete_conversation(db, conversation_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    rag.delete_conversation_documents(conversation_id)
     return None
 
 
@@ -119,16 +120,20 @@ def _build_ollama_messages(
     system_instruction_global: str | None = None,
     inject_instruction_every: int | None = None,
     user_message_count: int = 0,
+    rag_context: str | None = None,
 ) -> tuple[list, bool]:
     """Construye la lista de mensajes para Ollama.
 
     El historial no se envía nunca a Ollama (solo es para la UI). Se envía únicamente:
+    - Contexto RAG relevante del historial (si rag_context está presente).
     - Instrucciones globales (si aplican: siempre si check desactivado, o cada X mensajes si activado).
     - Instrucción para este mensaje (opcional).
     - El mensaje nuevo del usuario.
     Devuelve (messages, injecting_instruction).
     """
     parts = []
+    if rag_context and rag_context.strip():
+        parts.append("Contexto relevante del historial:\n\n" + rag_context.strip())
     add_global = True
     if inject_instruction_every is not None and inject_instruction_every > 0:
         add_global = user_message_count % inject_instruction_every == 0
@@ -166,7 +171,7 @@ async def _stream_generator_async(
     payload = {"model": model_id, "messages": ollama_messages, "stream": True}
     if settings.verbose:
         import sys
-        print("--- enviado a Ollama ---", file=sys.stderr)
+        print("--- enviado a Ollama (el system incluye contexto RAG si hubiera) ---", file=sys.stderr)
         print(json.dumps(payload, ensure_ascii=False, indent=2), file=sys.stderr)
         print("--- fin ---", file=sys.stderr)
 
@@ -232,19 +237,42 @@ async def send_message_stream(
     crud.update_conversation(db, conversation_id, inject_instruction_every=inject_every)
     existing = crud.get_messages(db, conversation_id)
     user_count = sum(1 for m in existing if m.role == "user")
+    rag_context = rag.get_relevant_context(conversation_id, body.content)
+    if settings.verbose:
+        import sys
+        n_ctx = len(rag_context or "")
+        if n_ctx:
+            print(f"--- RAG: contexto de {n_ctx} chars se inyecta en el system message para Ollama ---", file=sys.stderr)
+        else:
+            print("--- RAG: sin contexto (no se inyecta nada en el prompt) ---", file=sys.stderr)
     ollama_messages, injecting = _build_ollama_messages(
         conv, existing, body.content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
         inject_instruction_every=inject_every,
         user_message_count=user_count,
+        rag_context=rag_context,
     )
-    crud.add_message(
+    user_msg = crud.add_message(
         db,
         conversation_id,
         role="user",
         content=body.content,
         instruction_override=body.instruction_override,
     )
+    # Insertar en Chroma en segundo plano mientras Ollama responde (no bloquear el primer token)
+    def _add_user_to_rag():
+        rag.add_message(conversation_id, user_msg.id, "user", body.content, user_msg.created_at)
+
+    def _on_rag_done(fut):
+        try:
+            fut.result()
+        except Exception as e:
+            import sys
+            print(f"--- RAG add_message (background) ERROR: {e!r} ---", file=sys.stderr)
+
+    loop = asyncio.get_event_loop()
+    fut = loop.run_in_executor(None, _add_user_to_rag)
+    fut.add_done_callback(_on_rag_done)
 
     return StreamingResponse(
         _stream_generator_async(conversation_id, conv.model_id, ollama_messages, injecting),
@@ -267,11 +295,20 @@ def send_message(
 
     existing = crud.get_messages(db, conversation_id)
     user_count = sum(1 for m in existing if m.role == "user")
+    rag_context = rag.get_relevant_context(conversation_id, body.content)
+    if settings.verbose:
+        import sys
+        n_ctx = len(rag_context or "")
+        if n_ctx:
+            print(f"--- RAG: contexto de {n_ctx} chars se inyecta en el system message para Ollama ---", file=sys.stderr)
+        else:
+            print("--- RAG: sin contexto (no se inyecta nada en el prompt) ---", file=sys.stderr)
     ollama_messages, _ = _build_ollama_messages(
         conv, existing, body.content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
         inject_instruction_every=inject_every,
         user_message_count=user_count,
+        rag_context=rag_context,
     )
 
     try:
@@ -282,13 +319,14 @@ def send_message(
             detail=f"Error al llamar a Ollama: {e!s}",
         )
 
-    crud.add_message(
+    user_msg = crud.add_message(
         db,
         conversation_id,
         role="user",
         content=body.content,
         instruction_override=body.instruction_override,
     )
+    rag.add_message(conversation_id, user_msg.id, "user", body.content, user_msg.created_at)
     assistant_msg = crud.add_message(db, conversation_id, role="assistant", content=assistant_content)
     crud.touch_conversation(db, conversation_id)
 

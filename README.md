@@ -6,6 +6,7 @@ Aplicación web de chat que usa modelos Ollama en local. Incluye selector de mod
 
 - Python 3.10+
 - [Ollama](https://ollama.com) instalado y en ejecución (`ollama serve`). Al menos un modelo descargado (por ejemplo `ollama pull llama3.2`).
+- **RAG (opcional):** Docker para ChromaDB y cuenta OpenAI para embeddings. Sin ellos la app funciona igual; el RAG solo se activa si están configurados `OPENAI_API_KEY` y `CHROMA_HOST`.
 
 ## Instalación
 
@@ -37,6 +38,9 @@ pip install -r requirements.txt
 | `make reload`| make down + make up (reinicio completo)                             |
 | `make test`  | Ejecutar los tests                                                  |
 | `make status`| Ver estado del entorno y del servidor                               |
+| `make chroma-up`  | Levantar ChromaDB con Docker (puerto 8001); datos en `./data/chroma` |
+| `make chroma-down`| Bajar el contenedor de ChromaDB (los datos se conservan)            |
+| `make clean`      | Parar app y Chroma y borrar datos de Chroma y PID                   |
 | `make help`  | Mostrar ayuda                                                      |
 
 ## Configuración (opcional)
@@ -45,6 +49,11 @@ Copia `.env.example` a `.env` y ajusta si lo necesitas:
 
 - `OLLAMA_HOST`: URL de Ollama (por defecto `http://localhost:11434`).
 - `DATABASE_URL`: ruta de la base de datos SQLite (por defecto `sqlite:///./chatbot.db`).
+- **RAG:** `OPENAI_API_KEY` (clave API de OpenAI para embeddings) y `CHROMA_HOST` (por defecto `http://localhost:8001`). Para usar el RAG:
+  1. Levanta Chroma: `make chroma-up` (crea `./data/chroma` y deja los datos ahí para no perderlos).
+  2. Luego inicia la app: `make start`. La app conecta a Chroma por HTTP y guarda/consulta el historial por conversación.
+  Para apagar Chroma sin borrar datos: `make chroma-down`. Para parar todo y borrar también los datos de Chroma: `make clean`.
+
 ## Ejecución
 
 `make up` ya inicia la aplicación. Si el entorno existe y solo quieres arrancar el servidor:

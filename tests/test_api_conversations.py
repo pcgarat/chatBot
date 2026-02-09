@@ -170,3 +170,30 @@ def test_send_message_ollama_error(mock_chat, client):
     r = client.post(f"/api/conversations/{cid}/messages", json={"content": "Hola"})
     assert r.status_code == 502
     assert "Ollama" in r.json()["detail"]
+
+
+@patch("app.routers.api_conversations.rag.add_message")
+@patch("app.routers.api_conversations.rag.get_relevant_context")
+@patch("app.routers.api_conversations.ollama_client.chat")
+def test_send_message_calls_rag_get_context_and_add(mock_chat, mock_rag_context, mock_rag_add, client):
+    """Al enviar un mensaje se llama a get_relevant_context y a add_message solo para el mensaje user."""
+    mock_chat.return_value = "Respuesta."
+    mock_rag_context.return_value = ""
+    create = client.post("/api/conversations", json={"title": "RAG", "model_id": "m"})
+    cid = create.json()["id"]
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "Hola"})
+    mock_rag_context.assert_called_once()
+    assert mock_rag_context.call_args[0][0] == cid
+    assert mock_rag_context.call_args[0][1] == "Hola"
+    # add_message solo para el mensaje del usuario (no se guardan respuestas del asistente)
+    mock_rag_add.assert_called_once()
+    assert mock_rag_add.call_args[0][2] == "user"
+
+
+@patch("app.routers.api_conversations.rag.delete_conversation_documents")
+def test_delete_conversation_calls_rag_delete_documents(mock_rag_delete, client):
+    """Al eliminar una conversación se llama a delete_conversation_documents."""
+    create = client.post("/api/conversations", json={"title": "Borrar RAG", "model_id": "m"})
+    cid = create.json()["id"]
+    client.delete(f"/api/conversations/{cid}")
+    mock_rag_delete.assert_called_once_with(cid)

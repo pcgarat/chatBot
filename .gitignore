@@ -1,5 +1,6 @@
 # Entorno virtual
 .venv/
+.venv312/
 venv/
 env/
 
@@ -22,6 +23,9 @@ build/
 # Base de datos local
 *.db
 chatbot.db
+
+# ChromaDB (RAG): datos persistentes en disco
+data/
 
 # Servidor (Makefile)
 .server.pid
