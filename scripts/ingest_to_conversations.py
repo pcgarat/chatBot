@@ -19,67 +19,22 @@ import os
 import sys
 from pathlib import Path
 
-# Raíz del proyecto
+# Raíz en path y .env cargados antes de importar app
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-# Cargar .env a mano antes de importar app (evita que falle la lectura con Python 3.14 / script)
-_env_file = _ROOT / ".env"
-if _env_file.exists():
-    with open(_env_file, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, value = line.partition("=")
-                key, value = key.strip(), value.strip()
-                if key:
-                    os.environ[key] = value
+from scripts import common
 
-from app import config, crud, rag
-from app.db import SessionLocal
+common.load_env_from_root()
 
-# Si pydantic no leyó el .env (p. ej. Python 3.14), forzar desde os.environ y revalidar RAG
+from app import config, rag
+
 if not (config.settings.openai_api_key or "").strip():
     config.settings.openai_api_key = os.environ.get("OPENAI_API_KEY", "")
 if not (config.settings.chroma_host or "").strip():
     config.settings.chroma_host = os.environ.get("CHROMA_HOST", "") or "http://localhost:8001"
-rag._chroma_available = None  # forzar re-evaluación de _rag_available()
-
-
-def list_conversations():
-    db = SessionLocal()
-    try:
-        return crud.list_conversations(db)
-    finally:
-        db.close()
-
-
-def parse_selection(choice: str, n: int) -> list[int]:
-    """Convierte '1,3,5' o '1-4' o 'all' en lista de índices 0-based."""
-    choice = choice.strip().lower()
-    if choice == "all":
-        return list(range(n))
-    indices = []
-    for part in choice.split(","):
-        part = part.strip()
-        if "-" in part:
-            a, b = part.split("-", 1)
-            try:
-                lo, hi = int(a.strip()), int(b.strip())
-                for i in range(lo, hi + 1):
-                    if 1 <= i <= n:
-                        indices.append(i - 1)
-            except ValueError:
-                continue
-        else:
-            try:
-                i = int(part)
-                if 1 <= i <= n:
-                    indices.append(i - 1)
-            except ValueError:
-                continue
-    return sorted(set(indices))
+rag._chroma_available = None
 
 
 def main():
@@ -91,30 +46,15 @@ def main():
         print(f"Error: no existe el archivo {path}", file=sys.stderr)
         sys.exit(1)
 
-    conversations = list_conversations()
+    conversations = common.list_conversations()
     if not conversations:
         print("No hay conversaciones. Crea alguna desde la app antes de ingestar.", file=sys.stderr)
         sys.exit(1)
 
-    print("\nConversaciones disponibles:\n")
-    for i, c in enumerate(conversations, 1):
-        title = (c.title or "Sin título")[:60]
-        print(f"  {i}. {title!r}  (id: {c.id})")
-    print("\nEscribe los números a usar (ej: 1,3,5  o  1-4  o  all) y pulsa Enter: ", end="")
-    try:
-        choice = input().strip()
-    except EOFError:
-        choice = ""
-    if not choice:
+    selected = common.prompt_select_conversations(conversations)
+    if not selected:
         print("Nada seleccionado. Saliendo.", file=sys.stderr)
         sys.exit(0)
-
-    indices = parse_selection(choice, len(conversations))
-    if not indices:
-        print("Selección no válida. Saliendo.", file=sys.stderr)
-        sys.exit(1)
-
-    selected = [conversations[i] for i in indices]
     print(f"\nSeleccionadas {len(selected)} conversación(es).", file=sys.stderr)
 
     if not rag._rag_available():
