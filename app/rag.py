@@ -245,6 +245,29 @@ def delete_ingested_documents(conversation_id: str) -> None:
         pass
 
 
+def delete_chat_history_documents(conversation_id: str) -> None:
+    """
+    Elimina solo los documentos de historial de chat (role 'user' o 'assistant') de la conversación.
+    No borra los documentos con role='ingested' (contenido ingerido de archivos).
+    """
+    if not _rag_available():
+        return
+    try:
+        coll = _get_collection()
+        if coll is None:
+            return
+        coll.delete(
+            where={
+                "$and": [
+                    {"conversation_id": {"$eq": conversation_id}},
+                    {"role": {"$in": ["user", "assistant"]}},
+                ]
+            }
+        )
+    except Exception:
+        pass
+
+
 # Tamaño máximo por chunk para embeddings
 INGEST_CHUNK_MAX_CHARS = 6000
 INGEST_CHUNK_OVERLAP = 200

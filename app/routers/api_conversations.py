@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import crud, ollama_client, rag
 from app.config import settings
+from app.slash_commands import parse_slash_command
 from app.db import get_db
 from app.schemas import (
     ConversationCreate,
@@ -173,11 +174,15 @@ async def _stream_generator_async(
     injecting: bool,
     user_message_id: str | None = None,
     save_to_chromadb: str = "user",
+    mcp_contexts: list[str] | None = None,
 ):
     """Generador async que hace streaming a Ollama vía httpx. Al desconectar el cliente
-    (GeneratorExit) se cierra la conexión a Ollama para que deje de generar."""
+    (GeneratorExit) se cierra la conexión a Ollama para que deje de generar.
+    mcp_contexts: cuando se integre MCP, aquí se usarán para inyectar tools (ej. ['git'])."""
     if user_message_id:
         yield json.dumps({"user_message_id": user_message_id}) + "\n"
+    if mcp_contexts:
+        yield json.dumps({"mcp_contexts": mcp_contexts}, ensure_ascii=False) + "\n"
     if injecting:
         yield json.dumps({"injecting_instruction": True}) + "\n"
 
@@ -242,10 +247,16 @@ async def send_message_stream(
     conversation_id: str, body: MessageSend, db: Session = Depends(get_db)
 ):
     """Envía el mensaje y devuelve la respuesta en streaming (NDJSON). Al cancelar
-    el cliente se cierra la conexión a Ollama para liberar el modelo."""
+    el cliente se cierra la conexión a Ollama para liberar el modelo.
+    Si el mensaje empieza por /git, /files, etc., se usa ese contexto MCP y el texto
+    que se envía al modelo es el resto del mensaje (sin el slash command)."""
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
+
+    slash = parse_slash_command(body.content)
+    user_content = slash.content
+    mcp_contexts = slash.mcp_contexts  # Ej. ["git"] cuando el usuario escribió /git ...
 
     inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     if body.system_instruction_global is not None:
@@ -253,7 +264,7 @@ async def send_message_stream(
     crud.update_conversation(db, conversation_id, inject_instruction_every=inject_every)
     existing = crud.get_messages(db, conversation_id)
     user_count = sum(1 for m in existing if m.role == "user")
-    rag_context = rag.get_relevant_context(conversation_id, body.content)
+    rag_context = rag.get_relevant_context(conversation_id, user_content)
     if settings.verbose:
         import sys
         n_ctx = len(rag_context or "")
@@ -261,8 +272,10 @@ async def send_message_stream(
             print(f"--- RAG: contexto de {n_ctx} chars se inyecta en el system message para Ollama ---", file=sys.stderr)
         else:
             print("--- RAG: sin contexto (no se inyecta nada en el prompt) ---", file=sys.stderr)
+        if mcp_contexts:
+            print(f"--- Slash: MCP contexts activados para este turno: {mcp_contexts} ---", file=sys.stderr)
     ollama_messages, injecting = _build_ollama_messages(
-        conv, existing, body.content, body.instruction_override,
+        conv, existing, user_content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
         inject_instruction_every=inject_every,
         user_message_count=user_count,
@@ -272,7 +285,7 @@ async def send_message_stream(
         db,
         conversation_id,
         role="user",
-        content=body.content,
+        content=user_content,
         instruction_override=body.instruction_override,
     )
     save_to_chromadb = (body.save_to_chromadb or "user").strip().lower()
@@ -281,7 +294,7 @@ async def send_message_stream(
     # Insertar en Chroma en segundo plano solo si la opción lo permite
     if save_to_chromadb in ("user", "both"):
         def _add_user_to_rag():
-            rag.add_message(conversation_id, user_msg.id, "user", body.content, user_msg.created_at)
+            rag.add_message(conversation_id, user_msg.id, "user", user_content, user_msg.created_at)
 
         def _on_rag_done(fut):
             try:
@@ -302,6 +315,7 @@ async def send_message_stream(
             injecting,
             user_message_id=user_msg.id,
             save_to_chromadb=save_to_chromadb,
+            mcp_contexts=mcp_contexts,
         ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -315,6 +329,11 @@ def send_message(
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
+
+    slash = parse_slash_command(body.content)
+    user_content = slash.content
+    mcp_contexts = slash.mcp_contexts
+
     inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
@@ -322,7 +341,7 @@ def send_message(
 
     existing = crud.get_messages(db, conversation_id)
     user_count = sum(1 for m in existing if m.role == "user")
-    rag_context = rag.get_relevant_context(conversation_id, body.content)
+    rag_context = rag.get_relevant_context(conversation_id, user_content)
     if settings.verbose:
         import sys
         n_ctx = len(rag_context or "")
@@ -330,8 +349,10 @@ def send_message(
             print(f"--- RAG: contexto de {n_ctx} chars se inyecta en el system message para Ollama ---", file=sys.stderr)
         else:
             print("--- RAG: sin contexto (no se inyecta nada en el prompt) ---", file=sys.stderr)
+        if mcp_contexts:
+            print(f"--- Slash: MCP contexts activados: {mcp_contexts} ---", file=sys.stderr)
     ollama_messages, _ = _build_ollama_messages(
-        conv, existing, body.content, body.instruction_override,
+        conv, existing, user_content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
         inject_instruction_every=inject_every,
         user_message_count=user_count,
@@ -350,14 +371,14 @@ def send_message(
         db,
         conversation_id,
         role="user",
-        content=body.content,
+        content=user_content,
         instruction_override=body.instruction_override,
     )
     save_to_chromadb = (body.save_to_chromadb or "user").strip().lower()
     if save_to_chromadb not in ("none", "user", "assistant", "both"):
         save_to_chromadb = "user"
     if save_to_chromadb in ("user", "both"):
-        rag.add_message(conversation_id, user_msg.id, "user", body.content, user_msg.created_at)
+        rag.add_message(conversation_id, user_msg.id, "user", user_content, user_msg.created_at)
     assistant_msg = crud.add_message(db, conversation_id, role="assistant", content=assistant_content)
     crud.touch_conversation(db, conversation_id)
     if save_to_chromadb in ("assistant", "both"):
