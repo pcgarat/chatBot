@@ -33,9 +33,10 @@ help:
 	@echo "  make chroma-logs   Ver logs del contenedor ChromaDB"
 	@echo "  make chroma-status Estado del contenedor (docker compose ps)"
 	@echo ""
-	@echo "  RAG / ingestar archivo en conversaciones:"
+	@echo "  RAG / ingestar o limpiar Chroma:"
 	@echo "  make ingest [FILE=archivo.txt] Ingesta archivo en Chroma para conversaciones elegidas (por defecto archivo.txt)"
-	@echo "  make venv312   Crear .venv312 con Python 3.12 para ingest (hazlo si make ingest falla por Python 3.14)"
+	@echo "  make clean-chroma   Limpia datos de Chroma: elige conversaciones y qué borrar (historial, ingesta o todo)"
+	@echo "  make venv312   Crear .venv312 con Python 3.12 para ingest/clean-chroma (hazlo si falla por Python 3.14)"
 	@echo ""
 	@echo "  make help    Mostrar esta ayuda"
 	@echo ""
@@ -111,7 +112,7 @@ stop:
 	fi
 
 test: $(VENV)/bin/pytest
-	$(PYTEST)
+	$(PYTEST) --cov=app --cov-report=term-missing
 
 # Ingestar archivo de texto en Chroma (ChromaDB no va con Python 3.14; se usa .venv312 con 3.12 si existe)
 FILE ?= archivo.txt
@@ -120,7 +121,10 @@ PYTHON_INGEST := $(if $(wildcard $(VENV312)/bin/python),$(VENV312)/bin/python,$(
 ingest: $(VENV)/bin/uvicorn
 	@$(PYTHON_INGEST) scripts/ingest_to_conversations.py "$(FILE)"
 
-# Crear venv con Python 3.12 para ingest (necesario si el venv principal es Python 3.14)
+clean-chroma: $(VENV)/bin/uvicorn
+	@$(PYTHON_INGEST) scripts/clean_chroma_conversations.py
+
+# Crear venv con Python 3.12 para ingest/clean-chroma (necesario si el venv principal es Python 3.14)
 venv312:
 	@command -v python3.12 >/dev/null || { echo "Necesitas Python 3.12 instalado (ChromaDB falla en 3.14)."; exit 1; }
 	@python3.12 -m venv $(VENV312)
