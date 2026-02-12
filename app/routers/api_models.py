@@ -17,6 +17,25 @@ def list_providers():
     return [ProviderInfo(name=p, available=True) for p in providers]
 
 
+@router.get("/providers/{provider_name}/validate")
+def validate_provider(provider_name: str):
+    """Comprueba si el proveedor está activo y aceptando conexiones. Devuelve 200 si ok, 503 si no."""
+    try:
+        provider = get_provider(provider_name)
+        if provider.validate_connection():
+            return {"ok": True}
+        raise HTTPException(status_code=503, detail="Proveedor no disponible")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Proveedor {provider_name} no disponible: {e!s}",
+        )
+
+
 @router.get("/providers/{provider_name}/models", response_model=list[ProviderModelInfo])
 def list_provider_models(provider_name: str):
     """Lista los modelos disponibles en un proveedor específico."""

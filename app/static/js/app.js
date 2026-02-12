@@ -27,7 +27,8 @@
     btnClearMemory: document.getElementById("btn-clear-memory"),
   };
 
-  const saveToChromaIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z\"/><polyline points=\"17 21 17 13 7 13 7 21\"/><polyline points=\"7 3 7 8 15 8\"/></svg>";
+  const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
+  const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1\"/></svg>";
 
   function showError(msg) {
     const toast = document.createElement("div");
@@ -79,6 +80,22 @@
         el.providerSelect.innerHTML = '<option value="ollama">ollama</option>';
       }
       return providers;
+    }
+  }
+
+  /** Intenta cargar modelos de un proveedor. Devuelve true si ok, false si falló. */
+  async function tryLoadModelsForProvider(providerName) {
+    try {
+      const data = await fetchJson(`${API}/providers/${providerName}/models`);
+      models = data.map((m) => m.name);
+      currentProvider = providerName;
+      if (el.providerSelect) el.providerSelect.value = providerName;
+      if (el.modelSelect) {
+        el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+      }
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -218,6 +235,17 @@
     }
   }
 
+  function getDefaultConversationTitle() {
+    const now = new Date();
+    return now.toLocaleString("es", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
   function escapeHtml(s) {
     if (s == null) return "";
     const div = document.createElement("div");
@@ -271,7 +299,7 @@
       const conv = await fetchJson(`${API}/conversations`, {
         method: "POST",
         body: JSON.stringify({
-          title: "Nueva conversación",
+          title: getDefaultConversationTitle(),
           model_id: model,
           provider: provider,
           system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
@@ -292,7 +320,7 @@
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
         body: JSON.stringify({
-          title: (el.conversationTitle && el.conversationTitle.value.trim()) || "Nueva conversación",
+          title: (el.conversationTitle && el.conversationTitle.value.trim()) || getDefaultConversationTitle(),
           model_id: (el.modelSelect && el.modelSelect.value) || "",
           provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
           system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
@@ -304,20 +332,27 @@
     }
   }
 
-  async function saveMessageToChromadb(conversationId, messageId) {
-    const btn = document.querySelector(`[data-save-chromadb="${messageId}"]`);
-    if (btn) btn.disabled = true;
+  async function deleteMessageFromHistory(conversationId, messageId) {
     try {
-      const res = await fetch(`${API}/conversations/${conversationId}/messages/${messageId}/save-to-chromadb`, { method: "POST" });
+      const res = await fetch(`${API}/conversations/${conversationId}/messages/${messageId}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || res.statusText);
       }
-      showNotice("Mensaje guardado en ChromaDB.");
+      messages = messages.filter((m) => m.id !== messageId);
+      renderMessages();
+      loadConversations();
+      showNotice("Mensaje eliminado del historial.");
     } catch (e) {
-      showError("Error al guardar en ChromaDB: " + e.message);
-      if (btn) btn.disabled = false;
+      showError("Error al eliminar: " + e.message);
     }
+  }
+
+  function copyMessageToClipboard(content) {
+    navigator.clipboard.writeText(content).then(
+      () => showNotice("Copiado al portapapeles."),
+      () => showError("No se pudo copiar.")
+    );
   }
 
   function isShowDebugMode() {
@@ -334,8 +369,11 @@
     el.messagesContainer.innerHTML = messages
       .map(
         (m) => {
-          const saveBtn = m.id
-            ? `<div class="message-footer"><button type="button" class="msg-save-chromadb-btn" data-save-chromadb="${escapeHtml(m.id)}" title="Guardar en ChromaDB">${saveToChromaIconSvg}</button></div>`
+          const footerBtns = m.id
+            ? `<div class="message-footer">
+                <button type="button" class="msg-action-btn msg-delete-btn" data-msg-id="${escapeHtml(m.id)}" title="Eliminar del historial">${msgDeleteIconSvg}</button>
+                <button type="button" class="msg-action-btn msg-copy-btn" data-msg-id="${escapeHtml(m.id)}" title="Copiar">${msgCopyIconSvg}</button>
+              </div>`
             : "";
           let debugHtml = "";
           if (showDebug && m.role === "assistant" && (m.debug_request || m.debug_response)) {
@@ -350,16 +388,24 @@
             <div class="role-label">${m.role === "user" ? "Tú" : "Asistente"}</div>
             <div class="content">${escapeHtml(m.content).replace(/\n/g, "<br>")}</div>
             ${debugHtml}
-            ${saveBtn}
+            ${footerBtns}
           </div>`;
         }
       )
       .join("");
-    el.messagesContainer.querySelectorAll(".msg-save-chromadb-btn").forEach((btn) => {
+    el.messagesContainer.querySelectorAll(".msg-delete-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
-        const msgId = btn.dataset.saveChromadb;
-        if (msgId && currentConversationId) saveMessageToChromadb(currentConversationId, msgId);
+        const msgId = btn.dataset.msgId;
+        if (msgId && currentConversationId) deleteMessageFromHistory(currentConversationId, msgId);
+      });
+    });
+    el.messagesContainer.querySelectorAll(".msg-copy-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const msgId = btn.dataset.msgId;
+        const msg = msgId ? messages.find((m) => m.id === msgId) : null;
+        if (msg && msg.content) copyMessageToClipboard(msg.content);
       });
     });
     if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
@@ -510,16 +556,28 @@
   }
 
   async function onModelChange() {
-    try {
-      await fetchJson(`${API}/ollama/clear-memory`, { method: "POST" });
-    } catch (e) {
-      showError("Error al limpiar memoria de Ollama: " + (e.message || "desconocido"));
-      return;
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
+    let ollamaActive = false;
+    if (provider === "ollama") {
+      try {
+        await fetchJson(`${API}/providers/ollama/validate`);
+        ollamaActive = true;
+      } catch (_) {
+        // Ollama no está activo: no llamar a clear-memory
+      }
+    }
+    if (ollamaActive) {
+      try {
+        await fetchJson(`${API}/ollama/clear-memory`, { method: "POST" });
+      } catch (e) {
+        showError("Error al limpiar memoria de Ollama: " + (e.message || "desconocido"));
+        return;
+      }
     }
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
-        body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "llama3.2" }),
+        body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "" }),
       }).catch(() => {});
     }
   }
@@ -548,8 +606,178 @@
     });
   }
 
-  // Cargar proveedores primero, luego modelos del proveedor por defecto, luego conversaciones
-  loadProviders().then(() => loadModels()).then(() => loadConversations());
+  /** Ayuda de parámetros: JSON por control id y tooltip tras 2s de hover */
+  let paramsHelpData = null;
+  let paramHelpTimeout = null;
+  const PARAM_HELP_DELAY_MS = 2000;
+
+  async function loadParamsHelp() {
+    try {
+      const res = await fetch("/static/data/llm-params-help.json");
+      if (res.ok) paramsHelpData = await res.json();
+    } catch (_) {
+      paramsHelpData = {};
+    }
+  }
+
+  function buildParamHelpHtml(entry) {
+    if (!entry || typeof entry !== "object") return "";
+    const parts = [];
+    if (entry.nombre) {
+      parts.push(`<div class="help-block"><div class="help-title">${escapeHtml(entry.nombre)}</div></div>`);
+    }
+    if (entry.definicion) {
+      parts.push(`<div class="help-block"><div class="help-label">Definición</div><div class="help-text">${escapeHtml(entry.definicion)}</div></div>`);
+    }
+    if (entry.rango) {
+      parts.push(`<div class="help-block"><div class="help-label">Rango / defaults</div><div class="help-text">${escapeHtml(entry.rango)}</div></div>`);
+    }
+    if (entry.efecto) {
+      parts.push(`<div class="help-block"><div class="help-label">Efecto</div><div class="help-text">${escapeHtml(entry.efecto)}</div></div>`);
+    }
+    if (entry.ejemplos) {
+      parts.push(`<div class="help-block"><div class="help-label">Ejemplos</div><div class="help-text">${escapeHtml(entry.ejemplos)}</div></div>`);
+    }
+    if (entry.casos_recomendados) {
+      parts.push(`<div class="help-block"><div class="help-label">Casos recomendados</div><div class="help-text">${escapeHtml(entry.casos_recomendados)}</div></div>`);
+    }
+    if (entry.riesgos) {
+      parts.push(`<div class="help-block"><div class="help-label">Riesgos</div><div class="help-text">${escapeHtml(entry.riesgos)}</div></div>`);
+    }
+    if (entry.compatibilidad) {
+      parts.push(`<div class="help-block"><div class="help-label">Compatibilidad (API)</div><div class="help-text">${escapeHtml(entry.compatibilidad)}</div></div>`);
+    }
+    return parts.length ? parts.join("") : "<div class=\"help-text\">Sin información.</div>";
+  }
+
+  function showParamHelpTooltip(controlEl, controlId) {
+    const tooltip = document.getElementById("param-help-tooltip");
+    if (!tooltip || !paramsHelpData) return;
+    const entry = paramsHelpData[controlId];
+    tooltip.innerHTML = buildParamHelpHtml(entry);
+    const rect = controlEl.getBoundingClientRect();
+    const padding = 8;
+    let left = rect.right + padding;
+    let top = rect.top;
+    if (left + 320 > window.innerWidth) {
+      left = rect.left - 320 - padding;
+    }
+    if (left < padding) left = padding;
+    if (top + 400 > window.innerHeight) top = window.innerHeight - 400 - padding;
+    if (top < padding) top = padding;
+    tooltip.style.left = left + "px";
+    tooltip.style.top = top + "px";
+    tooltip.classList.add("is-visible");
+  }
+
+  function hideParamHelpTooltip() {
+    const tooltip = document.getElementById("param-help-tooltip");
+    if (tooltip) tooltip.classList.remove("is-visible");
+    if (paramHelpTimeout) {
+      clearTimeout(paramHelpTimeout);
+      paramHelpTimeout = null;
+    }
+  }
+
+  function initParamHelpTooltip() {
+    const tooltipEl = document.createElement("div");
+    tooltipEl.id = "param-help-tooltip";
+    tooltipEl.className = "param-help-tooltip";
+    tooltipEl.setAttribute("role", "tooltip");
+    tooltipEl.setAttribute("aria-live", "polite");
+    document.body.appendChild(tooltipEl);
+
+    document.querySelectorAll("[data-control-id]").forEach((el) => {
+      el.addEventListener("mouseenter", function () {
+        hideParamHelpTooltip();
+        const controlId = this.getAttribute("data-control-id");
+        if (!controlId) return;
+        paramHelpTimeout = setTimeout(function () {
+          paramHelpTimeout = null;
+          showParamHelpTooltip(el, controlId);
+        }, PARAM_HELP_DELAY_MS);
+      });
+      el.addEventListener("mouseleave", function () {
+        hideParamHelpTooltip();
+      });
+    });
+  }
+
+  const ACCORDION_STORAGE_KEY = "chatbot_sidebar_accordion";
+
+  function getAccordionState() {
+    try {
+      const raw = localStorage.getItem(ACCORDION_STORAGE_KEY);
+      if (!raw) return null;
+      const state = JSON.parse(raw);
+      if (state && typeof state === "object") return state;
+    } catch (_) {}
+    return null;
+  }
+
+  function saveAccordionState() {
+    const state = {};
+    document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((section) => {
+      const id = section.dataset.accordionSection;
+      if (id) state[id] = section.classList.contains("is-open");
+    });
+    try {
+      localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(state));
+    } catch (_) {}
+  }
+
+  function initAccordionState() {
+    const state = getAccordionState();
+    if (!state) return;
+    document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((section) => {
+      const id = section.dataset.accordionSection;
+      const isOpen = state[id];
+      if (typeof isOpen === "boolean") {
+        if (isOpen) {
+          section.classList.add("is-open");
+          const btn = section.querySelector(".accordion-header");
+          if (btn) btn.setAttribute("aria-expanded", "true");
+        } else {
+          section.classList.remove("is-open");
+          const btn = section.querySelector(".accordion-header");
+          if (btn) btn.setAttribute("aria-expanded", "false");
+        }
+      }
+    });
+  }
+
+  initAccordionState();
+
+  document.querySelectorAll(".accordion-header").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const section = btn.closest(".accordion-section");
+      if (!section) return;
+      const isOpen = section.classList.toggle("is-open");
+      btn.setAttribute("aria-expanded", isOpen);
+      saveAccordionState();
+    });
+  });
+
+  // Cargar proveedores; si uno falla al cargar modelos, probar el siguiente
+  async function initLoad() {
+    await loadProviders();
+    let loaded = false;
+    for (const p of providers) {
+      if (await tryLoadModelsForProvider(p)) {
+        loaded = true;
+        break;
+      }
+    }
+    if (!loaded && providers.length > 0) {
+      showError("No se pudo cargar modelos de ningún proveedor. Comprueba Ollama/Mancer.");
+      if (el.modelSelect) el.modelSelect.innerHTML = "";
+    }
+    await loadConversations();
+  }
+  initLoad();
+  loadParamsHelp().then(function () {
+    initParamHelpTooltip();
+  });
   }
 
   if (document.readyState === "loading") {
