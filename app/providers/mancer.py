@@ -15,6 +15,9 @@ import httpx
 from app.config import settings
 from app.providers.base import LLMProvider, ProviderModelInfo, StreamChunk
 
+# URL base de Mancer (constante, igual para todos los usuarios)
+MANCER_BASE_URL = "https://neuro.mancer.tech"
+
 
 class MancerProvider:
     """
@@ -34,10 +37,10 @@ class MancerProvider:
 
         Args:
             api_key: API key de Mancer. Si es None, usa settings.mancer_api_key.
-            base_url: URL base de Mancer. Si es None, usa settings.mancer_base_url.
+            base_url: URL base de Mancer. Si es None, usa MANCER_BASE_URL.
         """
         self._api_key = api_key or settings.mancer_api_key
-        self._base_url = (base_url or settings.mancer_base_url).rstrip("/")
+        self._base_url = (base_url or MANCER_BASE_URL).rstrip("/")
 
         if not self._api_key:
             raise ValueError(
