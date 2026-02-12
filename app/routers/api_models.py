@@ -4,6 +4,7 @@ Endpoints para listar modelos y proveedores de LLM.
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.provider_params import get_params_config
 from app.providers import ProviderFactory, get_provider
 from app.schemas import ModelInfo, ProviderInfo, ProviderModelInfo
 
@@ -15,6 +16,19 @@ def list_providers():
     """Lista los proveedores de LLM disponibles."""
     providers = ProviderFactory.list_available_providers()
     return [ProviderInfo(name=p, available=True) for p in providers]
+
+
+@router.get("/providers/{provider_name}/params")
+def get_provider_params(provider_name: str):
+    """
+    Devuelve los parámetros de generación soportados por un proveedor.
+
+    La respuesta se usa en el frontend para habilitar/deshabilitar controles
+    y conocer el valor por defecto de cada parámetro. Solo se envían al LLM
+    los parámetros que el usuario ha modificado.
+    """
+    params = get_params_config(provider_name)
+    return {"provider": provider_name, "params": params}
 
 
 @router.get("/providers/{provider_name}/validate")

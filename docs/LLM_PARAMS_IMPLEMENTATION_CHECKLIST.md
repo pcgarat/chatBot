@@ -2,6 +2,8 @@
 
 Basado en **`docs/DESIGN_LLM_PARAMS.md`**.
 
+**Estado:** Implementación inicial completada para Ollama. Config en `config/provider_params.json` (raíz del proyecto). Pendiente: sección `mancer` en config, tests 10.3/10.5/10.6, documentación 11.
+
 **Objetivos:**
 - Parámetros activos por proveedor definidos en archivo de configuración.
 - Controles en la UI activos/deshabilitados según el proveedor seleccionado.
@@ -11,148 +13,120 @@ Basado en **`docs/DESIGN_LLM_PARAMS.md`**.
 
 ## 1. Configuración y módulo de carga
 
-- [ ] **1.1** Crear archivo de configuración de parámetros por proveedor:
-  - [ ] Ubicación: `app/config/provider_params.yaml` o `app/config/provider_params.json`
-  - [ ] Definir sección `ollama` con al menos: `temperature`, `top_p`, `top_k`, `num_predict`, `seed`, `stop` (según diseño)
-  - [ ] Definir sección `mancer` con al menos: `temperature`, `max_tokens`, `top_p`, `stop` (según diseño)
-  - [ ] Cada parámetro con: `api_key`, `type`, `default` y opcionalmente `min`, `max`
+- [x] **1.1** Crear archivo de configuración de parámetros por proveedor:
+  - [x] Ubicación: `config/provider_params.json` (raíz del proyecto)
+  - [x] Definir sección `ollama` con: temperature, top_p, top_k, min_p, max_tokens, num_ctx, seed, stop_sequences, repeat_penalty, repeat_last_n
+  - [ ] Definir sección `mancer` (pendiente)
+  - [x] Cada parámetro con: `api_key`, `type`, `default` y opcionalmente `min`, `max`
 
-- [ ] **1.2** Crear módulo `app/provider_params.py`:
-  - [ ] Función `_load_config()` que lee el YAML/JSON (usar PyYAML o solo JSON para evitar dependencia)
-  - [ ] Caché en memoria del config (recargar al arranque o bajo demanda)
-  - [ ] `get_params_config(provider_name: str) -> dict[str, ParamSpec]` (devuelve `{}` si el proveedor no está)
-  - [ ] Helper `set_nested(d: dict, path: str, value: Any)` para rutas como `options.temperature`
-  - [ ] (Opcional) `list_providers_with_params() -> list[str]`
-  - [ ] Definir `ParamSpec` (dataclass o TypedDict) con: `api_key`, `type`, `default`, `min` (opcional), `max` (opcional)
+- [x] **1.2** Crear módulo `app/provider_params.py`:
+  - [x] Función `_load_config()` que lee el JSON
+  - [x] Caché en memoria del config
+  - [x] `get_params_config(provider_name)` (devuelve `{}` si el proveedor no está)
+  - [x] Helper `set_nested(d, path, value)` para rutas como `options.temperature`
+  - [x] `list_providers_with_params()` y `build_extra_body(provider_name, model_params)`
+  - [x] Config como dict (api_key, type, default, min, max)
 
-- [ ] **1.3** Añadir dependencia PyYAML en `requirements.txt` si se usa YAML (o documentar que se usa solo JSON).
+- [x] **1.3** Usar solo JSON (sin PyYAML).
 
 ---
 
 ## 2. API: endpoint de parámetros por proveedor
 
-- [ ] **2.1** Añadir endpoint **GET** `/api/providers/{provider}/params`:
-  - [ ] Ubicación: en `app/routers/api_models.py` o nuevo router `api_providers.py` (o en el existente de providers)
-  - [ ] Respuesta: `{ "provider": "<name>", "params": { "<param_id>": { "type", "default", "min", "max", "api_key" }, ... } }`
-  - [ ] Si el proveedor no está en el config, devolver `params: {}` (o 404 según criterio)
-  - [ ] Usar `get_params_config(provider)` desde `app/provider_params.py`
+- [x] **2.1** Añadir endpoint **GET** `/api/providers/{provider}/params`:
+  - [x] Ubicación: `app/routers/api_models.py`
+  - [x] Respuesta: `{ "provider": "<name>", "params": { ... } }`
+  - [x] Si el proveedor no está en el config, devolver `params: {}`
+  - [x] Usar `get_params_config(provider)` desde `app/provider_params.py`
 
-- [ ] **2.2** Documentar la ruta (docstring o OpenAPI) y probar con curl/httpx.
+- [x] **2.2** Docstring en la ruta; tests en `test_api_models.py`.
 
 ---
 
 ## 3. Schemas y body de envío de mensaje
 
-- [ ] **3.1** En `app/schemas.py`:
-  - [ ] Añadir a `MessageSend` el campo opcional: `model_params: Optional[dict[str, Any]] = None`
-  - [ ] Documentar: "Solo incluir parámetros que el usuario ha modificado; si vacío o ausente, no se envían extras."
+- [x] **3.1** En `app/schemas.py`:
+  - [x] Añadir a `MessageSend`: `model_params: Optional[dict[str, Any]] = None`
+  - [x] Documentar: "Solo incluir parámetros que el usuario ha modificado; si vacío o ausente, no se envían extras."
 
-- [ ] **3.2** Validación (opcional en Fase 1): no obligatorio validar tipos/rangos en backend si el frontend y el config ya restringen; si se valida, usar `get_params_config(provider)` para comprobar claves y tipos.
+- [ ] **3.2** Validación (opcional en Fase 1): no implementada.
 
 ---
 
 ## 4. Backend: mapeo de `model_params` a payload del proveedor
 
-- [ ] **4.1** En el router de conversaciones (o en un helper en `app/provider_params.py`):
-  - [ ] Antes de llamar a `provider.chat_stream(...)`, obtener `specs = get_params_config(provider_name)`
-  - [ ] Si `body.model_params` existe y no está vacío:
-    - [ ] Para cada `(key, value)` en `body.model_params`:
-      - [ ] Si `key not in specs`, ignorar (o log)
-      - [ ] Obtener `api_key` (ej. `"options.temperature"`) y escribir en estructura anidada con `set_nested`
-    - [ ] Construir `extra_body` (dict) con esa estructura
-  - [ ] Si no hay `model_params` o está vacío, `extra_body = {}` o `None`
+- [x] **4.1** Helper `build_extra_body(provider_name, model_params)` en `app/provider_params.py`; el router lo usa antes de `chat_stream`/`chat`. Si no hay `model_params` o está vacío, devuelve `{}`.
 
-- [ ] **4.2** Pasar `extra_body` al proveedor en la llamada a `chat_stream` (ver siguiente bloque).
+- [x] **4.2** `extra_body` se pasa a `provider.chat_stream` y `provider.chat`.
 
 ---
 
 ## 5. Proveedores: extender `chat_stream` para aceptar `extra_body`
 
-- [ ] **5.1** Actualizar el **Protocol** en `app/providers/base.py`:
-  - [ ] Cambiar firma de `chat_stream` a: `async def chat_stream(self, model: str, messages: list[dict], extra_body: dict[str, Any] | None = None) -> AsyncIterator[StreamChunk]`
-  - [ ] Documentar: `extra_body` se fusiona en el payload HTTP (anidado o raíz según proveedor).
+- [x] **5.1** Protocol en `app/providers/base.py`: firma `chat_stream(..., extra_body=None)` y `chat(..., extra_body=None)`; documentado.
 
-- [ ] **5.2** En `app/providers/ollama.py`:
-  - [ ] Añadir parámetro `extra_body: dict | None = None` a `chat_stream`
-  - [ ] Construir `payload = {"model": model, "messages": messages, "stream": True}`
-  - [ ] Si `extra_body`, hacer merge en `payload` (p. ej. `payload.update(extra_body)` o merge profundo si hay anidación; Ollama espera `{"options": {...}}` dentro de `extra_body`)
-  - [ ] Usar el payload resultante en la petición HTTP (POST `/api/chat`)
+- [x] **5.2** En `app/providers/ollama.py`: `chat_stream` y `chat` con `extra_body`; merge en payload; sync `chat` con opciones vía httpx.
 
-- [ ] **5.3** En `app/providers/mancer.py`:
-  - [ ] Añadir parámetro `extra_body: dict | None = None` a `chat_stream`
-  - [ ] Construir `payload = {"model": model, "messages": messages, "stream": True}` y fusionar `extra_body` en el cuerpo raíz (Mancer/OpenAI usan `temperature`, `max_tokens`, etc. en raíz)
-  - [ ] Usar el payload resultante en la petición HTTP
+- [x] **5.3** En `app/providers/mancer.py`: `chat_stream` y `chat` con `extra_body`; merge en cuerpo raíz.
 
-- [ ] **5.4** Actualizar todas las llamadas a `chat_stream` en el proyecto para pasar `extra_body` (router de conversaciones y cualquier otro que use el provider).
+- [x] **5.4** Router actualizado: todas las llamadas pasan `extra_body`.
 
 ---
 
 ## 6. Router: inyectar `extra_body` en el flujo de streaming y no-streaming
 
-- [ ] **6.1** En `app/routers/api_conversations.py`:
-  - [ ] En `send_message_stream` (o en la función generadora que llama al provider):
-    - [ ] Obtener `extra_body` a partir de `body.model_params` y `get_params_config(conv.provider)` (ver 4.1)
-    - [ ] Llamar a `provider.chat_stream(model_id, llm_messages, extra_body=extra_body)`
-  - [ ] Incluir `model_params` (o el payload final) en `debug_request` si se muestra en el frontend, para que el usuario vea qué se envió
+- [x] **6.1** En `api_conversations.py`: `extra_body = build_extra_body(conv.provider, body.model_params)`; se pasa a `_stream_generator_async` y a `provider.chat_stream(..., extra_body=extra_body)`; el payload de debug incluye `extra_body`.
 
-- [ ] **6.2** En el endpoint **no-streaming** `send_message` (POST sin stream):
-  - [ ] Añadir la misma lógica: construir `extra_body` desde `body.model_params` y pasarlo a `provider.chat()` si se extiende también la firma de `chat`; o construir el payload completo en el router y pasar solo lo necesario al proveedor según cómo se implemente `chat` (ver 5.x).
+- [x] **6.2** Endpoint no-streaming `send_message`: construye `extra_body` y lo pasa a `provider.chat(..., extra_body=extra_body)`.
 
-- [ ] **6.3** Si el endpoint no-streaming usa `provider.chat()` (sin `extra_body`), extender también `chat()` en el Protocol y en Ollama/Mancer para aceptar `extra_body` y aplicarlo al payload.
+- [x] **6.3** Protocol y Ollama/Mancer: `chat()` extendido con `extra_body`.
 
 ---
 
 ## 7. Frontend: obtener parámetros al cambiar de proveedor
 
-- [ ] **7.1** En `app/static/js/app.js`:
-  - [ ] Al cambiar de proveedor (evento `change` del `<select id="provider-select">`), llamar a **GET** `/api/providers/{provider}/params`
-  - [ ] Guardar en estado (variable o objeto) la respuesta: `paramsConfig = { provider, params: { ... } }`
+- [x] **7.1** En `app/static/js/app.js`: al cambiar de proveedor se llama a GET `/api/providers/{provider}/params`; respuesta en `paramsConfig`.
 
-- [ ] **7.2** Para cada control del panel de parámetros (los que tienen `data-control-id`):
-  - [ ] Si el `data-control-id` está en `paramsConfig.params`, habilitar el control y asignar valor por defecto desde `paramsConfig.params[id].default`
-  - [ ] Si no está, deshabilitar el control (y opcionalmente ocultar o dejar visible en gris) y no enviar ese parámetro
+- [x] **7.2** `applyParamsConfig()`: para cada `[data-control-id]`, si está en `paramsConfig.params` se habilita y se asigna `default`; si no, se deshabilita.
 
-- [ ] **7.3** Al cargar la página o al abrir una conversación, si ya hay un proveedor seleccionado, cargar sus params con GET `/api/providers/{provider}/params` y aplicar la misma lógica de habilitar/deshabilitar y defaults.
+- [x] **7.3** Al cargar (`initLoad`) y al abrir conversación (`setCurrentConversation`) se llama a `loadParamsForProvider(currentProvider)`.
 
 ---
 
 ## 8. Frontend: enviar solo parámetros modificados
 
-- [ ] **8.1** Mantener en estado los “defaults” del proveedor actual (vienen de GET params) y los “valores actuales” de cada control (cuando el usuario cambia un valor, actualizar ese estado).
+- [x] **8.1** Defaults en `paramsConfig.params[id].default`; valores actuales se leen de los controles al enviar.
 
-- [ ] **8.2** En la función que construye el body de `POST .../messages/stream` (y la de no-stream si se usa):
-  - [ ] Inicializar `model_params = {}`
-  - [ ] Para cada parámetro activo (presente en `paramsConfig.params`), si `valor_actual !== default`, añadir `model_params[param_id] = valor_actual` (convertir a número o array según tipo si hace falta)
-  - [ ] Enviar en el body el campo `model_params` solo si tiene al menos una clave; si está vacío, omitir el campo o enviar `{}`
+- [x] **8.2** `buildModelParams()`: solo incluye parámetros donde `valor_actual !== default`; el body lleva `model_params` solo si hay al menos una clave.
 
-- [ ] **8.3** Asegurar que los valores se leen de los inputs/selects correctos (por ejemplo `#param-temperature`, `#param-max-tokens`, etc.) y que tipos como `string_list` (stop sequences) se serializan como array de strings (ej. split por comas o por líneas).
+- [x] **8.3** Valores leídos por `data-control-id`; `string_list` (stop_sequences) como array (split por líneas).
 
 ---
 
 ## 9. Frontend: sincronizar controles con IDs del config
 
-- [ ] **9.1** Revisar que los `data-control-id` del HTML (y los id de los inputs) coincidan con las claves del config (ej. `temperature`, `top_p`, `max_tokens`, `num_predict`, `stop`, `seed`). Ajustar nombres en el config o en el HTML para que haya correspondencia 1:1.
+- [x] **9.1** `data-control-id` del HTML coinciden con las claves del config (temperature, top_p, max_tokens, stop_sequences, etc.).
 
-- [ ] **9.2** Si el config usa `num_predict` y en el panel el control se llama “Límite de tokens de salida”, seguir usando `data-control-id="max_tokens"` o un id interno que el backend traduzca; en el config de Ollama usar `num_predict` como clave interna y `api_key: "options.num_predict"`. Decidir convención (ej. ids internos genéricos: `max_tokens` en UI, y en config de Ollama `max_tokens` con `api_key: "options.num_predict"`) y aplicarla de forma consistente.
+- [x] **9.2** Convención: id interno `max_tokens` en UI y en config; en Ollama `api_key: "options.num_predict"`. `stop_sequences` → `api_key: "options.stop"`.
 
 ---
 
 ## 10. Tests
 
-- [ ] **10.1** Test unitario: `get_params_config("ollama")` devuelve dict con las claves esperadas y cada entrada tiene `api_key`, `type`, `default`.
-- [ ] **10.2** Test unitario: `get_params_config("unknown")` devuelve `{}`.
-- [ ] **10.3** Test unitario: `set_nested` construye correctamente un dict anidado a partir de un path `"options.temperature"`.
-- [ ] **10.4** Test integración: GET `/api/providers/ollama/params` devuelve 200 y estructura `{ "provider": "ollama", "params": { ... } }`.
-- [ ] **10.5** Test integración: POST messages/stream con `model_params: { "temperature": 0.5 }` no falla y el payload enviado al proveedor (mock o registro) incluye el parámetro en el lugar correcto (ej. `options.temperature` para Ollama).
-- [ ] **10.6** Test integración: POST messages/stream sin `model_params` (o `{}`) no envía parámetros extra al proveedor.
-- [ ] **10.7** (Opcional) Test E2E o manual: cambiar de proveedor en la UI, comprobar que se habilitan/deshabilitan controles; enviar mensaje con un parámetro modificado y comprobar en debug que llega al backend y al LLM.
+- [x] **10.1** Cubierto por test integración GET params (get_params_config usado por el endpoint).
+- [x] **10.2** Test `test_get_provider_params_unknown`: devuelve `params: {}`.
+- [ ] **10.3** Test unitario: `set_nested` construye dict anidado (pendiente).
+- [x] **10.4** Test `test_get_provider_params_ollama`: GET `/api/providers/ollama/params` 200 y estructura correcta.
+- [ ] **10.5** Test integración: POST stream con `model_params` y comprobar payload al proveedor (pendiente).
+- [ ] **10.6** Test integración: POST stream sin `model_params` (pendiente).
+- [ ] **10.7** (Opcional) Test E2E o manual (pendiente).
 
 ---
 
 ## 11. Documentación y limpieza
 
-- [ ] **11.1** Actualizar o enlazar en el README (o en docs) la existencia de `provider_params.yaml`/`provider_params.json` y el diseño en `docs/DESIGN_LLM_PARAMS.md`.
-- [ ] **11.2** Comentar en el código (router o `provider_params.py`) que los parámetros “solo se envían si el usuario los modifica” y que la fuente de verdad es el archivo de config.
+- [ ] **11.1** Actualizar o enlazar en el README la existencia de `config/provider_params.json` y `docs/DESIGN_LLM_PARAMS.md`.
+- [ ] **11.2** Comentar en el código que los parámetros solo se envían si el usuario los modifica y que la fuente de verdad es el config.
 
 ---
 
@@ -171,19 +145,18 @@ Basado en **`docs/DESIGN_LLM_PARAMS.md`**.
 
 ---
 
-## Archivos afectados (estimado)
+## Archivos afectados
 
-| Archivo | Cambios |
-|---------|---------|
-| `app/config/provider_params.yaml` o `.json` | Nuevo |
-| `app/provider_params.py` | Nuevo |
-| `app/providers/base.py` | Firma de `chat_stream` (y opcionalmente `chat`) |
-| `app/providers/ollama.py` | `chat_stream` + `chat` con `extra_body` |
-| `app/providers/mancer.py` | `chat_stream` + `chat` con `extra_body` |
-| `app/routers/api_conversations.py` | Lectura de `model_params`, construcción de `extra_body`, llamada con `extra_body` |
-| `app/routers/api_models.py` o nuevo router | GET `/api/providers/{provider}/params` |
-| `app/schemas.py` | Campo `model_params` en `MessageSend` |
-| `app/static/js/app.js` | Carga de params al cambiar proveedor, habilitar/deshabilitar controles, construir `model_params` al enviar |
-| `app/static/index.html` | (Opcional) Ajustar ids o `data-control-id` para coincidir con config |
-| `requirements.txt` | PyYAML si se usa YAML |
-| `tests/` | Tests unitarios e integración anteriores |
+| Archivo | Estado |
+|---------|--------|
+| `config/provider_params.json` | ✅ Config Ollama |
+| `app/provider_params.py` | ✅ Nuevo |
+| `app/providers/base.py` | ✅ Firma `chat_stream` y `chat` con `extra_body` |
+| `app/providers/ollama.py` | ✅ `chat_stream` + `chat` con `extra_body` |
+| `app/providers/mancer.py` | ✅ `chat_stream` + `chat` con `extra_body` |
+| `app/routers/api_conversations.py` | ✅ `build_extra_body`, llamada con `extra_body` |
+| `app/routers/api_models.py` | ✅ GET `/api/providers/{provider}/params` |
+| `app/schemas.py` | ✅ Campo `model_params` en `MessageSend` |
+| `app/static/js/app.js` | ✅ `loadParamsForProvider`, `applyParamsConfig`, `buildModelParams` |
+| `app/static/index.html` | Sin cambios (ids ya coinciden) |
+| `tests/test_api_models.py` | ✅ Tests GET params |

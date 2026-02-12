@@ -65,11 +65,18 @@ class MancerProvider:
             "Content-Type": "application/json",
         }
 
-    def _dump_to_stderr(self, model: str, messages: list[dict[str, Any]]) -> None:
+    def _dump_to_stderr(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra_body: dict[str, Any] | None = None,
+    ) -> None:
         """Si verbose está activo, imprime en stderr el payload enviado a Mancer."""
         if not settings.verbose:
             return
         payload = {"model": model, "messages": messages}
+        if extra_body:
+            payload.update(extra_body)
         print("--- enviado a Mancer ---", file=sys.stderr)
         print(json.dumps(payload, ensure_ascii=False, indent=2), file=sys.stderr)
         print("--- fin ---", file=sys.stderr)
@@ -123,13 +130,19 @@ class MancerProvider:
         except Exception as e:
             raise ConnectionError(f"No se pudo conectar a Mancer: {e}") from e
 
-    def chat(self, model: str, messages: list[dict[str, Any]]) -> str:
+    def chat(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra_body: dict[str, Any] | None = None,
+    ) -> str:
         """
         Envía mensajes a Mancer y devuelve la respuesta completa.
 
         Args:
             model: Nombre del modelo a usar.
             messages: Lista de mensajes {"role": str, "content": str}.
+            extra_body: Fragmento a fusionar en el payload (temperature, max_tokens, etc. en raíz).
 
         Returns:
             Contenido de la respuesta del asistente.
@@ -137,13 +150,15 @@ class MancerProvider:
         Raises:
             ConnectionError: Si no se puede conectar a Mancer.
         """
-        self._dump_to_stderr(model, messages)
+        self._dump_to_stderr(model, messages, extra_body)
         url = f"{self._base_url}/oai/v1/chat/completions"
         payload = {
             "model": model,
             "messages": messages,
             "stream": False,
         }
+        if extra_body:
+            payload.update(extra_body)
 
         try:
             with httpx.Client(timeout=120) as client:
@@ -176,7 +191,10 @@ class MancerProvider:
             raise ConnectionError(f"Error al llamar a Mancer: {e}") from e
 
     async def chat_stream(
-        self, model: str, messages: list[dict[str, Any]]
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra_body: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """
         Streaming de respuesta desde Mancer (SSE).
@@ -184,6 +202,7 @@ class MancerProvider:
         Args:
             model: Nombre del modelo a usar.
             messages: Lista de mensajes {"role": str, "content": str}.
+            extra_body: Fragmento a fusionar en el payload (temperature, max_tokens, etc. en raíz).
 
         Yields:
             StreamChunk con contenido parcial, errores o metadata.
@@ -192,13 +211,15 @@ class MancerProvider:
             Al cerrar el iterador, se cancela la conexión a Mancer.
             Mancer detecta la desconexión y deja de generar (y cobrar).
         """
-        self._dump_to_stderr(model, messages)
+        self._dump_to_stderr(model, messages, extra_body)
         url = f"{self._base_url}/oai/v1/chat/completions"
         payload = {
             "model": model,
             "messages": messages,
             "stream": True,
         }
+        if extra_body:
+            payload.update(extra_body)
 
         async with httpx.AsyncClient() as client:
             try:

@@ -7,6 +7,8 @@
   let models = [];
   let currentProvider = "ollama";
   let currentAbortController = null;
+  /** Parámetros del proveedor actual: { provider, params: { paramId: { type, default, min, max, api_key } } } */
+  let paramsConfig = { provider: "", params: {} };
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
@@ -130,9 +132,80 @@
     }
   }
 
+  async function loadParamsForProvider(providerName) {
+    try {
+      const data = await fetchJson(`${API}/providers/${providerName}/params`);
+      paramsConfig = { provider: data.provider || providerName, params: data.params || {} };
+      applyParamsConfig();
+    } catch (_) {
+      paramsConfig = { provider: providerName, params: {} };
+      applyParamsConfig();
+    }
+  }
+
+  function applyParamsConfig() {
+    document.querySelectorAll("[data-control-id]").forEach((control) => {
+      const paramId = control.getAttribute("data-control-id");
+      const spec = paramsConfig.params[paramId];
+      if (spec) {
+        control.disabled = false;
+        control.classList.remove("control-disabled");
+        const def = spec.default;
+        if (control.tagName === "INPUT" || control.tagName === "TEXTAREA") {
+          if (control.type === "number" && (typeof def === "number" || typeof def === "string")) {
+            control.value = def !== undefined && def !== null ? String(def) : "";
+          } else if (control.type === "text" && typeof def === "string") {
+            control.value = def;
+          } else if (Array.isArray(def)) {
+            control.value = def.join("\n");
+          } else {
+            control.value = def !== undefined && def !== null ? String(def) : "";
+          }
+        } else if (control.tagName === "SELECT") {
+          control.value = def !== undefined && def !== null ? String(def) : "";
+        }
+      } else {
+        control.disabled = true;
+        control.classList.add("control-disabled");
+      }
+    });
+  }
+
+  function buildModelParams() {
+    const out = {};
+    for (const paramId of Object.keys(paramsConfig.params)) {
+      const spec = paramsConfig.params[paramId];
+      const control = document.querySelector(`[data-control-id="${paramId}"]`);
+      if (!control || control.disabled) continue;
+      let current;
+      if (control.tagName === "INPUT") {
+        current = control.type === "number" ? (control.value === "" ? null : Number(control.value)) : control.value;
+      } else if (control.tagName === "TEXTAREA") {
+        const v = control.value.trim();
+        current = spec.type === "string_list" ? (v ? v.split("\n").map((s) => s.trim()).filter(Boolean) : []) : v;
+      } else if (control.tagName === "SELECT") {
+        current = control.value;
+      } else {
+        continue;
+      }
+      const def = spec.default;
+      let same = false;
+      if (spec.type === "string_list") {
+        same = Array.isArray(def) && Array.isArray(current) && def.length === current.length && def.every((d, i) => d === current[i]);
+      } else if (current === null || current === undefined || current === "") {
+        same = def === undefined || def === null || def === "";
+      } else {
+        same = (typeof def === "number" && Number(current) === def) || (current === def) || (String(current) === String(def));
+      }
+      if (!same) out[paramId] = current;
+    }
+    return out;
+  }
+
   async function onProviderChange() {
     currentProvider = el.providerSelect ? el.providerSelect.value : "ollama";
     await loadModels(false);
+    await loadParamsForProvider(currentProvider);
     // Actualizar conversación si hay una abierta
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
@@ -264,6 +337,7 @@
       await loadModels(false);
       if (el.modelSelect) el.modelSelect.value = conv.model_id;
       if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = conv.system_instruction_global || "";
+      await loadParamsForProvider(currentProvider);
       messages = (conv.messages || []).map((m) => ({
         role: m.role,
         content: m.content,
@@ -277,6 +351,7 @@
       if (el.providerSelect) el.providerSelect.value = currentProvider;
       if (el.modelSelect) el.modelSelect.value = models[0] || "";
       if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = "";
+      await loadParamsForProvider(currentProvider);
       messages = [];
     }
     renderMessages();
@@ -442,15 +517,18 @@
     try {
       const systemInstructionGlobal = (el.systemInstructionGlobal && el.systemInstructionGlobal.value) ? el.systemInstructionGlobal.value.trim() : "";
       const saveToChromadb = (el.saveToChromadbSelect && el.saveToChromadbSelect.value) ? el.saveToChromadbSelect.value : "user";
+      const modelParams = buildModelParams();
+      const bodyPayload = {
+        content,
+        instruction_override: instructionOverride,
+        system_instruction_global: systemInstructionGlobal,
+        save_to_chromadb: saveToChromadb,
+      };
+      if (Object.keys(modelParams).length > 0) bodyPayload.model_params = modelParams;
       const res = await fetch(`${API}/conversations/${currentConversationId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content,
-          instruction_override: instructionOverride,
-          system_instruction_global: systemInstructionGlobal,
-          save_to_chromadb: saveToChromadb,
-        }),
+        body: JSON.stringify(bodyPayload),
         signal: currentAbortController.signal,
       });
       if (!res.ok) {
@@ -772,6 +850,7 @@
       showError("No se pudo cargar modelos de ningún proveedor. Comprueba Ollama/Mancer.");
       if (el.modelSelect) el.modelSelect.innerHTML = "";
     }
+    await loadParamsForProvider(currentProvider);
     await loadConversations();
   }
   initLoad();
