@@ -28,10 +28,6 @@ class Settings(BaseSettings):
     default_llm_provider: str = Field(default="ollama", validation_alias="DEFAULT_LLM_PROVIDER")
     # Mancer (https://mancer.tech) - API compatible con OpenAI
     mancer_api_key: str = Field(default="", validation_alias="MANCER_API_KEY")
-    mancer_base_url: str = Field(
-        default="https://neuro.mancer.tech",
-        validation_alias="MANCER_BASE_URL",
-    )
 
     @field_validator("ollama_history_turns", mode="before")
     @classmethod

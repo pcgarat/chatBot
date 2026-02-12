@@ -3,12 +3,15 @@
   const API = "/api";
   let currentConversationId = null;
   let messages = [];
+  let providers = [];
   let models = [];
+  let currentProvider = "ollama";
   let currentAbortController = null;
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
     conversationTitle: document.getElementById("conversation-title"),
+    providerSelect: document.getElementById("provider-select"),
     modelSelect: document.getElementById("model-select"),
     btnRefreshModels: document.getElementById("btn-refresh-models"),
     systemInstructionGlobal: document.getElementById("system-instruction-global"),
@@ -55,10 +58,35 @@
     return res.json();
   }
 
+  async function loadProviders() {
+    try {
+      const data = await fetchJson(`${API}/providers`);
+      providers = data.map((p) => p.name);
+      if (el.providerSelect) {
+        el.providerSelect.innerHTML = providers.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+        if (providers.includes(currentProvider)) {
+          el.providerSelect.value = currentProvider;
+        } else if (providers.length > 0) {
+          el.providerSelect.value = providers[0];
+          currentProvider = providers[0];
+        }
+      }
+      return providers;
+    } catch (e) {
+      // Si falla, poner solo Ollama como fallback
+      providers = ["ollama"];
+      if (el.providerSelect) {
+        el.providerSelect.innerHTML = '<option value="ollama">ollama</option>';
+      }
+      return providers;
+    }
+  }
+
   async function loadModels(preserveSelection = false) {
     const previousModel = preserveSelection && el.modelSelect ? el.modelSelect.value : null;
+    const provider = (el.providerSelect && el.providerSelect.value) ? el.providerSelect.value : currentProvider || "ollama";
     try {
-      const data = await fetchJson(`${API}/models`);
+      const data = await fetchJson(`${API}/providers/${provider}/models`);
       models = data.map((m) => m.name);
       if (el.modelSelect) {
         el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
@@ -68,7 +96,9 @@
       }
       return models;
     } catch (e) {
-      showError("No se pudieron cargar los modelos: " + e.message);
+      showError(`No se pudieron cargar los modelos de ${provider}: ` + e.message);
+      models = [];
+      if (el.modelSelect) el.modelSelect.innerHTML = "";
       return [];
     }
   }
@@ -80,6 +110,21 @@
       showNotice("Lista de modelos actualizada.");
     } finally {
       if (el.btnRefreshModels) el.btnRefreshModels.classList.remove("loading");
+    }
+  }
+
+  async function onProviderChange() {
+    currentProvider = el.providerSelect ? el.providerSelect.value : "ollama";
+    await loadModels(false);
+    // Actualizar conversación si hay una abierta
+    if (currentConversationId) {
+      fetchJson(`${API}/conversations/${currentConversationId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          provider: currentProvider,
+          model_id: (el.modelSelect && el.modelSelect.value) || (models[0] || ""),
+        }),
+      }).catch(() => {});
     }
   }
 
@@ -106,7 +151,7 @@
               <button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>
               <button type="button" class="conv-delete-btn" data-id="${escapeHtml(c.id)}" title="Eliminar conversación" aria-label="Eliminar conversación">${deleteIconSvg}</button>
             </div>
-            <div class="conv-meta">${escapeHtml(c.model_id)} · ${formatDate(c.updated_at)}</div>
+            <div class="conv-meta">${escapeHtml(c.provider || "ollama")}/${escapeHtml(c.model_id)} · ${formatDate(c.updated_at)}</div>
           </div>`
       )
       .join("");
@@ -180,10 +225,15 @@
     return div.innerHTML;
   }
 
-  function setCurrentConversation(conv) {
+  async function setCurrentConversation(conv) {
     currentConversationId = conv ? conv.id : null;
     if (conv) {
       if (el.conversationTitle) el.conversationTitle.value = conv.title;
+      // Establecer el proveedor primero
+      currentProvider = conv.provider || "ollama";
+      if (el.providerSelect) el.providerSelect.value = currentProvider;
+      // Cargar modelos del proveedor y luego establecer el modelo
+      await loadModels(false);
       if (el.modelSelect) el.modelSelect.value = conv.model_id;
       if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = conv.system_instruction_global || "";
       messages = (conv.messages || []).map((m) => ({
@@ -195,7 +245,9 @@
       }));
     } else {
       if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
-      if (el.modelSelect) el.modelSelect.value = models[0] || "llama3.2";
+      currentProvider = providers[0] || "ollama";
+      if (el.providerSelect) el.providerSelect.value = currentProvider;
+      if (el.modelSelect) el.modelSelect.value = models[0] || "";
       if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = "";
       messages = [];
     }
@@ -214,16 +266,18 @@
 
   async function newConversation() {
     try {
-      const model = (el.modelSelect && el.modelSelect.value) || (models[0] || "llama3.2");
+      const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
+      const model = (el.modelSelect && el.modelSelect.value) || (models[0] || "");
       const conv = await fetchJson(`${API}/conversations`, {
         method: "POST",
         body: JSON.stringify({
           title: "Nueva conversación",
           model_id: model,
+          provider: provider,
           system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
         }),
       });
-      setCurrentConversation(conv);
+      await setCurrentConversation(conv);
     } catch (e) {
       showError("Error al crear conversación: " + e.message);
     }
@@ -239,11 +293,12 @@
         method: "PUT",
         body: JSON.stringify({
           title: (el.conversationTitle && el.conversationTitle.value.trim()) || "Nueva conversación",
-          model_id: (el.modelSelect && el.modelSelect.value) || "llama3.2",
+          model_id: (el.modelSelect && el.modelSelect.value) || "",
+          provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
           system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
         }),
       });
-      setCurrentConversation(conv);
+      await setCurrentConversation(conv);
     } catch (e) {
       showError("Error al guardar: " + e.message);
     }
@@ -482,6 +537,7 @@
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
   if (el.btnRefreshModels) el.btnRefreshModels.addEventListener("click", refreshModels);
+  if (el.providerSelect) el.providerSelect.addEventListener("change", onProviderChange);
   if (el.modelSelect) el.modelSelect.addEventListener("change", onModelChange);
   if (el.messageInput) {
     el.messageInput.addEventListener("keydown", function (e) {
@@ -492,7 +548,8 @@
     });
   }
 
-  loadModels().then(() => loadConversations());
+  // Cargar proveedores primero, luego modelos del proveedor por defecto, luego conversaciones
+  loadProviders().then(() => loadModels()).then(() => loadConversations());
   }
 
   if (document.readyState === "loading") {

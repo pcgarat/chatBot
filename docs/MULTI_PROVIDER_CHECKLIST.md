@@ -140,9 +140,9 @@ class LLMProvider(Protocol):
 
 ### Fase 5: Frontend
 
-- [ ] **5.1** Selector de proveedor en UI (junto al selector de modelo o en config)
-- [ ] **5.2** Al cambiar proveedor, recargar lista de modelos de ese proveedor
-- [ ] **5.3** Mostrar info de proveedor en la conversación (badge o similar)
+- [x] **5.1** Selector de proveedor en UI (junto al selector de modelo)
+- [x] **5.2** Al cambiar proveedor, recargar lista de modelos de ese proveedor
+- [x] **5.3** Mostrar info de proveedor en la conversación (en metadata de lista)
 - [ ] **5.4** Manejar errores específicos de Mancer (créditos agotados, etc.)
 
 ### Fase 6: Documentación y Cleanup
