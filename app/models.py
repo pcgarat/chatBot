@@ -16,6 +16,7 @@ class Conversation(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     title = Column(String(512), nullable=False, default="Nueva conversación")
     model_id = Column(String(128), nullable=False, default="llama3.2")
+    provider = Column(String(64), nullable=False, default="ollama")  # ollama | mancer
     system_instruction_global = Column(Text, nullable=True)
     inject_instruction_every = Column(Integer, nullable=True)  # Deprecado: se ignora. Las instrucciones se envían siempre.
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -4,15 +4,32 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
-# ----- Models (Ollama) -----
+# ----- Models -----
 class ModelInfo(BaseModel):
+    """Información básica de un modelo (compatibilidad)."""
     name: str
+
+
+class ProviderModelInfo(BaseModel):
+    """Información extendida de un modelo con proveedor."""
+    name: str
+    provider: str
+    display_name: str | None = None
+    context_length: int | None = None
+    pricing: dict[str, float] | None = None
+
+
+class ProviderInfo(BaseModel):
+    """Información de un proveedor de LLM."""
+    name: str
+    available: bool = True
 
 
 # ----- Conversation -----
 class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"
     model_id: str = "llama3.2"
+    provider: str = "ollama"  # ollama | mancer
     system_instruction_global: Optional[str] = None
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora. Las instrucciones se envían siempre.
 
@@ -20,6 +37,7 @@ class ConversationCreate(BaseModel):
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     model_id: Optional[str] = None
+    provider: Optional[str] = None  # ollama | mancer
     system_instruction_global: Optional[str] = None
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora.
 
@@ -36,6 +54,7 @@ class ConversationOut(BaseModel):
     id: str
     title: str
     model_id: str
+    provider: str = "ollama"
     system_instruction_global: Optional[str] = None
     inject_instruction_every: Optional[int] = None
     created_at: datetime
@@ -50,6 +69,7 @@ class ConversationListItem(BaseModel):
     id: str
     title: str
     model_id: str
+    provider: str = "ollama"
     updated_at: datetime
 
     class Config:

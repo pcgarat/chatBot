@@ -43,3 +43,10 @@ def init_db():
                 conn.commit()
             except Exception:
                 conn.rollback()
+    # Migración: añadir provider en conversations (default "ollama")
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN provider VARCHAR(64) DEFAULT 'ollama' NOT NULL"))
+            conn.commit()
+        except Exception:
+            conn.rollback()

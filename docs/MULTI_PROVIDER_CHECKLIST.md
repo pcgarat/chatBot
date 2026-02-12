@@ -107,11 +107,11 @@ class LLMProvider(Protocol):
   - [x] `default_provider: str = "ollama"` (proveedor por defecto)
   - [x] `mancer_api_key: str = ""` (API key de Mancer)
   - [x] `mancer_base_url: str = "https://neuro.mancer.tech"`
-- [ ] **2.2** Actualizar modelo `Conversation` en `app/models.py`:
-  - [ ] Añadir columna `provider: str = "ollama"` (permite override por conversación)
-- [ ] **2.3** Migración de BD: añadir columna `provider` con default "ollama"
-- [ ] **2.4** Actualizar schemas (`ConversationCreate`, `ConversationOut`, etc.)
-- [ ] **2.5** Tests de migración y schemas
+- [x] **2.2** Actualizar modelo `Conversation` en `app/models.py`:
+  - [x] Añadir columna `provider: str = "ollama"` (permite override por conversación)
+- [x] **2.3** Migración de BD: añadir columna `provider` con default "ollama"
+- [x] **2.4** Actualizar schemas (`ConversationCreate`, `ConversationOut`, etc.)
+- [x] **2.5** Tests de migración y schemas
 
 ### Fase 3: Implementar MancerProvider
 
@@ -127,15 +127,16 @@ class LLMProvider(Protocol):
 
 ### Fase 4: Integrar en API/Router
 
-- [ ] **4.1** Actualizar `api_models.py`:
-  - [ ] Nuevo endpoint `GET /api/providers` → lista proveedores disponibles
-  - [ ] Modificar `GET /api/models` → acepta `?provider=ollama|mancer` (default: todos)
-  - [ ] Nuevo endpoint `GET /api/providers/{provider}/models` → modelos de un proveedor
-- [ ] **4.2** Actualizar `api_conversations.py`:
-  - [ ] `_stream_generator_async` → usar `provider.chat_stream()` en vez de httpx directo
-  - [ ] `send_message` (no-stream) → usar `provider.chat()`
-  - [ ] Obtener proveedor desde `conv.provider` o default
-- [ ] **4.3** Tests de integración para endpoints actualizados
+- [x] **4.1** Actualizar `api_models.py`:
+  - [x] Nuevo endpoint `GET /api/providers` → lista proveedores disponibles
+  - [x] Modificar `GET /api/models` → acepta `?provider=ollama|mancer` (default: ollama)
+  - [x] Nuevo endpoint `GET /api/providers/{provider}/models` → modelos de un proveedor
+  - [x] Nuevo endpoint `GET /api/models/all` → modelos de todos los proveedores
+- [x] **4.2** Actualizar `api_conversations.py`:
+  - [x] `_stream_generator_async` → usar `provider.chat_stream()` en vez de httpx directo
+  - [x] `send_message` (no-stream) → usar `provider.chat()`
+  - [x] Obtener proveedor desde `conv.provider` o default
+- [x] **4.3** Tests de integración para endpoints actualizados
 
 ### Fase 5: Frontend
 
