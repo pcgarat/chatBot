@@ -42,6 +42,30 @@ def test_list_models_provider_error(mock_get_provider, client):
     assert "proveedor" in r.json()["detail"].lower()
 
 
+def test_get_provider_params_ollama(client):
+    """GET /api/providers/ollama/params devuelve los parámetros definidos en config."""
+    r = client.get("/api/providers/ollama/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider"] == "ollama"
+    assert "params" in data
+    params = data["params"]
+    assert "temperature" in params
+    assert params["temperature"].get("api_key") == "options.temperature"
+    assert params["temperature"].get("default") == 0.8
+    assert "max_tokens" in params
+    assert params["max_tokens"].get("api_key") == "options.num_predict"
+
+
+def test_get_provider_params_unknown(client):
+    """GET /api/providers/unknown/params devuelve params vacío."""
+    r = client.get("/api/providers/unknown_provider_xyz/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider"] == "unknown_provider_xyz"
+    assert data["params"] == {}
+
+
 @patch("app.routers.api_models.ProviderFactory.list_available_providers")
 def test_list_providers(mock_list_providers, client):
     mock_list_providers.return_value = ["ollama", "mancer"]
