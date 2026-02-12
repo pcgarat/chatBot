@@ -16,6 +16,10 @@
           <button type="button" id="btn-clear-memory" class="btn btn-secondary" title="Cerrar conexiones y descargar todos los modelos de VRAM/RAM en Ollama (no borra del disco)">Limpiar memoria</button>
         </div>
       </div>
+      <div class="sidebar-presets-actions">
+        <button type="button" id="btn-load-preset" class="btn btn-secondary" title="Cargar parámetros de un preset de modelo">Cargar preset</button>
+        <button type="button" id="btn-reset-params" class="btn btn-secondary" title="Restaurar todos los parámetros al valor por defecto (no se enviará ningún parámetro extra)">Limpiar</button>
+      </div>
       <div class="sidebar-accordion">
         <div class="accordion-section is-open" data-accordion-section="conversaciones">
           <button type="button" class="accordion-header" aria-expanded="true" aria-controls="accordion-conversaciones" id="accordion-conversaciones-btn">
@@ -201,6 +205,14 @@
         </div>
       </div>
     </main>
+  </div>
+  <div id="preset-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="preset-modal-title" hidden>
+    <div class="modal-content preset-modal-content">
+      <h2 id="preset-modal-title" class="modal-title">Cargar preset</h2>
+      <p class="preset-modal-hint">Elige un modelo para cargar sus parámetros en los controles.</p>
+      <div id="preset-list" class="preset-list"></div>
+      <button type="button" id="preset-modal-close" class="btn btn-secondary">Cerrar</button>
+    </div>
   </div>
   <script src="/static/js/app.js"></script>
 </body>

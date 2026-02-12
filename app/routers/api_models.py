@@ -4,7 +4,7 @@ Endpoints para listar modelos y proveedores de LLM.
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.provider_params import get_params_config
+from app.provider_params import get_params_config, get_presets
 from app.providers import ProviderFactory, get_provider
 from app.schemas import ModelInfo, ProviderInfo, ProviderModelInfo
 
@@ -29,6 +29,18 @@ def get_provider_params(provider_name: str):
     """
     params = get_params_config(provider_name)
     return {"provider": provider_name, "params": params}
+
+
+@router.get("/providers/{provider_name}/presets")
+def get_provider_presets(provider_name: str):
+    """
+    Devuelve los presets de modelos para un proveedor (config/{provider}.json).
+
+    Cada preset es un nombre de modelo con sus parámetros por defecto.
+    Se usan en "Cargar preset" en la UI; no se aplican automáticamente.
+    """
+    presets = get_presets(provider_name)
+    return {"provider": provider_name, "presets": presets}
 
 
 @router.get("/providers/{provider_name}/validate")

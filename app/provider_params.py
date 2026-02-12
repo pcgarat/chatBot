@@ -65,6 +65,43 @@ def set_nested(d: dict, path: str, value: Any) -> None:
     d[keys[-1]] = value
 
 
+# Caché de presets por proveedor: provider -> dict (model_name -> params)
+_presets_cache: dict[str, dict[str, Any]] = {}
+
+
+def get_presets(provider_name: str) -> dict[str, Any]:
+    """
+    Devuelve los presets de modelos para un proveedor.
+
+    Lee config/{provider_name}.json (ej. config/ollama.json). Cada clave es un
+    nombre de modelo y el valor es un dict de param_id -> { api_key, type, default, ... }.
+    Si el archivo no existe o está vacío, devuelve {}.
+
+    Returns:
+        Dict model_name -> { param_id -> { "api_key", "type", "default", ... } }
+    """
+    global _presets_cache
+    if provider_name in _presets_cache:
+        return _presets_cache[provider_name]
+    config_dir = Path(__file__).resolve().parent.parent / "config"
+    preset_path = config_dir / f"{provider_name}.json"
+    if not preset_path.exists():
+        _presets_cache[provider_name] = {}
+        return _presets_cache[provider_name]
+    import json
+    try:
+        with open(preset_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        _presets_cache[provider_name] = {}
+        return _presets_cache[provider_name]
+    if not isinstance(data, dict):
+        _presets_cache[provider_name] = {}
+        return _presets_cache[provider_name]
+    _presets_cache[provider_name] = data
+    return data
+
+
 def build_extra_body(provider_name: str, model_params: dict[str, Any] | None) -> dict[str, Any]:
     """
     Construye el fragmento de payload a fusionar con la petición al proveedor.

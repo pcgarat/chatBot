@@ -27,6 +27,11 @@
     btnSend: document.getElementById("btn-send"),
     btnCancelMessage: document.getElementById("btn-cancel-message"),
     btnClearMemory: document.getElementById("btn-clear-memory"),
+    btnLoadPreset: document.getElementById("btn-load-preset"),
+    btnResetParams: document.getElementById("btn-reset-params"),
+    presetModal: document.getElementById("preset-modal"),
+    presetList: document.getElementById("preset-list"),
+    presetModalClose: document.getElementById("preset-modal-close"),
   };
 
   const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
@@ -169,6 +174,81 @@
         control.classList.add("control-disabled");
       }
     });
+  }
+
+  /** Restaura todos los controles de parámetros a los valores por defecto del proveedor (no se envía model_params). */
+  function resetParamsToDefaults() {
+    applyParamsConfig();
+    showNotice("Parámetros restaurados a los valores por defecto.");
+  }
+
+  /**
+   * Aplica los valores de un preset (objeto param_id -> { default, type, ... }) a los controles.
+   * Solo afecta a controles que existan y estén en paramsConfig.params (habilitados).
+   */
+  function applyPresetToControls(presetObj) {
+    if (!presetObj || typeof presetObj !== "object") return;
+    document.querySelectorAll("[data-control-id]").forEach((control) => {
+      const paramId = control.getAttribute("data-control-id");
+      if (!paramsConfig.params[paramId]) return;
+      const spec = presetObj[paramId];
+      if (!spec || spec.default === undefined) return;
+      const def = spec.default;
+      if (control.tagName === "INPUT" || control.tagName === "TEXTAREA") {
+        if (control.type === "number" && (typeof def === "number" || typeof def === "string")) {
+          control.value = def !== null ? String(def) : "";
+        } else if (Array.isArray(def)) {
+          control.value = def.join("\n");
+        } else {
+          control.value = def !== undefined && def !== null ? String(def) : "";
+        }
+      } else if (control.tagName === "SELECT") {
+        control.value = def !== undefined && def !== null ? String(def) : "";
+      }
+    });
+  }
+
+  let currentPresets = {};
+
+  async function openPresetModal() {
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
+    try {
+      const data = await fetchJson(`${API}/providers/${provider}/presets`);
+      currentPresets = data.presets || {};
+      const names = Object.keys(currentPresets);
+      if (names.length === 0) {
+        showNotice("No hay presets para este proveedor.");
+        return;
+      }
+      if (el.presetList) {
+        el.presetList.innerHTML = names
+          .map((name) => `<button type="button" class="preset-list-item" data-preset-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`)
+          .join("");
+        el.presetList.querySelectorAll(".preset-list-item").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const presetName = btn.getAttribute("data-preset-name");
+            const presetData = currentPresets[presetName];
+            if (presetData) {
+              applyPresetToControls(presetData);
+              if (el.modelSelect && models.includes(presetName)) {
+                el.modelSelect.value = presetName;
+              }
+              showNotice("Preset \"" + presetName + "\" aplicado.");
+            }
+            closePresetModal();
+          });
+        });
+      }
+      if (el.presetModal) {
+        el.presetModal.hidden = false;
+      }
+    } catch (e) {
+      showError("No se pudieron cargar los presets: " + e.message);
+    }
+  }
+
+  function closePresetModal() {
+    if (el.presetModal) el.presetModal.hidden = true;
   }
 
   function buildModelParams() {
@@ -672,6 +752,14 @@
   if (el.showDebugModeCheck) el.showDebugModeCheck.addEventListener("change", renderMessages);
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
+  if (el.btnLoadPreset) el.btnLoadPreset.addEventListener("click", openPresetModal);
+  if (el.btnResetParams) el.btnResetParams.addEventListener("click", resetParamsToDefaults);
+  if (el.presetModalClose) el.presetModalClose.addEventListener("click", closePresetModal);
+  if (el.presetModal) {
+    el.presetModal.addEventListener("click", (e) => {
+      if (e.target === el.presetModal) closePresetModal();
+    });
+  }
   if (el.btnRefreshModels) el.btnRefreshModels.addEventListener("click", refreshModels);
   if (el.providerSelect) el.providerSelect.addEventListener("change", onProviderChange);
   if (el.modelSelect) el.modelSelect.addEventListener("change", onModelChange);
