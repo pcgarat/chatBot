@@ -1,6 +1,113 @@
 """Tests de los endpoints de conversaciones y mensajes."""
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+
+from app.routers.api_conversations import _build_ollama_messages
+
+
+def _mock_conv(system_instruction_global="Instrucciones"):
+    """Convierte objeto con system_instruction_global."""
+    c = MagicMock()
+    c.system_instruction_global = system_instruction_global
+    return c
+
+
+def _mock_msg(role: str, content: str):
+    """Objeto mensaje con role y content."""
+    m = MagicMock()
+    m.role = role
+    m.content = content
+    return m
+
+
+@patch("app.routers.api_conversations.settings")
+def test_build_ollama_messages_estructura_basica(mock_settings):
+    """Estructura: system, historial (si hay), user con prompt actual."""
+    mock_settings.ollama_history_turns = 10
+    conv = _mock_conv("Global.")
+    existing = []
+    msgs, _ = _build_ollama_messages(conv, existing, "Hola", None, rag_context=None)
+    assert len(msgs) >= 1
+    assert msgs[-1]["role"] == "user"
+    assert msgs[-1]["content"] == "Hola"
+    assert msgs[0]["role"] == "system"
+    assert "Global." in msgs[0]["content"]
+
+
+@patch("app.routers.api_conversations.settings")
+def test_build_ollama_messages_incluye_historial_orden_cronologico(mock_settings):
+    """El historial va de más antiguo a más nuevo antes del prompt actual."""
+    mock_settings.ollama_history_turns = 2
+    conv = _mock_conv("Global.")
+    existing = [
+        _mock_msg("user", "M1"),
+        _mock_msg("assistant", "R1"),
+        _mock_msg("user", "M2"),
+        _mock_msg("assistant", "R2"),
+    ]
+    msgs, _ = _build_ollama_messages(conv, existing, "M3", None, rag_context=None)
+    # system, user, assistant, user, assistant, user (actual)
+    assert msgs[0]["role"] == "system"
+    assert msgs[1]["role"] == "user" and msgs[1]["content"] == "M1"
+    assert msgs[2]["role"] == "assistant" and msgs[2]["content"] == "R1"
+    assert msgs[3]["role"] == "user" and msgs[3]["content"] == "M2"
+    assert msgs[4]["role"] == "assistant" and msgs[4]["content"] == "R2"
+    assert msgs[5]["role"] == "user" and msgs[5]["content"] == "M3"
+
+
+@patch("app.routers.api_conversations.settings")
+def test_build_ollama_messages_limita_ultimos_n_pares(mock_settings):
+    """Solo se envían los últimos N pares (N=2 => 4 mensajes de historial)."""
+    mock_settings.ollama_history_turns = 2
+    conv = _mock_conv("Global.")
+    existing = [
+        _mock_msg("user", "M1"),
+        _mock_msg("assistant", "R1"),
+        _mock_msg("user", "M2"),
+        _mock_msg("assistant", "R2"),
+        _mock_msg("user", "M3"),
+        _mock_msg("assistant", "R3"),
+    ]
+    msgs, _ = _build_ollama_messages(conv, existing, "M4", None, rag_context=None)
+    # system + 4 historial (M2,R2,M3,R3) + 1 actual = 6 mensajes + system
+    hist = [m for m in msgs if m["role"] in ("user", "assistant")]
+    assert len(hist) == 5  # 4 historial + 1 actual
+    assert hist[0]["content"] == "M2"
+    assert hist[1]["content"] == "R2"
+    assert hist[2]["content"] == "M3"
+    assert hist[3]["content"] == "R3"
+    assert hist[4]["content"] == "M4"
+
+
+@patch("app.routers.api_conversations.settings")
+def test_build_ollama_messages_sin_historial_cuando_turns_0(mock_settings):
+    """Si ollama_history_turns=0, no se envía historial."""
+    mock_settings.ollama_history_turns = 0
+    conv = _mock_conv("Global.")
+    existing = [
+        _mock_msg("user", "M1"),
+        _mock_msg("assistant", "R1"),
+    ]
+    msgs, _ = _build_ollama_messages(conv, existing, "M2", None, rag_context=None)
+    assert len(msgs) == 2  # system + user actual
+    assert msgs[-1]["content"] == "M2"
+
+
+@patch("app.routers.api_conversations.settings")
+def test_build_ollama_messages_menos_de_n_pares_envia_todos(mock_settings):
+    """Si hay menos mensajes que N pares, se envían todos."""
+    mock_settings.ollama_history_turns = 10
+    conv = _mock_conv("Global.")
+    existing = [
+        _mock_msg("user", "M1"),
+        _mock_msg("assistant", "R1"),
+    ]
+    msgs, _ = _build_ollama_messages(conv, existing, "M2", None, rag_context=None)
+    hist = [m for m in msgs if m["role"] in ("user", "assistant")]
+    assert len(hist) == 3  # M1, R1, M2
+    assert hist[0]["content"] == "M1"
+    assert hist[1]["content"] == "R1"
+    assert hist[2]["content"] == "M2"
 
 
 def test_create_conversation(client):

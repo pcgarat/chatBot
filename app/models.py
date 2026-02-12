@@ -17,7 +17,7 @@ class Conversation(Base):
     title = Column(String(512), nullable=False, default="Nueva conversación")
     model_id = Column(String(128), nullable=False, default="llama3.2")
     system_instruction_global = Column(Text, nullable=True)
-    inject_instruction_every = Column(Integer, nullable=True)  # null/0 = cada mensaje; >0 = solo cada X mensajes de usuario
+    inject_instruction_every = Column(Integer, nullable=True)  # Deprecado: se ignora. Las instrucciones se envían siempre.
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

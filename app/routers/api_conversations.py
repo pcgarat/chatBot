@@ -129,41 +129,45 @@ def _build_ollama_messages(
     new_content: str,
     instruction_override: str | None,
     system_instruction_global: str | None = None,
-    inject_instruction_every: int | None = None,
-    user_message_count: int = 0,
     rag_context: str | None = None,
 ) -> tuple[list, bool]:
     """Construye la lista de mensajes para Ollama.
 
-    El historial no se envía nunca a Ollama (solo es para la UI). Se envía únicamente:
-    - Contexto RAG relevante del historial (si rag_context está presente).
-    - Instrucciones globales (si aplican: siempre si check desactivado, o cada X mensajes si activado).
-    - Instrucción para este mensaje (opcional).
-    - El mensaje nuevo del usuario.
+    Orden:
+    1. Rol system: instrucciones globales + contexto RAG (siempre)
+    2. Últimos N pares (user + assistant) del historial, de más antiguo a más nuevo
+    3. Rol user: prompt actual
+
+    N = settings.ollama_history_turns (default 10). Si no hay suficientes mensajes,
+    se envían los que haya.
     Devuelve (messages, injecting_instruction).
     """
     parts = []
     if rag_context and rag_context.strip():
         parts.append("Contexto relevante del historial:\n\n" + rag_context.strip())
-    add_global = True
-    if inject_instruction_every is not None and inject_instruction_every > 0:
-        add_global = user_message_count % inject_instruction_every == 0
-    if add_global:
-        if system_instruction_global is not None:
-            global_text = (system_instruction_global or "").strip()
-        else:
-            global_text = (conv.system_instruction_global or "").strip()
-        if global_text:
-            parts.append(global_text)
+    if system_instruction_global is not None:
+        global_text = (system_instruction_global or "").strip()
+    else:
+        global_text = (conv.system_instruction_global or "").strip()
+    if global_text:
+        parts.append(global_text)
     if instruction_override and instruction_override.strip():
         parts.append(instruction_override.strip())
+
     messages = []
     if parts:
         messages.append({"role": "system", "content": "\n\n".join(parts)})
+
+    # Historial: últimos N pares (user + assistant), de más antiguo a más nuevo
+    max_turns = settings.ollama_history_turns
+    if max_turns > 0 and existing_messages:
+        max_messages = max_turns * 2  # cada turno = 1 user + 1 assistant
+        history = existing_messages[-max_messages:]
+        for m in history:
+            messages.append({"role": m.role, "content": m.content})
+
     messages.append({"role": "user", "content": new_content})
-    injecting = add_global and bool(
-        (system_instruction_global or conv.system_instruction_global or "").strip()
-    )
+    injecting = bool(global_text)
     return messages, injecting
 
 
@@ -171,7 +175,6 @@ async def _stream_generator_async(
     conversation_id: str,
     model_id: str,
     ollama_messages: list,
-    injecting: bool,
     user_message_id: str | None = None,
     save_to_chromadb: str = "user",
     mcp_contexts: list[str] | None = None,
@@ -183,8 +186,6 @@ async def _stream_generator_async(
         yield json.dumps({"user_message_id": user_message_id}) + "\n"
     if mcp_contexts:
         yield json.dumps({"mcp_contexts": mcp_contexts}, ensure_ascii=False) + "\n"
-    if injecting:
-        yield json.dumps({"injecting_instruction": True}) + "\n"
 
     url = f"{settings.ollama_host.rstrip('/')}/api/chat"
     payload = {"model": model_id, "messages": ollama_messages, "stream": True}
@@ -258,12 +259,9 @@ async def send_message_stream(
     user_content = slash.content
     mcp_contexts = slash.mcp_contexts  # Ej. ["git"] cuando el usuario escribió /git ...
 
-    inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
-    crud.update_conversation(db, conversation_id, inject_instruction_every=inject_every)
     existing = crud.get_messages(db, conversation_id)
-    user_count = sum(1 for m in existing if m.role == "user")
     rag_context = rag.get_relevant_context(conversation_id, user_content)
     if settings.verbose:
         import sys
@@ -277,8 +275,6 @@ async def send_message_stream(
     ollama_messages, injecting = _build_ollama_messages(
         conv, existing, user_content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
-        inject_instruction_every=inject_every,
-        user_message_count=user_count,
         rag_context=rag_context,
     )
     user_msg = crud.add_message(
@@ -312,7 +308,6 @@ async def send_message_stream(
             conversation_id,
             conv.model_id,
             ollama_messages,
-            injecting,
             user_message_id=user_msg.id,
             save_to_chromadb=save_to_chromadb,
             mcp_contexts=mcp_contexts,
@@ -334,13 +329,10 @@ def send_message(
     user_content = slash.content
     mcp_contexts = slash.mcp_contexts
 
-    inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
-    crud.update_conversation(db, conversation_id, inject_instruction_every=inject_every)
 
     existing = crud.get_messages(db, conversation_id)
-    user_count = sum(1 for m in existing if m.role == "user")
     rag_context = rag.get_relevant_context(conversation_id, user_content)
     if settings.verbose:
         import sys
@@ -354,8 +346,6 @@ def send_message(
     ollama_messages, _ = _build_ollama_messages(
         conv, existing, user_content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
-        inject_instruction_every=inject_every,
-        user_message_count=user_count,
         rag_context=rag_context,
     )
 

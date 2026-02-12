@@ -16,14 +16,6 @@
       <div class="sidebar-option instructions-panel">
         <label class="instructions-label">Instrucciones para todos los mensajes (no se muestran en el chat):</label>
         <textarea id="system-instruction-global" rows="2" placeholder="Ej: Responde siempre en tono formal y breve."></textarea>
-        <div class="inject-every">
-          <label class="inject-every-label">
-            <input type="checkbox" id="inject-instruction-every-check" />
-            <span class="inject-every-text">Enviar instrucciones solo cada</span>
-          </label>
-          <input type="number" id="inject-instruction-every-n" min="1" value="5" class="inject-every-n" />
-          <span class="inject-every-suffix">mensajes</span>
-        </div>
       </div>
       <div class="sidebar-option sidebar-actions">
         <button type="button" id="btn-cancel-message" class="btn btn-secondary btn-block" title="Anular último mensaje y cerrar conexión con Ollama">Cancelar último mensaje</button>

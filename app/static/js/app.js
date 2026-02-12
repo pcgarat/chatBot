@@ -1,4 +1,5 @@
 (function () {
+  function init() {
   const API = "/api";
   let currentConversationId = null;
   let messages = [];
@@ -10,8 +11,6 @@
     conversationTitle: document.getElementById("conversation-title"),
     modelSelect: document.getElementById("model-select"),
     systemInstructionGlobal: document.getElementById("system-instruction-global"),
-    injectInstructionEveryCheck: document.getElementById("inject-instruction-every-check"),
-    injectInstructionEveryN: document.getElementById("inject-instruction-every-n"),
     saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
     messagesContainer: document.getElementById("messages-container"),
     instructionOverride: document.getElementById("instruction-override"),
@@ -58,7 +57,9 @@
     try {
       const data = await fetchJson(`${API}/models`);
       models = data.map((m) => m.name);
-      el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+      if (el.modelSelect) {
+        el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+      }
       return models;
     } catch (e) {
       showError("No se pudieron cargar los modelos: " + e.message);
@@ -78,6 +79,7 @@
   const deleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
 
   function renderConversationsList(list) {
+    if (!el.conversationsList) return;
     el.conversationsList.innerHTML = list
       .map(
         (c) =>
@@ -139,22 +141,16 @@
   function setCurrentConversation(conv) {
     currentConversationId = conv ? conv.id : null;
     if (conv) {
-      el.conversationTitle.value = conv.title;
-      el.modelSelect.value = conv.model_id;
-      el.systemInstructionGlobal.value = conv.system_instruction_global || "";
-      const injectEvery = conv.inject_instruction_every;
-      if (el.injectInstructionEveryCheck) el.injectInstructionEveryCheck.checked = !!(injectEvery && injectEvery > 0);
-      if (el.injectInstructionEveryN) el.injectInstructionEveryN.value = (injectEvery && injectEvery > 0) ? injectEvery : 5;
+      if (el.conversationTitle) el.conversationTitle.value = conv.title;
+      if (el.modelSelect) el.modelSelect.value = conv.model_id;
+      if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = conv.system_instruction_global || "";
       messages = (conv.messages || []).map((m) => ({ role: m.role, content: m.content, id: m.id || null }));
     } else {
-      el.conversationTitle.value = "Nueva conversación";
-      el.modelSelect.value = models[0] || "llama3.2";
-      el.systemInstructionGlobal.value = "";
-      if (el.injectInstructionEveryCheck) el.injectInstructionEveryCheck.checked = false;
-      if (el.injectInstructionEveryN) el.injectInstructionEveryN.value = 5;
+      if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
+      if (el.modelSelect) el.modelSelect.value = models[0] || "llama3.2";
+      if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = "";
       messages = [];
     }
-    if (el.injectInstructionEveryN) el.injectInstructionEveryN.disabled = !(el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked);
     renderMessages();
     loadConversations();
   }
@@ -170,15 +166,13 @@
 
   async function newConversation() {
     try {
-      const model = el.modelSelect.value || (models[0] || "llama3.2");
-      const injectEvery = (el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked) ? (parseInt(el.injectInstructionEveryN.value, 10) || 1) : null;
+      const model = (el.modelSelect && el.modelSelect.value) || (models[0] || "llama3.2");
       const conv = await fetchJson(`${API}/conversations`, {
         method: "POST",
         body: JSON.stringify({
           title: "Nueva conversación",
           model_id: model,
-          system_instruction_global: el.systemInstructionGlobal.value.trim() || null,
-          inject_instruction_every: injectEvery,
+          system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
         }),
       });
       setCurrentConversation(conv);
@@ -193,14 +187,12 @@
       return;
     }
     try {
-      const injectEvery = (el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked) ? (parseInt(el.injectInstructionEveryN.value, 10) || 1) : null;
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
         body: JSON.stringify({
-          title: el.conversationTitle.value.trim() || "Nueva conversación",
-          model_id: el.modelSelect.value,
-          system_instruction_global: el.systemInstructionGlobal.value.trim() || null,
-          inject_instruction_every: injectEvery,
+          title: (el.conversationTitle && el.conversationTitle.value.trim()) || "Nueva conversación",
+          model_id: (el.modelSelect && el.modelSelect.value) || "llama3.2",
+          system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
         }),
       });
       setCurrentConversation(conv);
@@ -226,6 +218,7 @@
   }
 
   function renderMessages() {
+    if (!el.messagesContainer) return;
     if (messages.length === 0) {
       el.messagesContainer.innerHTML = '<div class="empty-state">Escribe un mensaje para empezar.</div>';
       return;
@@ -251,13 +244,13 @@
         if (msgId && currentConversationId) saveMessageToChromadb(currentConversationId, msgId);
       });
     });
-    el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+    if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
   }
 
   async function sendMessage() {
-    const content = el.messageInput.value.trim();
+    const content = (el.messageInput && el.messageInput.value.trim()) || "";
     if (!content) return;
-    const instructionOverride = el.instructionOverride.value.trim() || null;
+    const instructionOverride = (el.instructionOverride && el.instructionOverride.value.trim()) || null;
 
     if (!currentConversationId) {
       await newConversation();
@@ -265,22 +258,21 @@
     }
 
     messages.push({ role: "user", content });
-    el.messageInput.value = "";
-    el.instructionOverride.value = "";
+    if (el.messageInput) el.messageInput.value = "";
+    if (el.instructionOverride) el.instructionOverride.value = "";
     renderMessages();
 
     const msgEl = document.createElement("div");
     msgEl.className = "message assistant";
     msgEl.innerHTML = '<div class="role-label">Asistente</div><div class="content"></div>';
-    el.messagesContainer.appendChild(msgEl);
+    if (el.messagesContainer) el.messagesContainer.appendChild(msgEl);
     const contentEl = msgEl.querySelector(".content");
-    el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+    if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
 
     currentAbortController = new AbortController();
     setCancelButtonState();
     try {
       const systemInstructionGlobal = (el.systemInstructionGlobal && el.systemInstructionGlobal.value) ? el.systemInstructionGlobal.value.trim() : "";
-      const injectEvery = (el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked) ? (parseInt(el.injectInstructionEveryN.value, 10) || 1) : 0;
       const saveToChromadb = (el.saveToChromadbSelect && el.saveToChromadbSelect.value) ? el.saveToChromadbSelect.value : "user";
       const res = await fetch(`${API}/conversations/${currentConversationId}/messages/stream`, {
         method: "POST",
@@ -289,7 +281,6 @@
           content,
           instruction_override: instructionOverride,
           system_instruction_global: systemInstructionGlobal,
-          inject_instruction_every: injectEvery || null,
           save_to_chromadb: saveToChromadb,
         }),
         signal: currentAbortController.signal,
@@ -316,13 +307,10 @@
             if (data.user_message_id && messages.length > 0) {
               messages[messages.length - 1].id = data.user_message_id;
             }
-            if (data.injecting_instruction) {
-              showNotice("Se están enviando las instrucciones globales.");
-            }
             if (data.content !== undefined) {
               fullContent += data.content;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
-              el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+              if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
             }
             if (data.done) {
               msgEl.remove();
@@ -384,36 +372,38 @@
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
-        body: JSON.stringify({ model_id: el.modelSelect.value }),
+        body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "llama3.2" }),
       }).catch(() => {});
     }
   }
 
-  if (el.injectInstructionEveryN) {
-    el.injectInstructionEveryN.disabled = !(el.injectInstructionEveryCheck && el.injectInstructionEveryCheck.checked);
-  }
-  el.injectInstructionEveryCheck.addEventListener("change", function () {
-    if (el.injectInstructionEveryN) el.injectInstructionEveryN.disabled = !el.injectInstructionEveryCheck.checked;
-  });
   if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
 
   function setCancelButtonState() {
     if (el.btnCancelMessage) el.btnCancelMessage.disabled = !currentAbortController;
   }
 
-  el.btnNewChat.addEventListener("click", newConversation);
-  el.btnSave.addEventListener("click", saveConversation);
-  el.btnSend.addEventListener("click", sendMessage);
+  if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
+  if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
+  if (el.btnSend) el.btnSend.addEventListener("click", sendMessage);
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
-  el.modelSelect.addEventListener("change", onModelChange);
-
-  el.messageInput.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  });
+  if (el.modelSelect) el.modelSelect.addEventListener("change", onModelChange);
+  if (el.messageInput) {
+    el.messageInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  }
 
   loadModels().then(() => loadConversations());
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();
