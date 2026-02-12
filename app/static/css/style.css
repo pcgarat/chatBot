@@ -51,7 +51,242 @@ body {
   font-weight: 600;
 }
 
-/* Botones Cancelar / Limpiar memoria: mismo estilo que el resto de la página */
+.sidebar-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.sidebar-header-actions .btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-presets-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.sidebar-presets-actions .btn {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Acordeón del sidebar */
+.sidebar-accordion {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.accordion-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.accordion-section[data-accordion-section="conversaciones"] {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  border: none;
+  background: var(--bg-sidebar);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.accordion-header:hover {
+  background: var(--bg-input);
+}
+
+.accordion-title {
+  flex: 1;
+}
+
+.accordion-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s;
+  opacity: 0.8;
+}
+
+.accordion-section.is-open .accordion-chevron {
+  transform: rotate(180deg);
+}
+
+.accordion-content {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.25s ease-out;
+}
+
+.accordion-section .accordion-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.accordion-section[data-accordion-section="reglas"].is-open .accordion-content {
+  max-height: 320px;
+}
+
+.accordion-section[data-accordion-section="conversaciones"] .accordion-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.accordion-section.is-open[data-accordion-section="conversaciones"] .accordion-content {
+  max-height: none;
+  overflow-y: auto;
+}
+
+/* Secciones de parámetros: altura limitada con scroll */
+.accordion-section.param-group.is-open .accordion-content {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.sidebar-option.param-option {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.param-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.param-help-trigger {
+  cursor: help;
+}
+
+.param-help-trigger:hover {
+  color: var(--accent);
+}
+
+.param-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0 0 6px 0;
+  line-height: 1.35;
+}
+
+.param-note-inline {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.3;
+}
+
+.param-mode-select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.85rem;
+  box-sizing: border-box;
+}
+
+.param-control {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.85rem;
+  box-sizing: border-box;
+}
+
+.param-control.control-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.param-option textarea.param-control {
+  resize: vertical;
+  min-height: 48px;
+}
+
+/* Tooltip de ayuda (parámetros) */
+.param-help-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  max-width: 320px;
+  padding: 0.75rem 1rem;
+  background: #1e293b;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  overflow-y: auto;
+  max-height: 70vh;
+}
+
+.param-help-tooltip .help-title {
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.param-help-tooltip .help-block {
+  margin-bottom: 0.5rem;
+}
+
+.param-help-tooltip .help-block:last-child {
+  margin-bottom: 0;
+}
+
+.param-help-tooltip .help-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.param-help-tooltip .help-text {
+  color: var(--text);
+}
+
+.param-help-tooltip.is-visible {
+  display: block;
+}
+
+.sidebar-accordion .conversations-list {
+  flex: 1;
+  min-height: 0;
+}
+
 .sidebar-option.sidebar-actions {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
@@ -435,9 +670,10 @@ body {
   margin-top: 6px;
   display: flex;
   justify-content: flex-end;
+  gap: 4px;
 }
 
-.msg-save-chromadb-btn {
+.msg-action-btn {
   padding: 0.2rem 0.35rem;
   border: none;
   background: transparent;
@@ -451,17 +687,17 @@ body {
   line-height: 1;
 }
 
-.msg-save-chromadb-btn:hover {
+.msg-action-btn:hover {
   color: var(--accent);
   background: rgba(96, 165, 250, 0.15);
 }
 
-.msg-save-chromadb-btn:disabled {
+.msg-action-btn:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.msg-save-chromadb-btn svg {
+.msg-action-btn svg {
   display: block;
 }
 
