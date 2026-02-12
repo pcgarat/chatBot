@@ -8,7 +8,7 @@ PYTEST := $(VENV)/bin/pytest
 PORT ?= 8000
 PIDFILE := .server.pid
 
-.PHONY: help up down start start-verbose stop reload test status clean
+.PHONY: help up down start start-verbose stop reload reload-dev restart-dev test status clean setup
 .PHONY: chroma-up chroma-down chroma-logs chroma-status chroma-clean chroma-ping ingest venv312
 
 help:
@@ -20,6 +20,8 @@ help:
 	@echo "  make start   Iniciar el servidor (puerto $(PORT))"
 	@echo "  make stop    Detener el servidor"
 	@echo "  make reload  make down + make up (reinicio completo)"
+	@echo "  make reload-dev  make down + setup + tests + start-verbose (dev con tests antes de levantar)"
+	@echo "  make restart-dev  make stop + tests + start-verbose (rápido: sin recrear venv)"
 	@echo "  make test    Ejecutar los tests"
 	@echo "  make status  Mostrar estado del entorno y del servidor"
 	@echo "  make clean   Parar la app y borrar .server.pid (no toca Docker ni Chroma)"
@@ -46,7 +48,7 @@ CHROMA_DEFAULT := http://localhost:8001
 # Usar Python 3.12 (.venv312) para start si existe, para que RAG/Chroma funcione (Chroma falla en 3.14)
 PYTHON_RUN := $(if $(wildcard .venv312/bin/python),.venv312/bin/python,$(PYTHON))
 
-up:
+setup:
 	@echo "Escribiendo .env desde variables de entorno de la sesión (OPENAI_API_KEY, CHROMA_HOST)..."
 	@touch .env && (grep -v '^OPENAI_API_KEY=' .env 2>/dev/null | grep -v '^CHROMA_HOST=' > .env.tmp && mv .env.tmp .env) || true
 	@if [ -n "$$OPENAI_API_KEY" ]; then echo "OPENAI_API_KEY=$$OPENAI_API_KEY" >> .env; echo "  OPENAI_API_KEY escrita en .env"; else echo "  OPENAI_API_KEY no está definida en la sesión; exporta la key y vuelve a hacer make up si quieres RAG."; fi
@@ -54,10 +56,22 @@ up:
 	@if [ ! -d $(VENV) ]; then echo "Creando entorno virtual..."; python3 -m venv $(VENV); fi
 	@echo "Instalando dependencias..."
 	@$(PIP) install -r requirements.txt
+
+up: setup
 	@$(MAKE) start
 
 reload: down
 	$(MAKE) up
+
+reload-dev: down
+	@$(MAKE) setup
+	@$(MAKE) test
+	@$(MAKE) start-verbose
+
+restart-dev:
+	@$(MAKE) stop
+	@$(MAKE) test
+	@$(MAKE) start-verbose
 
 down:
 	@if [ -f $(PIDFILE) ]; then $(MAKE) stop; fi

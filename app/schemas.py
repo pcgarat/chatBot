@@ -14,20 +14,22 @@ class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"
     model_id: str = "llama3.2"
     system_instruction_global: Optional[str] = None
-    inject_instruction_every: Optional[int] = None  # null/0 = cada mensaje; >0 = solo cada X mensajes de usuario
+    inject_instruction_every: Optional[int] = None  # Deprecado: se ignora. Las instrucciones se envían siempre.
 
 
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     model_id: Optional[str] = None
     system_instruction_global: Optional[str] = None
-    inject_instruction_every: Optional[int] = None
+    inject_instruction_every: Optional[int] = None  # Deprecado: se ignora.
 
 
 class MessageInChat(BaseModel):
     role: str
     content: str
     id: Optional[str] = None
+    debug_request: Optional[str] = None  # JSON enviado al LLM (solo assistant)
+    debug_response: Optional[str] = None  # Raw del stream (solo assistant)
 
 
 class ConversationOut(BaseModel):
@@ -63,7 +65,7 @@ class MessageSend(BaseModel):
     content: str = Field(..., min_length=1)
     instruction_override: Optional[str] = None
     system_instruction_global: Optional[str] = None
-    inject_instruction_every: Optional[int] = None  # Si > 0: enviar instrucción global solo cada X mensajes de usuario
+    inject_instruction_every: Optional[int] = None  # Deprecado: se ignora.
     save_to_chromadb: SaveToChromadbKind = "user"  # qué indexar en Chroma: none, user, assistant, both
 
 

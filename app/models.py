@@ -17,7 +17,7 @@ class Conversation(Base):
     title = Column(String(512), nullable=False, default="Nueva conversación")
     model_id = Column(String(128), nullable=False, default="llama3.2")
     system_instruction_global = Column(Text, nullable=True)
-    inject_instruction_every = Column(Integer, nullable=True)  # null/0 = cada mensaje; >0 = solo cada X mensajes de usuario
+    inject_instruction_every = Column(Integer, nullable=True)  # Deprecado: se ignora. Las instrucciones se envían siempre.
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -38,5 +38,9 @@ class Message(Base):
     content = Column(Text, nullable=False)
     instruction_override = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Debug: payload enviado a Ollama (solo mensajes assistant)
+    debug_request_json = Column(Text, nullable=True)
+    # Debug: raw del stream (líneas NDJSON enviadas al cliente)
+    debug_response_raw = Column(Text, nullable=True)
 
     conversation = relationship("Conversation", back_populates="messages")
