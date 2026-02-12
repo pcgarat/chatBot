@@ -233,6 +233,18 @@ data: [DONE]
 - Usar `custom_timeout` para controlar timeout del lado del servidor
 - No hay garantía de determinismo incluso con `seed` o `temperature=0`
 
+### Stop / Cancelación
+
+| Mecanismo | Descripción |
+|-----------|-------------|
+| `stop` (param) | Array de strings que detienen la generación (ej: `["###", "\n\n"]`) |
+| Desconexión SSE | Al cerrar el stream, Mancer detecta y para la generación |
+| `custom_timeout` | Timeout máximo de generación (servidor) |
+
+**Implementación actual en Ollama**: Al cerrar la conexión httpx (`response.aclose()`) se detiene la generación.
+
+**Para Mancer**: El mismo patrón funciona - al cerrar el cliente httpx/aiohttp, el servidor detecta la desconexión y deja de generar (y solo cobra hasta ese punto).
+
 ---
 
 ## Orden de Implementación Recomendado
