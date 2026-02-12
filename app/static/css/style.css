@@ -51,54 +51,6 @@ body {
   font-weight: 600;
 }
 
-/* Fila única: check + "Enviar instrucciones solo cada" + input numérico + "mensajes" */
-.inject-every {
-  margin-top: 0.5rem;
-  font-size: 0.85rem;
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 0.35rem;
-}
-
-.inject-every-label {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  cursor: pointer;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.inject-every-text {
-  white-space: nowrap;
-}
-
-.inject-every-label input[type="checkbox"] {
-  width: 1rem;
-  height: 1rem;
-  flex-shrink: 0;
-}
-
-.inject-every-n {
-  width: 2.75rem;
-  padding: 0.25rem 0.35rem;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text);
-  font-size: 0.85rem;
-}
-
-.inject-every-n:disabled {
-  opacity: 0.6;
-}
-
-.inject-every-suffix {
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
 /* Botones Cancelar / Limpiar memoria: mismo estilo que el resto de la página */
 .sidebar-option.sidebar-actions {
   padding: 0.75rem 1rem;
@@ -126,6 +78,59 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 0.5rem;
+}
+
+.sidebar-option.sidebar-debug-option {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.debug-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.debug-label input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.debug-label:hover {
+  color: var(--text);
+}
+
+/* Bloques de debug en el chat */
+.message-debug-block {
+  max-width: 95%;
+  margin: 0.25rem 0 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  background: #1e293b;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  color: var(--text-muted);
+}
+
+.message-debug-block .debug-label-text {
+  font-size: 0.7rem;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.message-debug-stream {
+  margin-top: 0.5rem;
+}
+
+.message-debug-stream .message-debug-block {
+  margin-bottom: 0.25rem;
 }
 
 .conversation-item {
@@ -169,10 +174,11 @@ body {
   margin-top: 2px;
 }
 
+.conv-clear-btn,
 .conv-delete-btn {
   flex-shrink: 0;
   padding: 0.25rem;
-  margin: -0.25rem -0.25rem -0.25rem 0;
+  margin: -0.25rem 0 -0.25rem 0;
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -183,11 +189,21 @@ body {
   justify-content: center;
 }
 
+.conv-delete-btn {
+  margin-right: -0.25rem;
+}
+
+.conv-clear-btn:hover {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+}
+
 .conv-delete-btn:hover {
   color: #f87171;
   background: rgba(248, 113, 113, 0.15);
 }
 
+.conv-clear-btn svg,
 .conv-delete-btn svg {
   display: block;
 }
@@ -285,6 +301,36 @@ body {
   color: var(--text);
   font-size: 0.9rem;
   min-width: 140px;
+}
+
+.btn-icon {
+  padding: 0.35rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover {
+  color: var(--accent);
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.btn-icon svg {
+  display: block;
+}
+
+.btn-icon.loading svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Panel de instrucciones y ChromaDB en el sidebar */

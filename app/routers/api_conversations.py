@@ -55,7 +55,16 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    messages = [MessageInChat(role=m.role, content=m.content, id=m.id) for m in conv.messages]
+    messages = [
+        MessageInChat(
+            role=m.role,
+            content=m.content,
+            id=m.id,
+            debug_request=m.debug_request_json if m.role == "assistant" else None,
+            debug_response=m.debug_response_raw if m.role == "assistant" else None,
+        )
+        for m in conv.messages
+    ]
     return ConversationOut(
         id=conv.id,
         title=conv.title,
@@ -82,7 +91,16 @@ def update_conversation(
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    messages = [MessageInChat(role=m.role, content=m.content, id=m.id) for m in conv.messages]
+    messages = [
+        MessageInChat(
+            role=m.role,
+            content=m.content,
+            id=m.id,
+            debug_request=m.debug_request_json if m.role == "assistant" else None,
+            debug_response=m.debug_response_raw if m.role == "assistant" else None,
+        )
+        for m in conv.messages
+    ]
     return ConversationOut(
         id=conv.id,
         title=conv.title,
@@ -113,6 +131,17 @@ def delete_last_message(conversation_id: str, db: Session = Depends(get_db)):
     return None
 
 
+@router.delete("/conversations/{conversation_id}/messages", status_code=204)
+def clear_conversation_messages(conversation_id: str, db: Session = Depends(get_db)):
+    """Elimina todos los mensajes de una conversación (limpia el historial)."""
+    conv = crud.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    crud.clear_conversation_messages(db, conversation_id)
+    rag.delete_conversation_documents(conversation_id)
+    return None
+
+
 @router.post("/conversations/{conversation_id}/messages/{message_id}/save-to-chromadb", status_code=204)
 def save_message_to_chromadb(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
     """Guarda un mensaje concreto en ChromaDB (para el icono de guardar bajo cada mensaje)."""
@@ -129,49 +158,59 @@ def _build_ollama_messages(
     new_content: str,
     instruction_override: str | None,
     system_instruction_global: str | None = None,
-    inject_instruction_every: int | None = None,
-    user_message_count: int = 0,
     rag_context: str | None = None,
 ) -> tuple[list, bool]:
     """Construye la lista de mensajes para Ollama.
 
-    El historial no se envía nunca a Ollama (solo es para la UI). Se envía únicamente:
-    - Contexto RAG relevante del historial (si rag_context está presente).
-    - Instrucciones globales (si aplican: siempre si check desactivado, o cada X mensajes si activado).
-    - Instrucción para este mensaje (opcional).
-    - El mensaje nuevo del usuario.
+    Orden:
+    1. Rol system: instrucciones globales + contexto RAG (siempre)
+    2. Últimos N pares (user + assistant) del historial, de más antiguo a más nuevo
+    3. Rol user: prompt actual
+
+    N = settings.ollama_history_turns (default 10). Si no hay suficientes mensajes,
+    se envían los que haya.
     Devuelve (messages, injecting_instruction).
     """
     parts = []
     if rag_context and rag_context.strip():
         parts.append("Contexto relevante del historial:\n\n" + rag_context.strip())
-    add_global = True
-    if inject_instruction_every is not None and inject_instruction_every > 0:
-        add_global = user_message_count % inject_instruction_every == 0
-    if add_global:
-        if system_instruction_global is not None:
-            global_text = (system_instruction_global or "").strip()
-        else:
-            global_text = (conv.system_instruction_global or "").strip()
-        if global_text:
-            parts.append(global_text)
+    if system_instruction_global is not None:
+        global_text = (system_instruction_global or "").strip()
+    else:
+        global_text = (conv.system_instruction_global or "").strip()
+    if global_text:
+        parts.append(global_text)
     if instruction_override and instruction_override.strip():
         parts.append(instruction_override.strip())
+
     messages = []
     if parts:
         messages.append({"role": "system", "content": "\n\n".join(parts)})
+
+    # Historial: últimos N pares (user + assistant), de más antiguo a más nuevo
+    max_turns = settings.ollama_history_turns
+    if max_turns > 0 and existing_messages:
+        max_messages = max_turns * 2  # cada turno = 1 user + 1 assistant
+        history = existing_messages[-max_messages:]
+        for m in history:
+            messages.append({"role": m.role, "content": m.content})
+
     messages.append({"role": "user", "content": new_content})
-    injecting = add_global and bool(
-        (system_instruction_global or conv.system_instruction_global or "").strip()
-    )
+    injecting = bool(global_text)
     return messages, injecting
+
+
+def _emit(line: str, meta_lines: list[str], is_content_chunk: bool = False):
+    """Helper para emitir línea. Solo acumula en meta_lines si no es un chunk de contenido."""
+    if not is_content_chunk:
+        meta_lines.append(line)
+    return line
 
 
 async def _stream_generator_async(
     conversation_id: str,
     model_id: str,
     ollama_messages: list,
-    injecting: bool,
     user_message_id: str | None = None,
     save_to_chromadb: str = "user",
     mcp_contexts: list[str] | None = None,
@@ -179,22 +218,25 @@ async def _stream_generator_async(
     """Generador async que hace streaming a Ollama vía httpx. Al desconectar el cliente
     (GeneratorExit) se cierra la conexión a Ollama para que deje de generar.
     mcp_contexts: cuando se integre MCP, aquí se usarán para inyectar tools (ej. ['git'])."""
-    if user_message_id:
-        yield json.dumps({"user_message_id": user_message_id}) + "\n"
-    if mcp_contexts:
-        yield json.dumps({"mcp_contexts": mcp_contexts}, ensure_ascii=False) + "\n"
-    if injecting:
-        yield json.dumps({"injecting_instruction": True}) + "\n"
-
-    url = f"{settings.ollama_host.rstrip('/')}/api/chat"
+    meta_lines: list[str] = []  # Solo metadata (sin los chunks de content)
     payload = {"model": model_id, "messages": ollama_messages, "stream": True}
+    debug_request_json = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    # Emitir debug_request primero (para que el frontend lo muestre si el checkbox está activo)
+    yield _emit(json.dumps({"debug_request": debug_request_json}, ensure_ascii=False) + "\n", meta_lines)
+    if user_message_id:
+        yield _emit(json.dumps({"user_message_id": user_message_id}) + "\n", meta_lines)
+    if mcp_contexts:
+        yield _emit(json.dumps({"mcp_contexts": mcp_contexts}, ensure_ascii=False) + "\n", meta_lines)
+
     if settings.verbose:
         import sys
         print("--- enviado a Ollama (el system incluye contexto RAG si hubiera) ---", file=sys.stderr)
-        print(json.dumps(payload, ensure_ascii=False, indent=2), file=sys.stderr)
+        print(debug_request_json, file=sys.stderr)
         print("--- fin ---", file=sys.stderr)
 
     full_content = []
+    url = f"{settings.ollama_host.rstrip('/')}/api/chat"
     async with httpx.AsyncClient() as client:
         try:
             async with client.stream(
@@ -203,6 +245,34 @@ async def _stream_generator_async(
                 json=payload,
                 timeout=httpx.Timeout(None),
             ) as response:
+                # Emitir status_code si no es 200 (para debug)
+                if response.status_code != 200:
+                    err_line = json.dumps({
+                        "error": f"HTTP {response.status_code}",
+                        "status_code": response.status_code,
+                        "reason": response.reason_phrase or "",
+                    }) + "\n"
+                    yield _emit(err_line, meta_lines)
+                    debug_response_raw = "\n".join(meta_lines)
+                    def _save_http_error():
+                        from app.db import SessionLocal
+                        db = SessionLocal()
+                        try:
+                            err_content = f"[Error HTTP {response.status_code}: {response.reason_phrase or 'Unknown'}]"
+                            msg = crud.add_message(
+                                db, conversation_id, role="assistant", content=err_content,
+                                debug_request_json=debug_request_json,
+                                debug_response_raw=debug_response_raw,
+                            )
+                            crud.touch_conversation(db, conversation_id)
+                            return msg.id
+                        finally:
+                            db.close()
+                    loop = asyncio.get_event_loop()
+                    assistant_id = await loop.run_in_executor(None, _save_http_error)
+                    yield _emit(json.dumps({"done": True, "id": assistant_id}) + "\n", meta_lines)
+                    return
+
                 async for line in response.aiter_lines():
                     if not line:
                         continue
@@ -215,21 +285,54 @@ async def _stream_generator_async(
                     if content:
                         full_content.append(content)
                         try:
-                            yield json.dumps({"content": content}, ensure_ascii=False) + "\n"
+                            out = json.dumps({"content": content}, ensure_ascii=False) + "\n"
+                            yield _emit(out, meta_lines, is_content_chunk=True)
                         except GeneratorExit:
                             await response.aclose()
                             raise
+                    # Emitir error de Ollama si viene en la línea
+                    if data.get("error"):
+                        err_line = json.dumps({"error": data["error"]}) + "\n"
+                        yield _emit(err_line, meta_lines)
         except GeneratorExit:
             raise
         except Exception as e:
-            yield json.dumps({"error": str(e)}) + "\n"
+            err_line = json.dumps({"error": str(e), "exception_type": type(e).__name__}) + "\n"
+            yield _emit(err_line, meta_lines)
+            debug_response_raw = "\n".join(meta_lines)
+            # Guardar assistant con error (content vacío o mensaje de error)
+            def _save_assistant_error():
+                from app.db import SessionLocal
+                db = SessionLocal()
+                try:
+                    err_content = f"[Error de conexión/stream: {e!s}]"
+                    msg = crud.add_message(
+                        db, conversation_id, role="assistant", content=err_content,
+                        debug_request_json=debug_request_json,
+                        debug_response_raw=debug_response_raw,
+                    )
+                    crud.touch_conversation(db, conversation_id)
+                    return msg.id
+                finally:
+                    db.close()
+            loop = asyncio.get_event_loop()
+            assistant_id = await loop.run_in_executor(None, _save_assistant_error)
+            yield _emit(json.dumps({"done": True, "id": assistant_id}) + "\n", meta_lines)
             return
 
     def _save_assistant():
         from app.db import SessionLocal
         db = SessionLocal()
         try:
-            msg = crud.add_message(db, conversation_id, role="assistant", content="".join(full_content))
+            debug_response_raw = "\n".join(meta_lines)
+            msg = crud.add_message(
+                db,
+                conversation_id,
+                role="assistant",
+                content="".join(full_content),
+                debug_request_json=debug_request_json,
+                debug_response_raw=debug_response_raw,
+            )
             crud.touch_conversation(db, conversation_id)
             if save_to_chromadb in ("assistant", "both"):
                 rag.add_message(conversation_id, msg.id, "assistant", msg.content, msg.created_at)
@@ -239,7 +342,7 @@ async def _stream_generator_async(
 
     loop = asyncio.get_event_loop()
     assistant_id = await loop.run_in_executor(None, _save_assistant)
-    yield json.dumps({"done": True, "id": assistant_id}) + "\n"
+    yield _emit(json.dumps({"done": True, "id": assistant_id}) + "\n", meta_lines)
 
 
 @router.post("/conversations/{conversation_id}/messages/stream")
@@ -258,12 +361,9 @@ async def send_message_stream(
     user_content = slash.content
     mcp_contexts = slash.mcp_contexts  # Ej. ["git"] cuando el usuario escribió /git ...
 
-    inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
-    crud.update_conversation(db, conversation_id, inject_instruction_every=inject_every)
     existing = crud.get_messages(db, conversation_id)
-    user_count = sum(1 for m in existing if m.role == "user")
     rag_context = rag.get_relevant_context(conversation_id, user_content)
     if settings.verbose:
         import sys
@@ -277,8 +377,6 @@ async def send_message_stream(
     ollama_messages, injecting = _build_ollama_messages(
         conv, existing, user_content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
-        inject_instruction_every=inject_every,
-        user_message_count=user_count,
         rag_context=rag_context,
     )
     user_msg = crud.add_message(
@@ -312,7 +410,6 @@ async def send_message_stream(
             conversation_id,
             conv.model_id,
             ollama_messages,
-            injecting,
             user_message_id=user_msg.id,
             save_to_chromadb=save_to_chromadb,
             mcp_contexts=mcp_contexts,
@@ -334,13 +431,10 @@ def send_message(
     user_content = slash.content
     mcp_contexts = slash.mcp_contexts
 
-    inject_every = body.inject_instruction_every if body.inject_instruction_every and body.inject_instruction_every > 0 else None
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
-    crud.update_conversation(db, conversation_id, inject_instruction_every=inject_every)
 
     existing = crud.get_messages(db, conversation_id)
-    user_count = sum(1 for m in existing if m.role == "user")
     rag_context = rag.get_relevant_context(conversation_id, user_content)
     if settings.verbose:
         import sys
@@ -354,8 +448,6 @@ def send_message(
     ollama_messages, _ = _build_ollama_messages(
         conv, existing, user_content, body.instruction_override,
         system_instruction_global=body.system_instruction_global,
-        inject_instruction_every=inject_every,
-        user_message_count=user_count,
         rag_context=rag_context,
     )
 
