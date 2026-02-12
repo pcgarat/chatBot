@@ -1,31 +1,77 @@
-"""Tests del endpoint GET /api/models."""
+"""Tests del endpoint GET /api/models y /api/providers."""
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+
+from app.providers.base import ProviderModelInfo
 
 
-@patch("app.routers.api_models.ollama_client.list_models")
-def test_list_models_ok(mock_list_models, client):
-    mock_list_models.return_value = ["llama3.2", "mistral:latest"]
+@patch("app.routers.api_models.get_provider")
+def test_list_models_ok(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.list_models.return_value = [
+        ProviderModelInfo(name="llama3.2", provider="ollama"),
+        ProviderModelInfo(name="mistral:latest", provider="ollama"),
+    ]
+    mock_get_provider.return_value = mock_provider
     r = client.get("/api/models")
     assert r.status_code == 200
     data = r.json()
     assert len(data) == 2
     assert data[0]["name"] == "llama3.2"
     assert data[1]["name"] == "mistral:latest"
-    mock_list_models.assert_called_once()
+    mock_provider.list_models.assert_called_once()
 
 
-@patch("app.routers.api_models.ollama_client.list_models")
-def test_list_models_empty(mock_list_models, client):
-    mock_list_models.return_value = []
+@patch("app.routers.api_models.get_provider")
+def test_list_models_empty(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.list_models.return_value = []
+    mock_get_provider.return_value = mock_provider
     r = client.get("/api/models")
     assert r.status_code == 200
     assert r.json() == []
 
 
-@patch("app.routers.api_models.ollama_client.list_models")
-def test_list_models_ollama_error(mock_list_models, client):
-    mock_list_models.side_effect = ConnectionError("Ollama no disponible")
+@patch("app.routers.api_models.get_provider")
+def test_list_models_provider_error(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.list_models.side_effect = ConnectionError("Provider no disponible")
+    mock_get_provider.return_value = mock_provider
     r = client.get("/api/models")
     assert r.status_code == 503
-    assert "Ollama" in r.json()["detail"]
+    assert "proveedor" in r.json()["detail"].lower()
+
+
+@patch("app.routers.api_models.ProviderFactory.list_available_providers")
+def test_list_providers(mock_list_providers, client):
+    mock_list_providers.return_value = ["ollama", "mancer"]
+    r = client.get("/api/providers")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 2
+    assert data[0]["name"] == "ollama"
+    assert data[1]["name"] == "mancer"
+
+
+@patch("app.routers.api_models.get_provider")
+def test_list_provider_models(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.list_models.return_value = [
+        ProviderModelInfo(name="mytholite", provider="mancer", context_length=8192),
+    ]
+    mock_get_provider.return_value = mock_provider
+    r = client.get("/api/providers/mancer/models")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["name"] == "mytholite"
+    assert data[0]["provider"] == "mancer"
+    assert data[0]["context_length"] == 8192
+
+
+@patch("app.routers.api_models.get_provider")
+def test_list_provider_models_invalid_provider(mock_get_provider, client):
+    mock_get_provider.side_effect = ValueError("Proveedor 'invalid' no soportado")
+    r = client.get("/api/providers/invalid/models")
+    assert r.status_code == 400
+    assert "no soportado" in r.json()["detail"]

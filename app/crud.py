@@ -12,12 +12,14 @@ def create_conversation(
     db: Session,
     title: str = "Nueva conversación",
     model_id: str = "llama3.2",
+    provider: str = "ollama",
     system_instruction_global: str | None = None,
     inject_instruction_every: int | None = None,
 ) -> Conversation:
     conv = Conversation(
         title=title,
         model_id=model_id,
+        provider=provider,
         system_instruction_global=system_instruction_global,
         inject_instruction_every=inject_instruction_every if inject_instruction_every and inject_instruction_every > 0 else None,
     )
@@ -40,6 +42,7 @@ def update_conversation(
     conversation_id: str,
     title: str | None = None,
     model_id: str | None = None,
+    provider: str | None = None,
     system_instruction_global: str | None = None,
     inject_instruction_every: int | None = _INJECT_UNSET,
 ) -> Conversation | None:
@@ -50,6 +53,8 @@ def update_conversation(
         conv.title = title
     if model_id is not None:
         conv.model_id = model_id
+    if provider is not None:
+        conv.provider = provider
     if system_instruction_global is not None:
         conv.system_instruction_global = system_instruction_global
     if inject_instruction_every is not _INJECT_UNSET:

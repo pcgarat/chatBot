@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from app.routers.api_conversations import _build_ollama_messages
+from app.routers.api_conversations import _build_llm_messages
 
 
 def _mock_conv(system_instruction_global="Instrucciones"):
@@ -21,12 +21,12 @@ def _mock_msg(role: str, content: str):
 
 
 @patch("app.routers.api_conversations.settings")
-def test_build_ollama_messages_estructura_basica(mock_settings):
+def test_build_llm_messages_estructura_basica(mock_settings):
     """Estructura: system, historial (si hay), user con prompt actual."""
     mock_settings.ollama_history_turns = 10
     conv = _mock_conv("Global.")
     existing = []
-    msgs, _ = _build_ollama_messages(conv, existing, "Hola", None, rag_context=None)
+    msgs, _ = _build_llm_messages(conv, existing, "Hola", None, rag_context=None)
     assert len(msgs) >= 1
     assert msgs[-1]["role"] == "user"
     assert msgs[-1]["content"] == "Hola"
@@ -35,7 +35,7 @@ def test_build_ollama_messages_estructura_basica(mock_settings):
 
 
 @patch("app.routers.api_conversations.settings")
-def test_build_ollama_messages_incluye_historial_orden_cronologico(mock_settings):
+def test_build_llm_messages_incluye_historial_orden_cronologico(mock_settings):
     """El historial va de más antiguo a más nuevo antes del prompt actual."""
     mock_settings.ollama_history_turns = 2
     conv = _mock_conv("Global.")
@@ -45,7 +45,7 @@ def test_build_ollama_messages_incluye_historial_orden_cronologico(mock_settings
         _mock_msg("user", "M2"),
         _mock_msg("assistant", "R2"),
     ]
-    msgs, _ = _build_ollama_messages(conv, existing, "M3", None, rag_context=None)
+    msgs, _ = _build_llm_messages(conv, existing, "M3", None, rag_context=None)
     # system, user, assistant, user, assistant, user (actual)
     assert msgs[0]["role"] == "system"
     assert msgs[1]["role"] == "user" and msgs[1]["content"] == "M1"
@@ -56,7 +56,7 @@ def test_build_ollama_messages_incluye_historial_orden_cronologico(mock_settings
 
 
 @patch("app.routers.api_conversations.settings")
-def test_build_ollama_messages_limita_ultimos_n_pares(mock_settings):
+def test_build_llm_messages_limita_ultimos_n_pares(mock_settings):
     """Solo se envían los últimos N pares (N=2 => 4 mensajes de historial)."""
     mock_settings.ollama_history_turns = 2
     conv = _mock_conv("Global.")
@@ -68,7 +68,7 @@ def test_build_ollama_messages_limita_ultimos_n_pares(mock_settings):
         _mock_msg("user", "M3"),
         _mock_msg("assistant", "R3"),
     ]
-    msgs, _ = _build_ollama_messages(conv, existing, "M4", None, rag_context=None)
+    msgs, _ = _build_llm_messages(conv, existing, "M4", None, rag_context=None)
     # system + 4 historial (M2,R2,M3,R3) + 1 actual = 6 mensajes + system
     hist = [m for m in msgs if m["role"] in ("user", "assistant")]
     assert len(hist) == 5  # 4 historial + 1 actual
@@ -80,7 +80,7 @@ def test_build_ollama_messages_limita_ultimos_n_pares(mock_settings):
 
 
 @patch("app.routers.api_conversations.settings")
-def test_build_ollama_messages_sin_historial_cuando_turns_0(mock_settings):
+def test_build_llm_messages_sin_historial_cuando_turns_0(mock_settings):
     """Si ollama_history_turns=0, no se envía historial."""
     mock_settings.ollama_history_turns = 0
     conv = _mock_conv("Global.")
@@ -88,13 +88,13 @@ def test_build_ollama_messages_sin_historial_cuando_turns_0(mock_settings):
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
     ]
-    msgs, _ = _build_ollama_messages(conv, existing, "M2", None, rag_context=None)
+    msgs, _ = _build_llm_messages(conv, existing, "M2", None, rag_context=None)
     assert len(msgs) == 2  # system + user actual
     assert msgs[-1]["content"] == "M2"
 
 
 @patch("app.routers.api_conversations.settings")
-def test_build_ollama_messages_menos_de_n_pares_envia_todos(mock_settings):
+def test_build_llm_messages_menos_de_n_pares_envia_todos(mock_settings):
     """Si hay menos mensajes que N pares, se envían todos."""
     mock_settings.ollama_history_turns = 10
     conv = _mock_conv("Global.")
@@ -102,7 +102,7 @@ def test_build_ollama_messages_menos_de_n_pares_envia_todos(mock_settings):
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
     ]
-    msgs, _ = _build_ollama_messages(conv, existing, "M2", None, rag_context=None)
+    msgs, _ = _build_llm_messages(conv, existing, "M2", None, rag_context=None)
     hist = [m for m in msgs if m["role"] in ("user", "assistant")]
     assert len(hist) == 3  # M1, R1, M2
     assert hist[0]["content"] == "M1"
@@ -205,10 +205,12 @@ def test_delete_conversation_404(client):
     assert r.status_code == 404
 
 
-@patch("app.routers.api_conversations.ollama_client.chat")
-def test_clear_conversation_messages(mock_chat, client):
+@patch("app.routers.api_conversations.get_provider")
+def test_clear_conversation_messages(mock_get_provider, client):
     """Limpiar historial borra mensajes pero mantiene la conversación y sus instrucciones."""
-    mock_chat.return_value = "Respuesta."
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Respuesta."
+    mock_get_provider.return_value = mock_provider
     create = client.post(
         "/api/conversations",
         json={"title": "Conv", "model_id": "m", "system_instruction_global": "Mis instrucciones."},
@@ -234,9 +236,11 @@ def test_clear_conversation_messages_404(client):
     assert r.status_code == 404
 
 
-@patch("app.routers.api_conversations.ollama_client.chat")
-def test_send_message_ok(mock_chat, client):
-    mock_chat.return_value = "Hola, soy el asistente."
+@patch("app.routers.api_conversations.get_provider")
+def test_send_message_ok(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Hola, soy el asistente."
+    mock_get_provider.return_value = mock_provider
     create = client.post("/api/conversations", json={"title": "Chat", "model_id": "llama3.2"})
     cid = create.json()["id"]
 
@@ -248,8 +252,8 @@ def test_send_message_ok(mock_chat, client):
     data = r.json()
     assert data["role"] == "assistant"
     assert data["content"] == "Hola, soy el asistente."
-    mock_chat.assert_called_once()
-    call_messages = mock_chat.call_args[0][1]
+    mock_provider.chat.assert_called_once()
+    call_messages = mock_provider.chat.call_args[0][1]
     assert call_messages[-1]["role"] == "user"
     assert call_messages[-1]["content"] == "Hola"
 
@@ -260,9 +264,11 @@ def test_send_message_ok(mock_chat, client):
     assert get_conv.json()["messages"][1]["content"] == "Hola, soy el asistente."
 
 
-@patch("app.routers.api_conversations.ollama_client.chat")
-def test_send_message_with_instruction_override(mock_chat, client):
-    mock_chat.return_value = "Respuesta breve."
+@patch("app.routers.api_conversations.get_provider")
+def test_send_message_with_instruction_override(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Respuesta breve."
+    mock_get_provider.return_value = mock_provider
     create = client.post(
         "/api/conversations",
         json={"title": "Chat", "model_id": "m", "system_instruction_global": "Global."},
@@ -274,7 +280,7 @@ def test_send_message_with_instruction_override(mock_chat, client):
         json={"content": "Dime algo", "instruction_override": "Responde en una frase."},
     )
     assert r.status_code == 200
-    call_messages = mock_chat.call_args[0][1]
+    call_messages = mock_provider.chat.call_args[0][1]
     # Debe haber un mensaje system con global + override
     assert call_messages[0]["role"] == "system"
     assert "Global." in call_messages[0]["content"]
@@ -298,22 +304,26 @@ def test_send_message_content_required(client):
     assert r.status_code == 422
 
 
-@patch("app.routers.api_conversations.ollama_client.chat")
-def test_send_message_ollama_error(mock_chat, client):
-    mock_chat.side_effect = RuntimeError("Ollama error")
+@patch("app.routers.api_conversations.get_provider")
+def test_send_message_provider_error(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.side_effect = ConnectionError("Connection refused")
+    mock_get_provider.return_value = mock_provider
     create = client.post("/api/conversations", json={"title": "C", "model_id": "m"})
     cid = create.json()["id"]
     r = client.post(f"/api/conversations/{cid}/messages", json={"content": "Hola"})
     assert r.status_code == 502
-    assert "Ollama" in r.json()["detail"]
+    assert "ollama" in r.json()["detail"].lower()
 
 
 @patch("app.routers.api_conversations.rag.add_message")
 @patch("app.routers.api_conversations.rag.get_relevant_context")
-@patch("app.routers.api_conversations.ollama_client.chat")
-def test_send_message_calls_rag_get_context_and_add(mock_chat, mock_rag_context, mock_rag_add, client):
+@patch("app.routers.api_conversations.get_provider")
+def test_send_message_calls_rag_get_context_and_add(mock_get_provider, mock_rag_context, mock_rag_add, client):
     """Al enviar un mensaje se llama a get_relevant_context y a add_message solo para el mensaje user."""
-    mock_chat.return_value = "Respuesta."
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Respuesta."
+    mock_get_provider.return_value = mock_provider
     mock_rag_context.return_value = ""
     create = client.post("/api/conversations", json={"title": "RAG", "model_id": "m"})
     cid = create.json()["id"]
