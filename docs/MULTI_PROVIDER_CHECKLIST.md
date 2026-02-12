@@ -92,21 +92,21 @@ class LLMProvider(Protocol):
 
 ### Fase 1: Refactorización Base (Infraestructura)
 
-- [ ] **1.1** Crear `app/providers/__init__.py` - Paquete de proveedores
-- [ ] **1.2** Crear `app/providers/base.py` - Definir `LLMProvider` Protocol y `ProviderModelInfo`
-- [ ] **1.3** Crear `app/providers/ollama.py` - Refactorizar `ollama_client.py` a clase `OllamaProvider`
-  - [ ] Migrar `list_models()`, `chat()`, `chat_stream()`
-  - [ ] Añadir `validate_connection()` y `provider_name`
-  - [ ] Adaptar `chat_stream` a async iterator con formato unificado
-- [ ] **1.4** Crear `app/providers/factory.py` - `ProviderFactory` para obtener proveedores
-- [ ] **1.5** Tests unitarios para `OllamaProvider` (refactorizado)
+- [x] **1.1** Crear `app/providers/__init__.py` - Paquete de proveedores
+- [x] **1.2** Crear `app/providers/base.py` - Definir `LLMProvider` Protocol y `ProviderModelInfo`
+- [x] **1.3** Crear `app/providers/ollama.py` - Refactorizar `ollama_client.py` a clase `OllamaProvider`
+  - [x] Migrar `list_models()`, `chat()`, `chat_stream()`
+  - [x] Añadir `validate_connection()` y `provider_name`
+  - [x] Adaptar `chat_stream` a async iterator con formato unificado
+- [x] **1.4** Crear `app/providers/factory.py` - `ProviderFactory` para obtener proveedores
+- [x] **1.5** Tests unitarios para `OllamaProvider` (refactorizado)
 
 ### Fase 2: Configuración y Modelo de Datos
 
-- [ ] **2.1** Actualizar `app/config.py`:
-  - [ ] `default_provider: str = "ollama"` (proveedor por defecto)
-  - [ ] `mancer_api_key: str = ""` (API key de Mancer)
-  - [ ] `mancer_base_url: str = "https://neuro.mancer.tech"`
+- [x] **2.1** Actualizar `app/config.py`:
+  - [x] `default_provider: str = "ollama"` (proveedor por defecto)
+  - [x] `mancer_api_key: str = ""` (API key de Mancer)
+  - [x] `mancer_base_url: str = "https://neuro.mancer.tech"`
 - [ ] **2.2** Actualizar modelo `Conversation` en `app/models.py`:
   - [ ] Añadir columna `provider: str = "ollama"` (permite override por conversación)
 - [ ] **2.3** Migración de BD: añadir columna `provider` con default "ollama"
@@ -115,14 +115,14 @@ class LLMProvider(Protocol):
 
 ### Fase 3: Implementar MancerProvider
 
-- [ ] **3.1** Crear `app/providers/mancer.py` - Clase `MancerProvider`:
-  - [ ] `list_models()` → GET `/oai/v1/models`
-  - [ ] `chat()` → POST `/oai/v1/chat/completions` (sin stream)
-  - [ ] `chat_stream()` → POST `/oai/v1/chat/completions` con `stream=true`
-  - [ ] `validate_connection()` → GET `/oai/v1/models` y verificar respuesta
-  - [ ] Manejo de errores específicos de Mancer (créditos, rate limit)
-- [ ] **3.2** Registrar `MancerProvider` en `ProviderFactory`
-- [ ] **3.3** Tests unitarios para `MancerProvider` (mock de API)
+- [x] **3.1** Crear `app/providers/mancer.py` - Clase `MancerProvider`:
+  - [x] `list_models()` → GET `/oai/v1/models`
+  - [x] `chat()` → POST `/oai/v1/chat/completions` (sin stream)
+  - [x] `chat_stream()` → POST `/oai/v1/chat/completions` con `stream=true`
+  - [x] `validate_connection()` → GET `/oai/v1/models` y verificar respuesta
+  - [x] Manejo de errores específicos de Mancer (créditos, rate limit)
+- [x] **3.2** Registrar `MancerProvider` en `ProviderFactory`
+- [x] **3.3** Tests unitarios para `MancerProvider` (mock de API)
 - [ ] **3.4** Test de integración real con Mancer (opcional, requiere API key)
 
 ### Fase 4: Integrar en API/Router

@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     # Número de pares usuario-asistente a enviar a Ollama como historial (0 = sin historial). Por defecto 10.
     ollama_history_turns: int = Field(default=10, validation_alias="OLLAMA_HISTORY_TURNS")
 
+    # Multi-provider LLM
+    default_llm_provider: str = Field(default="ollama", validation_alias="DEFAULT_LLM_PROVIDER")
+    # Mancer (https://mancer.tech) - API compatible con OpenAI
+    mancer_api_key: str = Field(default="", validation_alias="MANCER_API_KEY")
+    mancer_base_url: str = Field(
+        default="https://neuro.mancer.tech",
+        validation_alias="MANCER_BASE_URL",
+    )
+
     @field_validator("ollama_history_turns", mode="before")
     @classmethod
     def parse_ollama_history_turns(cls, v):

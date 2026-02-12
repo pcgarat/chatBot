@@ -49,10 +49,11 @@ CHROMA_DEFAULT := http://localhost:8001
 PYTHON_RUN := $(if $(wildcard .venv312/bin/python),.venv312/bin/python,$(PYTHON))
 
 setup:
-	@echo "Escribiendo .env desde variables de entorno de la sesión (OPENAI_API_KEY, CHROMA_HOST)..."
-	@touch .env && (grep -v '^OPENAI_API_KEY=' .env 2>/dev/null | grep -v '^CHROMA_HOST=' > .env.tmp && mv .env.tmp .env) || true
+	@echo "Escribiendo .env desde variables de entorno de la sesión (OPENAI_API_KEY, CHROMA_HOST, MANCER_API_KEY)..."
+	@touch .env && (grep -v '^OPENAI_API_KEY=' .env 2>/dev/null | grep -v '^CHROMA_HOST=' | grep -v '^MANCER_API_KEY=' | grep -v '^MACENRAI_API_KEY=' > .env.tmp && mv .env.tmp .env) || true
 	@if [ -n "$$OPENAI_API_KEY" ]; then echo "OPENAI_API_KEY=$$OPENAI_API_KEY" >> .env; echo "  OPENAI_API_KEY escrita en .env"; else echo "  OPENAI_API_KEY no está definida en la sesión; exporta la key y vuelve a hacer make up si quieres RAG."; fi
 	@echo "CHROMA_HOST=$${CHROMA_HOST:-$(CHROMA_DEFAULT)}" >> .env && echo "  CHROMA_HOST=$${CHROMA_HOST:-$(CHROMA_DEFAULT)} escrito en .env"
+	@if [ -n "$$MANCER_API_KEY" ]; then echo "MANCER_API_KEY=$$MANCER_API_KEY" >> .env; echo "  MANCER_API_KEY escrita en .env"; else echo "  MANCER_API_KEY no está definida en la sesión (opcional: para usar Mancer como proveedor LLM)."; fi
 	@if [ ! -d $(VENV) ]; then echo "Creando entorno virtual..."; python3 -m venv $(VENV); fi
 	@echo "Instalando dependencias..."
 	@$(PIP) install -r requirements.txt
