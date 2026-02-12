@@ -10,8 +10,10 @@
     conversationsList: document.getElementById("conversations-list"),
     conversationTitle: document.getElementById("conversation-title"),
     modelSelect: document.getElementById("model-select"),
+    btnRefreshModels: document.getElementById("btn-refresh-models"),
     systemInstructionGlobal: document.getElementById("system-instruction-global"),
     saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
+    showDebugModeCheck: document.getElementById("show-debug-mode"),
     messagesContainer: document.getElementById("messages-container"),
     instructionOverride: document.getElementById("instruction-override"),
     messageInput: document.getElementById("message-input"),
@@ -53,17 +55,31 @@
     return res.json();
   }
 
-  async function loadModels() {
+  async function loadModels(preserveSelection = false) {
+    const previousModel = preserveSelection && el.modelSelect ? el.modelSelect.value : null;
     try {
       const data = await fetchJson(`${API}/models`);
       models = data.map((m) => m.name);
       if (el.modelSelect) {
         el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+        if (previousModel && models.includes(previousModel)) {
+          el.modelSelect.value = previousModel;
+        }
       }
       return models;
     } catch (e) {
       showError("No se pudieron cargar los modelos: " + e.message);
       return [];
+    }
+  }
+
+  async function refreshModels() {
+    if (el.btnRefreshModels) el.btnRefreshModels.classList.add("loading");
+    try {
+      await loadModels(true);
+      showNotice("Lista de modelos actualizada.");
+    } finally {
+      if (el.btnRefreshModels) el.btnRefreshModels.classList.remove("loading");
     }
   }
 
@@ -77,6 +93,7 @@
   }
 
   const deleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
+  const clearHistoryIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 6h18\"/><path d=\"M8 6V4h8v2\"/><path d=\"M5 6l1 14h12l1-14\"/><path d=\"M10 10v7\"/><path d=\"M14 10v7\"/></svg>";
 
   function renderConversationsList(list) {
     if (!el.conversationsList) return;
@@ -86,6 +103,7 @@
           `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}">
             <div class="conv-row">
               <span class="conv-title">${escapeHtml(c.title)}</span>
+              <button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>
               <button type="button" class="conv-delete-btn" data-id="${escapeHtml(c.id)}" title="Eliminar conversación" aria-label="Eliminar conversación">${deleteIconSvg}</button>
             </div>
             <div class="conv-meta">${escapeHtml(c.model_id)} · ${formatDate(c.updated_at)}</div>
@@ -94,8 +112,15 @@
       .join("");
     el.conversationsList.querySelectorAll(".conversation-item").forEach((node) => {
       node.addEventListener("click", (e) => {
-        if (e.target.closest(".conv-delete-btn")) return;
+        if (e.target.closest(".conv-delete-btn") || e.target.closest(".conv-clear-btn")) return;
         openConversation(node.dataset.id);
+      });
+    });
+    el.conversationsList.querySelectorAll(".conv-clear-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        clearConversationHistory(btn.dataset.id);
       });
     });
     el.conversationsList.querySelectorAll(".conv-delete-btn").forEach((btn) => {
@@ -122,6 +147,23 @@
     }
   }
 
+  async function clearConversationHistory(id) {
+    try {
+      const res = await fetch(`${API}/conversations/${id}/messages`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      if (currentConversationId === id) {
+        messages = [];
+        renderMessages();
+      }
+      showNotice("Historial de mensajes borrado.");
+    } catch (e) {
+      showError("Error al limpiar historial: " + e.message);
+    }
+  }
+
   function formatDate(iso) {
     try {
       const d = new Date(iso);
@@ -144,7 +186,13 @@
       if (el.conversationTitle) el.conversationTitle.value = conv.title;
       if (el.modelSelect) el.modelSelect.value = conv.model_id;
       if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = conv.system_instruction_global || "";
-      messages = (conv.messages || []).map((m) => ({ role: m.role, content: m.content, id: m.id || null }));
+      messages = (conv.messages || []).map((m) => ({
+        role: m.role,
+        content: m.content,
+        id: m.id || null,
+        debug_request: m.debug_request || null,
+        debug_response: m.debug_response || null,
+      }));
     } else {
       if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
       if (el.modelSelect) el.modelSelect.value = models[0] || "llama3.2";
@@ -217,21 +265,36 @@
     }
   }
 
+  function isShowDebugMode() {
+    return el.showDebugModeCheck && el.showDebugModeCheck.checked;
+  }
+
   function renderMessages() {
     if (!el.messagesContainer) return;
     if (messages.length === 0) {
       el.messagesContainer.innerHTML = '<div class="empty-state">Escribe un mensaje para empezar.</div>';
       return;
     }
+    const showDebug = isShowDebugMode();
     el.messagesContainer.innerHTML = messages
       .map(
         (m) => {
           const saveBtn = m.id
             ? `<div class="message-footer"><button type="button" class="msg-save-chromadb-btn" data-save-chromadb="${escapeHtml(m.id)}" title="Guardar en ChromaDB">${saveToChromaIconSvg}</button></div>`
             : "";
+          let debugHtml = "";
+          if (showDebug && m.role === "assistant" && (m.debug_request || m.debug_response)) {
+            if (m.debug_request) {
+              debugHtml += `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${escapeHtml(m.debug_request)}</div>`;
+            }
+            if (m.debug_response) {
+              debugHtml += `<div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(m.debug_response)}</div>`;
+            }
+          }
           return `<div class="message ${m.role}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
             <div class="role-label">${m.role === "user" ? "Tú" : "Asistente"}</div>
             <div class="content">${escapeHtml(m.content).replace(/\n/g, "<br>")}</div>
+            ${debugHtml}
             ${saveBtn}
           </div>`;
         }
@@ -264,9 +327,13 @@
 
     const msgEl = document.createElement("div");
     msgEl.className = "message assistant";
-    msgEl.innerHTML = '<div class="role-label">Asistente</div><div class="content"></div>';
+    const showDebug = isShowDebugMode();
+    msgEl.innerHTML = showDebug
+      ? '<div class="role-label">Asistente</div><div class="content"></div><div class="message-debug-stream" style="display:block"></div>'
+      : '<div class="role-label">Asistente</div><div class="content"></div>';
     if (el.messagesContainer) el.messagesContainer.appendChild(msgEl);
     const contentEl = msgEl.querySelector(".content");
+    const debugStreamEl = msgEl.querySelector(".message-debug-stream");
     if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
 
     currentAbortController = new AbortController();
@@ -293,6 +360,8 @@
       const decoder = new TextDecoder();
       let buffer = "";
       let fullContent = "";
+      let debugRequest = null;
+      const debugMetaLines = []; // Solo metadata (sin los chunks de content)
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -303,7 +372,24 @@
           if (!line.trim()) continue;
           try {
             const data = JSON.parse(line);
-            if (data.error) throw new Error(data.error);
+            // Solo guardar en debug las líneas que NO son chunks de contenido
+            const isContentChunk = data.content !== undefined && Object.keys(data).length === 1;
+            if (!isContentChunk) {
+              debugMetaLines.push(line);
+              if (showDebug && debugStreamEl) {
+                debugStreamEl.innerHTML = `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${debugRequest ? escapeHtml(debugRequest) : "(cargando...)"}</div><div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(debugMetaLines.join("\n"))}</div>`;
+              }
+            }
+            if (data.debug_request) {
+              debugRequest = data.debug_request;
+              if (showDebug && debugStreamEl) {
+                debugStreamEl.innerHTML = `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${escapeHtml(debugRequest)}</div><div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(debugMetaLines.join("\n"))}</div>`;
+              }
+            }
+            if (data.error) {
+              fullContent += `[Error: ${data.error}]`;
+              contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
+            }
             if (data.user_message_id && messages.length > 0) {
               messages[messages.length - 1].id = data.user_message_id;
             }
@@ -314,7 +400,13 @@
             }
             if (data.done) {
               msgEl.remove();
-              messages.push({ role: "assistant", content: fullContent, id: data.id || null });
+              messages.push({
+                role: "assistant",
+                content: fullContent,
+                id: data.id || null,
+                debug_request: debugRequest || null,
+                debug_response: debugMetaLines.length > 0 ? debugMetaLines.join("\n") : null,
+              });
               renderMessages();
               loadConversations();
             }
@@ -386,8 +478,10 @@
   if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
   if (el.btnSend) el.btnSend.addEventListener("click", sendMessage);
+  if (el.showDebugModeCheck) el.showDebugModeCheck.addEventListener("change", renderMessages);
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
+  if (el.btnRefreshModels) el.btnRefreshModels.addEventListener("click", refreshModels);
   if (el.modelSelect) el.modelSelect.addEventListener("change", onModelChange);
   if (el.messageInput) {
     el.messageInput.addEventListener("keydown", function (e) {

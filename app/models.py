@@ -38,5 +38,9 @@ class Message(Base):
     content = Column(Text, nullable=False)
     instruction_override = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Debug: payload enviado a Ollama (solo mensajes assistant)
+    debug_request_json = Column(Text, nullable=True)
+    # Debug: raw del stream (líneas NDJSON enviadas al cliente)
+    debug_response_raw = Column(Text, nullable=True)
 
     conversation = relationship("Conversation", back_populates="messages")

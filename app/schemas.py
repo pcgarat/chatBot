@@ -28,6 +28,8 @@ class MessageInChat(BaseModel):
     role: str
     content: str
     id: Optional[str] = None
+    debug_request: Optional[str] = None  # JSON enviado al LLM (solo assistant)
+    debug_response: Optional[str] = None  # Raw del stream (solo assistant)
 
 
 class ConversationOut(BaseModel):

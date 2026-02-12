@@ -8,7 +8,7 @@ PYTEST := $(VENV)/bin/pytest
 PORT ?= 8000
 PIDFILE := .server.pid
 
-.PHONY: help up down start start-verbose stop reload reload-dev test status clean setup
+.PHONY: help up down start start-verbose stop reload reload-dev restart-dev test status clean setup
 .PHONY: chroma-up chroma-down chroma-logs chroma-status chroma-clean chroma-ping ingest venv312
 
 help:
@@ -21,6 +21,7 @@ help:
 	@echo "  make stop    Detener el servidor"
 	@echo "  make reload  make down + make up (reinicio completo)"
 	@echo "  make reload-dev  make down + setup + tests + start-verbose (dev con tests antes de levantar)"
+	@echo "  make restart-dev  make stop + tests + start-verbose (rápido: sin recrear venv)"
 	@echo "  make test    Ejecutar los tests"
 	@echo "  make status  Mostrar estado del entorno y del servidor"
 	@echo "  make clean   Parar la app y borrar .server.pid (no toca Docker ni Chroma)"
@@ -64,6 +65,11 @@ reload: down
 
 reload-dev: down
 	@$(MAKE) setup
+	@$(MAKE) test
+	@$(MAKE) start-verbose
+
+restart-dev:
+	@$(MAKE) stop
 	@$(MAKE) test
 	@$(MAKE) start-verbose
 

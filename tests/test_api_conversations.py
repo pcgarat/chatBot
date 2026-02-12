@@ -206,6 +206,35 @@ def test_delete_conversation_404(client):
 
 
 @patch("app.routers.api_conversations.ollama_client.chat")
+def test_clear_conversation_messages(mock_chat, client):
+    """Limpiar historial borra mensajes pero mantiene la conversación y sus instrucciones."""
+    mock_chat.return_value = "Respuesta."
+    create = client.post(
+        "/api/conversations",
+        json={"title": "Conv", "model_id": "m", "system_instruction_global": "Mis instrucciones."},
+    )
+    cid = create.json()["id"]
+    # Enviar un mensaje
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "Hola"})
+    # Verificar que hay mensajes
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert len(conv["messages"]) == 2
+    # Limpiar historial
+    r = client.delete(f"/api/conversations/{cid}/messages")
+    assert r.status_code == 204
+    # Verificar que no hay mensajes pero sí conversación con instrucciones
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert len(conv["messages"]) == 0
+    assert conv["system_instruction_global"] == "Mis instrucciones."
+    assert conv["title"] == "Conv"
+
+
+def test_clear_conversation_messages_404(client):
+    r = client.delete("/api/conversations/00000000-0000-0000-0000-000000000000/messages")
+    assert r.status_code == 404
+
+
+@patch("app.routers.api_conversations.ollama_client.chat")
 def test_send_message_ok(mock_chat, client):
     mock_chat.return_value = "Hola, soy el asistente."
     create = client.post("/api/conversations", json={"title": "Chat", "model_id": "llama3.2"})

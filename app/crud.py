@@ -96,12 +96,16 @@ def add_message(
     role: str,
     content: str,
     instruction_override: str | None = None,
+    debug_request_json: str | None = None,
+    debug_response_raw: str | None = None,
 ) -> Message:
     msg = Message(
         conversation_id=conversation_id,
         role=role,
         content=content,
         instruction_override=instruction_override,
+        debug_request_json=debug_request_json,
+        debug_response_raw=debug_response_raw,
     )
     db.add(msg)
     db.commit()
@@ -125,3 +129,10 @@ def delete_last_message(db: Session, conversation_id: str) -> bool:
     db.delete(last)
     db.commit()
     return True
+
+
+def clear_conversation_messages(db: Session, conversation_id: str) -> int:
+    """Elimina todos los mensajes de una conversación. Devuelve el número de mensajes eliminados."""
+    count = db.query(Message).filter(Message.conversation_id == conversation_id).delete()
+    db.commit()
+    return count

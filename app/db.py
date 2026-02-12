@@ -35,3 +35,11 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # Migración: añadir debug_request_json y debug_response_raw en messages
+    with engine.connect() as conn:
+        for col in ("debug_request_json", "debug_response_raw"):
+            try:
+                conn.execute(text(f"ALTER TABLE messages ADD COLUMN {col} TEXT"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
