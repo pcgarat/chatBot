@@ -125,6 +125,16 @@ def touch_conversation(db: Session, conversation_id: str) -> None:
         db.commit()
 
 
+def delete_message(db: Session, conversation_id: str, message_id: str) -> bool:
+    """Elimina un mensaje por id dentro de la conversación. Devuelve True si existía y se eliminó."""
+    msg = get_message(db, conversation_id, message_id)
+    if not msg:
+        return False
+    db.delete(msg)
+    db.commit()
+    return True
+
+
 def delete_last_message(db: Session, conversation_id: str) -> bool:
     """Elimina el último mensaje de la conversación (el más reciente). Devuelve True si se eliminó uno."""
     msgs = get_messages(db, conversation_id)

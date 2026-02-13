@@ -403,6 +403,21 @@
     }
   }
 
+  async function deleteMessageFromHistory(conversationId, messageId) {
+    try {
+      const res = await fetch(`${API}/conversations/${conversationId}/messages/${messageId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      messages = messages.filter((m) => m.id !== messageId);
+      renderMessages();
+      showNotice("Mensaje eliminado del historial.");
+    } catch (e) {
+      showError("Error al eliminar mensaje: " + e.message);
+    }
+  }
+
   function formatDate(iso) {
     try {
       const d = new Date(iso);
@@ -410,6 +425,14 @@
     } catch (_) {
       return "";
     }
+  }
+
+  /** Título por defecto para una conversación nueva: fecha y hora actual en español. */
+  function defaultConversationTitle() {
+    const now = new Date();
+    const date = now.toLocaleDateString("es", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const time = now.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+    return `${date} ${time}`;
   }
 
   function escapeHtml(s) {
@@ -438,7 +461,7 @@
         debug_response: m.debug_response || null,
       }));
     } else {
-      if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
+      if (el.conversationTitle) el.conversationTitle.value = defaultConversationTitle();
       currentProvider = providers[0] || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
       if (el.modelSelect) el.modelSelect.value = models[0] || "";
@@ -465,7 +488,7 @@
       const conv = await fetchJson(`${API}/conversations`, {
         method: "POST",
         body: JSON.stringify({
-          title: "Nueva conversación",
+          title: defaultConversationTitle(),
           model_id: model,
           provider: provider,
           system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
@@ -487,7 +510,7 @@
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
         body: JSON.stringify({
-          title: (el.conversationTitle && el.conversationTitle.value.trim()) || "Nueva conversación",
+          title: (el.conversationTitle && el.conversationTitle.value.trim()) || defaultConversationTitle(),
           model_id: (el.modelSelect && el.modelSelect.value) || "",
           provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
           system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,

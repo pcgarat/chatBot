@@ -41,38 +41,40 @@ body {
 }
 
 .sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
 }
 
 .sidebar-header h1 {
-  margin: 0 0 0.75rem 0;
+  margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
 }
 
 .sidebar-header-actions {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
-.sidebar-header-actions .btn {
-  flex: 1;
-  min-width: 0;
+.sidebar-header-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.sidebar-presets-actions {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-
-.sidebar-presets-actions .btn {
-  flex: 1;
-  min-width: 0;
+.sidebar-header-btn svg {
+  display: block;
 }
 
 /* Acordeón del sidebar */
@@ -92,10 +94,9 @@ body {
 }
 
 .accordion-section[data-accordion-section="conversaciones"] {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .accordion-header {
@@ -149,12 +150,11 @@ body {
 }
 
 .accordion-section[data-accordion-section="conversaciones"] .accordion-content {
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
 }
 
 .accordion-section.is-open[data-accordion-section="conversaciones"] .accordion-content {
-  max-height: none;
+  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -283,7 +283,6 @@ body {
 }
 
 .sidebar-accordion .conversations-list {
-  flex: 1;
   min-height: 0;
 }
 
@@ -310,7 +309,6 @@ body {
 }
 
 .conversations-list {
-  flex: 1;
   overflow-y: auto;
   padding: 0.5rem;
 }
@@ -477,9 +475,6 @@ body {
   background: var(--border);
 }
 
-#btn-new-chat {
-  width: 100%;
-}
 
 /* Chat area */
 .chat-area {
@@ -734,6 +729,13 @@ body {
   align-items: flex-end;
 }
 
+.send-row-buttons {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
 #message-input {
   flex: 1;
   padding: 0.75rem 1rem;
@@ -752,9 +754,32 @@ body {
   border-color: var(--accent);
 }
 
-#btn-send {
-  flex-shrink: 0;
+#btn-cancel-message {
+  width: 48px;
   height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+
+#btn-cancel-message:hover {
+  color: var(--accent);
+  background: rgba(96, 165, 250, 0.15);
+  border-color: var(--accent);
+}
+
+#btn-cancel-message svg {
+  width: 20px;
+  height: 20px;
+}
+
+#btn-send {
+  height: 48px;
+  min-height: 48px;
   padding-left: 1.25rem;
   padding-right: 1.25rem;
 }

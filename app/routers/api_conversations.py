@@ -147,6 +147,16 @@ def clear_conversation_messages(conversation_id: str, db: Session = Depends(get_
     return None
 
 
+@router.delete("/conversations/{conversation_id}/messages/{message_id}", status_code=204)
+def delete_message(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+    """Elimina un mensaje del historial de la conversación."""
+    ok = crud.delete_message(db, conversation_id, message_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    rag.delete_message_document(conversation_id, message_id)
+    return None
+
+
 @router.post("/conversations/{conversation_id}/messages/{message_id}/save-to-chromadb", status_code=204)
 def save_message_to_chromadb(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
     """Guarda un mensaje concreto en ChromaDB (para el icono de guardar bajo cada mensaje)."""

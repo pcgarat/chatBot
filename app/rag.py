@@ -207,6 +207,19 @@ def get_relevant_context(conversation_id: str, query: str, n_results: int = RAG_
         return ""
 
 
+def delete_message_document(conversation_id: str, message_id: str) -> None:
+    """Elimina el documento de un mensaje en Chroma (al borrar ese mensaje del historial)."""
+    if not _rag_available():
+        return
+    try:
+        coll = _get_collection()
+        if coll is None:
+            return
+        coll.delete(ids=[str(message_id)])
+    except Exception:
+        pass
+
+
 def delete_conversation_documents(conversation_id: str) -> None:
     """
     Elimina todos los documentos de la conversación en Chroma (al borrar la conversación).
