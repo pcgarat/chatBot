@@ -146,6 +146,16 @@ def delete_last_message(db: Session, conversation_id: str) -> bool:
     return True
 
 
+def delete_message(db: Session, conversation_id: str, message_id: str) -> bool:
+    """Elimina un mensaje por id. Devuelve True si existía y se eliminó."""
+    msg = get_message(db, conversation_id, message_id)
+    if not msg:
+        return False
+    db.delete(msg)
+    db.commit()
+    return True
+
+
 def clear_conversation_messages(db: Session, conversation_id: str) -> int:
     """Elimina todos los mensajes de una conversación. Devuelve el número de mensajes eliminados."""
     count = db.query(Message).filter(Message.conversation_id == conversation_id).delete()

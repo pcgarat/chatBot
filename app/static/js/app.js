@@ -7,6 +7,8 @@
   let models = [];
   let currentProvider = "ollama";
   let currentAbortController = null;
+  /** Parámetros del proveedor actual: { provider, params: { paramId: { type, default, min, max, api_key } } } */
+  let paramsConfig = { provider: "", params: {} };
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
@@ -30,8 +32,10 @@
     presetModal: document.getElementById("preset-modal"),
     presetList: document.getElementById("preset-list"),
     presetModalClose: document.getElementById("preset-modal-close"),
-    paramAleatoriedadMode: document.getElementById("param-aleatoriedad-mode"),
   };
+
+  const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
+  const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1\"/></svg>";
 
   function showError(msg) {
     const toast = document.createElement("div");
@@ -86,6 +90,22 @@
     }
   }
 
+  /** Intenta cargar modelos de un proveedor. Devuelve true si ok, false si falló. */
+  async function tryLoadModelsForProvider(providerName) {
+    try {
+      const data = await fetchJson(`${API}/providers/${providerName}/models`);
+      models = data.map((m) => m.name);
+      currentProvider = providerName;
+      if (el.providerSelect) el.providerSelect.value = providerName;
+      if (el.modelSelect) {
+        el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function loadModels(preserveSelection = false) {
     const previousModel = preserveSelection && el.modelSelect ? el.modelSelect.value : null;
     const provider = (el.providerSelect && el.providerSelect.value) ? el.providerSelect.value : currentProvider || "ollama";
@@ -104,22 +124,6 @@
       models = [];
       if (el.modelSelect) el.modelSelect.innerHTML = "";
       return [];
-    }
-  }
-
-  /** Intenta cargar modelos de un proveedor. Devuelve true si OK, false si falla (sin mostrar error). */
-  async function tryLoadModelsForProvider(providerName) {
-    try {
-      const data = await fetchJson(`${API}/providers/${providerName}/models`);
-      models = data.map((m) => m.name);
-      currentProvider = providerName;
-      if (el.providerSelect) el.providerSelect.value = providerName;
-      if (el.modelSelect) {
-        el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-      }
-      return true;
-    } catch (_) {
-      return false;
     }
   }
 
@@ -170,26 +174,6 @@
         control.classList.add("control-disabled");
       }
     });
-  }
-
-  /** Pone un único control de parámetro en su valor por defecto (paramsConfig). Usado al cambiar temperature/top_p para no enviar ambos. */
-  function setParamControlToDefault(paramId) {
-    const spec = paramsConfig.params[paramId];
-    if (!spec) return;
-    const control = document.querySelector(`[data-control-id="${paramId}"]`);
-    if (!control) return;
-    const def = spec.default;
-    if (control.tagName === "INPUT" || control.tagName === "TEXTAREA") {
-      if (control.type === "number" && (typeof def === "number" || typeof def === "string")) {
-        control.value = def !== null ? String(def) : "";
-      } else if (Array.isArray(def)) {
-        control.value = def.join("\n");
-      } else {
-        control.value = def !== undefined && def !== null ? String(def) : "";
-      }
-    } else if (control.tagName === "SELECT") {
-      control.value = def !== undefined && def !== null ? String(def) : "";
-    }
   }
 
   /** Restaura todos los controles de parámetros a los valores por defecto del proveedor (no se envía model_params). */
@@ -269,10 +253,7 @@
 
   function buildModelParams() {
     const out = {};
-    const aleatoriedadMode = (el.paramAleatoriedadMode && el.paramAleatoriedadMode.value) || "temperature";
     for (const paramId of Object.keys(paramsConfig.params)) {
-      if (paramId === "temperature" && aleatoriedadMode === "top_p") continue;
-      if (paramId === "top_p" && aleatoriedadMode === "temperature") continue;
       const spec = paramsConfig.params[paramId];
       const control = document.querySelector(`[data-control-id="${paramId}"]`);
       if (!control || control.disabled) continue;
@@ -296,10 +277,7 @@
       } else {
         same = (typeof def === "number" && Number(current) === def) || (current === def) || (String(current) === String(def));
       }
-      if (!same) {
-        if (spec.type === "string_list" && Array.isArray(current) && current.length === 0) continue;
-        out[paramId] = current;
-      }
+      if (!same) out[paramId] = current;
     }
     return out;
   }
@@ -307,6 +285,7 @@
   async function onProviderChange() {
     currentProvider = el.providerSelect ? el.providerSelect.value : "ollama";
     await loadModels(false);
+    await loadParamsForProvider(currentProvider);
     // Actualizar conversación si hay una abierta
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
@@ -330,9 +309,6 @@
 
   const deleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
   const clearHistoryIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 6h18\"/><path d=\"M8 6V4h8v2\"/><path d=\"M5 6l1 14h12l1-14\"/><path d=\"M10 10v7\"/><path d=\"M14 10v7\"/></svg>";
-  const arrowDownToInputSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"/><path d=\"M19 12l-7 7-7-7\"/></svg>";
-  const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
-  const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"/></svg>";
 
   function renderConversationsList(list) {
     if (!el.conversationsList) return;
@@ -403,21 +379,6 @@
     }
   }
 
-  async function deleteMessageFromHistory(conversationId, messageId) {
-    try {
-      const res = await fetch(`${API}/conversations/${conversationId}/messages/${messageId}`, { method: "DELETE" });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || res.statusText);
-      }
-      messages = messages.filter((m) => m.id !== messageId);
-      renderMessages();
-      showNotice("Mensaje eliminado del historial.");
-    } catch (e) {
-      showError("Error al eliminar mensaje: " + e.message);
-    }
-  }
-
   function formatDate(iso) {
     try {
       const d = new Date(iso);
@@ -427,12 +388,15 @@
     }
   }
 
-  /** Título por defecto para una conversación nueva: fecha y hora actual en español. */
-  function defaultConversationTitle() {
+  function getDefaultConversationTitle() {
     const now = new Date();
-    const date = now.toLocaleDateString("es", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const time = now.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
-    return `${date} ${time}`;
+    return now.toLocaleString("es", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 
   function escapeHtml(s) {
@@ -453,6 +417,7 @@
       await loadModels(false);
       if (el.modelSelect) el.modelSelect.value = conv.model_id;
       if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = conv.system_instruction_global || "";
+      await loadParamsForProvider(currentProvider);
       messages = (conv.messages || []).map((m) => ({
         role: m.role,
         content: m.content,
@@ -461,11 +426,12 @@
         debug_response: m.debug_response || null,
       }));
     } else {
-      if (el.conversationTitle) el.conversationTitle.value = defaultConversationTitle();
+      if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
       currentProvider = providers[0] || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
       if (el.modelSelect) el.modelSelect.value = models[0] || "";
       if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = "";
+      await loadParamsForProvider(currentProvider);
       messages = [];
     }
     renderMessages();
@@ -488,14 +454,13 @@
       const conv = await fetchJson(`${API}/conversations`, {
         method: "POST",
         body: JSON.stringify({
-          title: defaultConversationTitle(),
+          title: getDefaultConversationTitle(),
           model_id: model,
           provider: provider,
           system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
         }),
       });
       await setCurrentConversation(conv);
-      await loadConversations();
     } catch (e) {
       showError("Error al crear conversación: " + e.message);
     }
@@ -510,33 +475,39 @@
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
         body: JSON.stringify({
-          title: (el.conversationTitle && el.conversationTitle.value.trim()) || defaultConversationTitle(),
+          title: (el.conversationTitle && el.conversationTitle.value.trim()) || getDefaultConversationTitle(),
           model_id: (el.modelSelect && el.modelSelect.value) || "",
           provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
           system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
         }),
       });
       await setCurrentConversation(conv);
-      await loadConversations();
     } catch (e) {
       showError("Error al guardar: " + e.message);
     }
   }
 
-  async function saveMessageToChromadb(conversationId, messageId) {
-    const btn = document.querySelector(`[data-save-chromadb="${messageId}"]`);
-    if (btn) btn.disabled = true;
+  async function deleteMessageFromHistory(conversationId, messageId) {
     try {
-      const res = await fetch(`${API}/conversations/${conversationId}/messages/${messageId}/save-to-chromadb`, { method: "POST" });
+      const res = await fetch(`${API}/conversations/${conversationId}/messages/${messageId}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || res.statusText);
       }
-      showNotice("Mensaje guardado en ChromaDB.");
+      messages = messages.filter((m) => m.id !== messageId);
+      renderMessages();
+      loadConversations();
+      showNotice("Mensaje eliminado del historial.");
     } catch (e) {
-      showError("Error al guardar en ChromaDB: " + e.message);
-      if (btn) btn.disabled = false;
+      showError("Error al eliminar: " + e.message);
     }
+  }
+
+  function copyMessageToClipboard(content) {
+    navigator.clipboard.writeText(content).then(
+      () => showNotice("Copiado al portapapeles."),
+      () => showError("No se pudo copiar.")
+    );
   }
 
   function isShowDebugMode() {
@@ -555,7 +526,6 @@
         (m) => {
           const footerBtns = m.id
             ? `<div class="message-footer">
-                <button type="button" class="msg-action-btn msg-to-input-btn" data-msg-id="${escapeHtml(m.id)}" title="Enviar al cuadro de mensaje">${arrowDownToInputSvg}</button>
                 <button type="button" class="msg-action-btn msg-delete-btn" data-msg-id="${escapeHtml(m.id)}" title="Eliminar del historial">${msgDeleteIconSvg}</button>
                 <button type="button" class="msg-action-btn msg-copy-btn" data-msg-id="${escapeHtml(m.id)}" title="Copiar">${msgCopyIconSvg}</button>
               </div>`
@@ -578,17 +548,6 @@
         }
       )
       .join("");
-    el.messagesContainer.querySelectorAll(".msg-to-input-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        const msgId = btn.dataset.msgId;
-        const msg = msgId ? messages.find((m) => m.id === msgId) : null;
-        if (msg && msg.content && el.messageInput) {
-          el.messageInput.value = msg.content;
-          el.messageInput.focus();
-        }
-      });
-    });
     el.messagesContainer.querySelectorAll(".msg-delete-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -638,15 +597,18 @@
     try {
       const systemInstructionGlobal = (el.systemInstructionGlobal && el.systemInstructionGlobal.value) ? el.systemInstructionGlobal.value.trim() : "";
       const saveToChromadb = (el.saveToChromadbSelect && el.saveToChromadbSelect.value) ? el.saveToChromadbSelect.value : "user";
+      const modelParams = buildModelParams();
+      const bodyPayload = {
+        content,
+        instruction_override: instructionOverride,
+        system_instruction_global: systemInstructionGlobal,
+        save_to_chromadb: saveToChromadb,
+      };
+      if (Object.keys(modelParams).length > 0) bodyPayload.model_params = modelParams;
       const res = await fetch(`${API}/conversations/${currentConversationId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content,
-          instruction_override: instructionOverride,
-          system_instruction_global: systemInstructionGlobal,
-          save_to_chromadb: saveToChromadb,
-        }),
+        body: JSON.stringify(bodyPayload),
         signal: currentAbortController.signal,
       });
       if (!res.ok) {
@@ -752,16 +714,28 @@
   }
 
   async function onModelChange() {
-    try {
-      await fetchJson(`${API}/ollama/clear-memory`, { method: "POST" });
-    } catch (e) {
-      showError("Error al limpiar memoria de Ollama: " + (e.message || "desconocido"));
-      return;
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
+    let ollamaActive = false;
+    if (provider === "ollama") {
+      try {
+        await fetchJson(`${API}/providers/ollama/validate`);
+        ollamaActive = true;
+      } catch (_) {
+        // Ollama no está activo: no llamar a clear-memory
+      }
+    }
+    if (ollamaActive) {
+      try {
+        await fetchJson(`${API}/ollama/clear-memory`, { method: "POST" });
+      } catch (e) {
+        showError("Error al limpiar memoria de Ollama: " + (e.message || "desconocido"));
+        return;
+      }
     }
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
-        body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "llama3.2" }),
+        body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "" }),
       }).catch(() => {});
     }
   }
@@ -784,13 +758,6 @@
   if (el.presetModal) {
     el.presetModal.addEventListener("click", (e) => {
       if (e.target === el.presetModal) closePresetModal();
-    });
-  }
-  if (el.paramAleatoriedadMode) {
-    el.paramAleatoriedadMode.addEventListener("change", () => {
-      const mode = el.paramAleatoriedadMode.value;
-      if (mode === "temperature") setParamControlToDefault("top_p");
-      else if (mode === "top_p") setParamControlToDefault("temperature");
     });
   }
   if (el.btnRefreshModels) el.btnRefreshModels.addEventListener("click", refreshModels);
@@ -926,35 +893,23 @@
   }
 
   function initAccordionState() {
-    const sections = Array.from(document.querySelectorAll(".accordion-section[data-accordion-section]"));
     const state = getAccordionState();
-    if (state) {
-      sections.forEach((section) => {
-        const id = section.dataset.accordionSection;
-        const isOpen = state[id];
-        if (typeof isOpen === "boolean") {
-          if (isOpen) {
-            section.classList.add("is-open");
-            const btn = section.querySelector(".accordion-header");
-            if (btn) btn.setAttribute("aria-expanded", "true");
-          } else {
-            section.classList.remove("is-open");
-            const btn = section.querySelector(".accordion-header");
-            if (btn) btn.setAttribute("aria-expanded", "false");
-          }
+    if (!state) return;
+    document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((section) => {
+      const id = section.dataset.accordionSection;
+      const isOpen = state[id];
+      if (typeof isOpen === "boolean") {
+        if (isOpen) {
+          section.classList.add("is-open");
+          const btn = section.querySelector(".accordion-header");
+          if (btn) btn.setAttribute("aria-expanded", "true");
+        } else {
+          section.classList.remove("is-open");
+          const btn = section.querySelector(".accordion-header");
+          if (btn) btn.setAttribute("aria-expanded", "false");
         }
-      });
-    }
-    // Solo una categoría abierta: cerrar todas salvo la primera que esté abierta
-    const openSections = sections.filter((s) => s.classList.contains("is-open"));
-    if (openSections.length > 1) {
-      openSections.slice(1).forEach((section) => {
-        section.classList.remove("is-open");
-        const btn = section.querySelector(".accordion-header");
-        if (btn) btn.setAttribute("aria-expanded", "false");
-      });
-      saveAccordionState();
-    }
+      }
+    });
   }
 
   initAccordionState();
@@ -963,19 +918,8 @@
     btn.addEventListener("click", () => {
       const section = btn.closest(".accordion-section");
       if (!section) return;
-      section.classList.toggle("is-open");
-      const isOpen = section.classList.contains("is-open");
+      const isOpen = section.classList.toggle("is-open");
       btn.setAttribute("aria-expanded", isOpen);
-      // Al abrir una categoría, contraer el resto (solo una abierta a la vez)
-      if (isOpen) {
-        document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((other) => {
-          if (other !== section) {
-            other.classList.remove("is-open");
-            const otherBtn = other.querySelector(".accordion-header");
-            if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
-          }
-        });
-      }
       saveAccordionState();
     });
   });

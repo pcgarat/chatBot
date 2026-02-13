@@ -89,13 +89,19 @@ class LLMProvider(Protocol):
         """
         ...
 
-    def chat(self, model: str, messages: list[dict[str, Any]]) -> str:
+    def chat(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra_body: dict[str, Any] | None = None,
+    ) -> str:
         """
         Envía mensajes y devuelve la respuesta completa (sin streaming).
 
         Args:
             model: Nombre del modelo a usar.
             messages: Lista de mensajes con format {"role": str, "content": str}.
+            extra_body: Fragmento a fusionar en el payload HTTP (parámetros de generación).
 
         Returns:
             Contenido de la respuesta del asistente.
@@ -107,7 +113,10 @@ class LLMProvider(Protocol):
         ...
 
     async def chat_stream(
-        self, model: str, messages: list[dict[str, Any]]
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra_body: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """
         Streaming de respuesta.
@@ -115,6 +124,7 @@ class LLMProvider(Protocol):
         Args:
             model: Nombre del modelo a usar.
             messages: Lista de mensajes con format {"role": str, "content": str}.
+            extra_body: Fragmento a fusionar en el payload HTTP (parámetros de generación).
 
         Yields:
             StreamChunk con contenido parcial, errores o metadata.

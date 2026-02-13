@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -87,6 +87,8 @@ class MessageSend(BaseModel):
     system_instruction_global: Optional[str] = None
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora.
     save_to_chromadb: SaveToChromadbKind = "user"  # qué indexar en Chroma: none, user, assistant, both
+    # Solo incluir parámetros que el usuario ha modificado; si vacío o ausente, no se envían extras.
+    model_params: Optional[dict[str, Any]] = None
 
 
 class MessageResponse(BaseModel):

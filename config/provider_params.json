@@ -1,5 +1,5 @@
 {
-  "model_name": {
+  "ollama": {
     "temperature": {
       "api_key": "options.temperature",
       "type": "float",

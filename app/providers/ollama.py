@@ -50,11 +50,18 @@ class OllamaProvider:
             self._client = Client(host=self._host)
         return self._client
 
-    def _dump_to_stderr(self, model: str, messages: list[dict[str, Any]]) -> None:
+    def _dump_to_stderr(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra_body: dict[str, Any] | None = None,
+    ) -> None:
         """Si verbose está activo, imprime en stderr el payload enviado a Ollama."""
         if not settings.verbose:
             return
         payload = {"model": model, "messages": messages}
+        if extra_body:
+            payload.update(extra_body)
         print("--- enviado a Ollama ---", file=sys.stderr)
         print(json.dumps(payload, ensure_ascii=False, indent=2), file=sys.stderr)
         print("--- fin ---", file=sys.stderr)
@@ -100,13 +107,19 @@ class OllamaProvider:
         except Exception as e:
             raise ConnectionError(f"No se pudo conectar a Ollama: {e}") from e
 
-    def chat(self, model: str, messages: list[dict[str, Any]]) -> str:
+    def chat(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra_body: dict[str, Any] | None = None,
+    ) -> str:
         """
         Envía mensajes a Ollama y devuelve la respuesta completa.
 
         Args:
             model: Nombre del modelo a usar.
             messages: Lista de mensajes {"role": str, "content": str}.
+            extra_body: Fragmento a fusionar en el payload (ej. {"options": {...}}).
 
         Returns:
             Contenido de la respuesta del asistente.
@@ -114,8 +127,19 @@ class OllamaProvider:
         Raises:
             ConnectionError: Si no se puede conectar a Ollama.
         """
-        self._dump_to_stderr(model, messages)
+        self._dump_to_stderr(model, messages, extra_body)
         try:
+            if extra_body:
+                # Con opciones extra hay que enviar el body completo por HTTP
+                url = f"{self._host.rstrip('/')}/api/chat"
+                payload = {"model": model, "messages": messages, "stream": False}
+                payload.update(extra_body)
+                with httpx.Client(timeout=httpx.Timeout(120)) as client:
+                    resp = client.post(url, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                content = data.get("message", {}).get("content", "")
+                return content or ""
             client = self._get_client()
             response = client.chat(model=model, messages=messages)
             content = response.get("message", {}).get("content", "")
@@ -124,7 +148,10 @@ class OllamaProvider:
             raise ConnectionError(f"Error al llamar a Ollama: {e}") from e
 
     async def chat_stream(
-        self, model: str, messages: list[dict[str, Any]]
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        extra_body: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """
         Streaming de respuesta desde Ollama.
@@ -132,6 +159,7 @@ class OllamaProvider:
         Args:
             model: Nombre del modelo a usar.
             messages: Lista de mensajes {"role": str, "content": str}.
+            extra_body: Fragmento a fusionar en el payload (ej. {"options": {...}}).
 
         Yields:
             StreamChunk con contenido parcial, errores o metadata.
@@ -139,9 +167,11 @@ class OllamaProvider:
         Note:
             Al cerrar el iterador, se cancela la conexión a Ollama.
         """
-        self._dump_to_stderr(model, messages)
+        self._dump_to_stderr(model, messages, extra_body)
         url = f"{self._host.rstrip('/')}/api/chat"
         payload = {"model": model, "messages": messages, "stream": True}
+        if extra_body:
+            payload.update(extra_body)
 
         async with httpx.AsyncClient() as client:
             try:

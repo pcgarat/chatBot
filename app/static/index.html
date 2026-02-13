@@ -12,19 +12,13 @@
       <div class="sidebar-header">
         <h1>Chat IA</h1>
         <div class="sidebar-header-actions">
-          <button type="button" id="btn-new-chat" class="btn btn-primary sidebar-header-btn" title="Nueva conversación" aria-label="Nueva conversación">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <button type="button" id="btn-clear-memory" class="btn btn-secondary sidebar-header-btn" title="Limpiar memoria (descargar modelos de VRAM/RAM)" aria-label="Limpiar memoria">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-          </button>
-          <button type="button" id="btn-load-preset" class="btn btn-secondary sidebar-header-btn" title="Cargar preset de modelo" aria-label="Cargar preset">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-          </button>
-          <button type="button" id="btn-reset-params" class="btn btn-secondary sidebar-header-btn" title="Restaurar parámetros por defecto" aria-label="Limpiar parámetros">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-          </button>
+          <button type="button" id="btn-new-chat" class="btn btn-primary">Nueva conversación</button>
+          <button type="button" id="btn-clear-memory" class="btn btn-secondary" title="Cerrar conexiones y descargar todos los modelos de VRAM/RAM en Ollama (no borra del disco)">Limpiar memoria</button>
         </div>
+      </div>
+      <div class="sidebar-presets-actions">
+        <button type="button" id="btn-load-preset" class="btn btn-secondary" title="Cargar parámetros de un preset de modelo">Cargar preset</button>
+        <button type="button" id="btn-reset-params" class="btn btn-secondary" title="Restaurar todos los parámetros al valor por defecto (no se enviará ningún parámetro extra)">Limpiar</button>
       </div>
       <div class="sidebar-accordion">
         <div class="accordion-section is-open" data-accordion-section="conversaciones">
@@ -114,14 +108,6 @@
             <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="accordion-content" id="accordion-params-aleatoriedad" role="region" aria-labelledby="accordion-params-aleatoriedad-btn">
-            <div class="sidebar-option param-option param-aleatoriedad-mode">
-              <label class="param-label" for="param-aleatoriedad-mode">Control de aleatoriedad</label>
-              <select id="param-aleatoriedad-mode" class="param-mode-select" title="Se recomienda ajustar solo uno (temperature o top_p), no ambos">
-                <option value="temperature">Temperature</option>
-                <option value="top_p">Top-p</option>
-              </select>
-              <span class="param-note-inline">Solo se envía el seleccionado; el otro se mantiene por defecto.</span>
-            </div>
             <div class="sidebar-option param-option">
               <label class="param-label" for="param-temperature">Temperatura</label>
               <input type="number" id="param-temperature" class="param-control control-disabled" disabled min="0" max="2" step="0.1" placeholder="0.8" data-control-id="temperature" />
@@ -219,6 +205,14 @@
         </div>
       </div>
     </main>
+  </div>
+  <div id="preset-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="preset-modal-title" hidden>
+    <div class="modal-content preset-modal-content">
+      <h2 id="preset-modal-title" class="modal-title">Cargar preset</h2>
+      <p class="preset-modal-hint">Elige un modelo para cargar sus parámetros en los controles.</p>
+      <div id="preset-list" class="preset-list"></div>
+      <button type="button" id="preset-modal-close" class="btn btn-secondary">Cerrar</button>
+    </div>
   </div>
   <script src="/static/js/app.js"></script>
 </body>

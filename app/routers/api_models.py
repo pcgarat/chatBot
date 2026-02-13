@@ -4,7 +4,7 @@ Endpoints para listar modelos y proveedores de LLM.
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.provider_params import get_params_config
+from app.provider_params import get_params_config, get_presets
 from app.providers import ProviderFactory, get_provider
 from app.schemas import ModelInfo, ProviderInfo, ProviderModelInfo
 
@@ -16,6 +16,50 @@ def list_providers():
     """Lista los proveedores de LLM disponibles."""
     providers = ProviderFactory.list_available_providers()
     return [ProviderInfo(name=p, available=True) for p in providers]
+
+
+@router.get("/providers/{provider_name}/params")
+def get_provider_params(provider_name: str):
+    """
+    Devuelve los parámetros de generación soportados por un proveedor.
+
+    La respuesta se usa en el frontend para habilitar/deshabilitar controles
+    y conocer el valor por defecto de cada parámetro. Solo se envían al LLM
+    los parámetros que el usuario ha modificado.
+    """
+    params = get_params_config(provider_name)
+    return {"provider": provider_name, "params": params}
+
+
+@router.get("/providers/{provider_name}/presets")
+def get_provider_presets(provider_name: str):
+    """
+    Devuelve los presets de modelos para un proveedor (config/{provider}.json).
+
+    Cada preset es un nombre de modelo con sus parámetros por defecto.
+    Se usan en "Cargar preset" en la UI; no se aplican automáticamente.
+    """
+    presets = get_presets(provider_name)
+    return {"provider": provider_name, "presets": presets}
+
+
+@router.get("/providers/{provider_name}/validate")
+def validate_provider(provider_name: str):
+    """Comprueba si el proveedor está activo y aceptando conexiones. Devuelve 200 si ok, 503 si no."""
+    try:
+        provider = get_provider(provider_name)
+        if provider.validate_connection():
+            return {"ok": True}
+        raise HTTPException(status_code=503, detail="Proveedor no disponible")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Proveedor {provider_name} no disponible: {e!s}",
+        )
 
 
 @router.get("/providers/{provider_name}/models", response_model=list[ProviderModelInfo])
@@ -46,13 +90,6 @@ def list_provider_models(provider_name: str):
             status_code=503,
             detail=f"Error al listar modelos de {provider_name}: {e!s}",
         )
-
-
-@router.get("/providers/{provider_name}/params")
-def get_provider_params(provider_name: str):
-    """Devuelve la configuración de parámetros de generación para el proveedor (para la UI)."""
-    params = get_params_config(provider_name)
-    return {"provider": provider_name, "params": params}
 
 
 @router.get("/models", response_model=list[ModelInfo])
