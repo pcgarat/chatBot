@@ -36,6 +36,7 @@
 
   const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
   const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1\"/></svg>";
+  const msgToInputIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 10L4 15 9 20\"/><path d=\"M20 4v11a4 4 0 01-4 4H4\"/></svg>";
 
   function showError(msg) {
     const toast = document.createElement("div");
@@ -523,12 +524,17 @@
     const showDebug = isShowDebugMode();
     el.messagesContainer.innerHTML = messages
       .map(
-        (m) => {
-          const footerBtns = m.id
-            ? `<div class="message-footer">
-                <button type="button" class="msg-action-btn msg-delete-btn" data-msg-id="${escapeHtml(m.id)}" title="Eliminar del historial">${msgDeleteIconSvg}</button>
-                <button type="button" class="msg-action-btn msg-copy-btn" data-msg-id="${escapeHtml(m.id)}" title="Copiar">${msgCopyIconSvg}</button>
-              </div>`
+        (m, idx) => {
+          const hasContent = m.content && m.content.trim();
+          const toInputBtn = hasContent
+            ? `<button type="button" class="msg-action-btn msg-to-input-btn" data-msg-index="${idx}" title="Enviar texto al cuadro de mensaje">${msgToInputIconSvg}</button>`
+            : "";
+          const deleteCopyBtns = m.id
+            ? `<button type="button" class="msg-action-btn msg-delete-btn" data-msg-id="${escapeHtml(m.id)}" title="Eliminar del historial">${msgDeleteIconSvg}</button>
+                <button type="button" class="msg-action-btn msg-copy-btn" data-msg-id="${escapeHtml(m.id)}" title="Copiar">${msgCopyIconSvg}</button>`
+            : "";
+          const footerBtns = (toInputBtn || deleteCopyBtns)
+            ? `<div class="message-footer">${toInputBtn}${deleteCopyBtns}</div>`
             : "";
           let debugHtml = "";
           if (showDebug && m.role === "assistant" && (m.debug_request || m.debug_response)) {
@@ -548,6 +554,19 @@
         }
       )
       .join("");
+    el.messagesContainer.querySelectorAll(".msg-to-input-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const msgId = btn.dataset.msgId;
+        const msgIndex = btn.dataset.msgIndex != null ? parseInt(btn.dataset.msgIndex, 10) : -1;
+        const msg = msgId ? messages.find((m) => m.id === msgId) : msgIndex >= 0 ? messages[msgIndex] : null;
+        if (msg && msg.content && el.messageInput) {
+          el.messageInput.value = msg.content;
+          el.messageInput.focus();
+          showNotice("Texto del mensaje copiado al cuadro de mensaje.");
+        }
+      });
+    });
     el.messagesContainer.querySelectorAll(".msg-delete-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -918,7 +937,16 @@
     btn.addEventListener("click", () => {
       const section = btn.closest(".accordion-section");
       if (!section) return;
-      const isOpen = section.classList.toggle("is-open");
+      const wasOpen = section.classList.contains("is-open");
+      if (!wasOpen) {
+        section.parentElement.querySelectorAll(".accordion-section").forEach((s) => {
+          s.classList.remove("is-open");
+          const b = s.querySelector(".accordion-header");
+          if (b) b.setAttribute("aria-expanded", "false");
+        });
+      }
+      section.classList.toggle("is-open");
+      const isOpen = section.classList.contains("is-open");
       btn.setAttribute("aria-expanded", isOpen);
       saveAccordionState();
     });

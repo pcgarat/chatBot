@@ -41,61 +41,74 @@ body {
 }
 
 .sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
 }
 
 .sidebar-header h1 {
-  margin: 0 0 0.75rem 0;
+  margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
 }
 
 .sidebar-header-actions {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
-.sidebar-header-actions .btn {
-  flex: 1;
-  min-width: 0;
+.sidebar-header-btn {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.sidebar-presets-actions {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+.sidebar-header-btn svg {
+  display: block;
+  width: 36px;
+  height: 36px;
 }
 
-.sidebar-presets-actions .btn {
-  flex: 1;
-  min-width: 0;
+.sidebar-header-actions .btn-secondary.sidebar-header-btn {
+  color: var(--text);
+  background: var(--bg-input);
 }
 
-/* Acordeón del sidebar */
+.sidebar-header-actions .btn-secondary.sidebar-header-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+/* Acordeón del sidebar: scrollable, sin huecos entre secciones */
 .sidebar-accordion {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .accordion-section {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--border);
 }
 
 .accordion-section[data-accordion-section="conversaciones"] {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .accordion-header {
@@ -148,13 +161,8 @@ body {
   max-height: 320px;
 }
 
-.accordion-section[data-accordion-section="conversaciones"] .accordion-content {
-  flex: 1;
-  min-height: 0;
-}
-
 .accordion-section.is-open[data-accordion-section="conversaciones"] .accordion-content {
-  max-height: none;
+  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -264,7 +272,6 @@ body {
 }
 
 .sidebar-accordion .conversations-list {
-  flex: 1;
   min-height: 0;
 }
 
@@ -292,14 +299,18 @@ body {
 }
 
 .conversations-list {
-  flex: 1;
   overflow-y: auto;
   padding: 0.5rem;
 }
 
+.sidebar-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
 .sidebar-option.sidebar-debug-option {
   padding: 0.75rem 1rem;
-  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -676,6 +687,10 @@ body {
 
 .msg-action-btn svg {
   display: block;
+}
+
+.msg-to-input-btn:hover {
+  color: var(--accent);
 }
 
 .msg-copy-btn:hover {
