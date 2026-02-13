@@ -4,6 +4,8 @@ Basado en **`docs/DESIGN_LLM_PARAMS.md`**.
 
 **Estado:** Implementación inicial completada para Ollama. Config en `config/provider_params.json` (raíz del proyecto). Pendiente: sección `mancer` en config, tests 10.3/10.5/10.6, documentación 11.
 
+**Revisión post-merge:** Comprobado en código: `provider_params.py` (get_params_config, build_extra_body, set_nested, list_providers_with_params), `api_models.py` (GET params/presets/validate), schemas (model_params), base/ollama/mancer (extra_body), api_conversations (build_extra_body, extra_body en stream y chat), app.js (loadParamsForProvider, applyParamsConfig, buildModelParams), tests params en test_api_models.
+
 **Objetivos:**
 - Parámetros activos por proveedor definidos en archivo de configuración.
 - Controles en la UI activos/deshabilitados según el proveedor seleccionado.
@@ -155,7 +157,7 @@ Basado en **`docs/DESIGN_LLM_PARAMS.md`**.
 | `app/providers/ollama.py` | ✅ `chat_stream` + `chat` con `extra_body` |
 | `app/providers/mancer.py` | ✅ `chat_stream` + `chat` con `extra_body` |
 | `app/routers/api_conversations.py` | ✅ `build_extra_body`, llamada con `extra_body` |
-| `app/routers/api_models.py` | ✅ GET `/api/providers/{provider}/params` |
+| `app/routers/api_models.py` | ✅ GET `/api/providers/{provider}/params`, `/presets`, `/validate` |
 | `app/schemas.py` | ✅ Campo `model_params` en `MessageSend` |
 | `app/static/js/app.js` | ✅ `loadParamsForProvider`, `applyParamsConfig`, `buildModelParams` |
 | `app/static/index.html` | Sin cambios (ids ya coinciden) |

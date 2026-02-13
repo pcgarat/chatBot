@@ -6,6 +6,8 @@
 
 **Estado:** Implementación completada: backend (get_presets, GET presets), frontend (botones Cargar preset + Limpiar, modal, aplicar preset, reset a defaults), tests. Pendiente: verificación 1.1, documentación 5.2, opcionales 2.4, 4.3, 6.3.
 
+**Revisión post-merge:** Comprobado en código: `provider_params.py` (get_presets, caché), `api_models.py` (GET `/api/providers/{provider}/presets`), index.html (sidebar-presets-actions, preset-modal, preset-list), app.js (openPresetModal, applyPresetToControls, resetParamsToDefaults), CSS (preset-modal, preset-list), test_api_models (test_get_provider_presets_ollama, test_get_provider_presets_unknown).
+
 ---
 
 ## 1. Verificación de nombres de modelo (Ollama)
@@ -99,7 +101,7 @@
 |---------|--------|
 | `config/ollama.json` | ✅ Existente; verificación 1.1 pendiente |
 | `app/provider_params.py` | ✅ `get_presets()`, caché |
-| `app/routers/api_models.py` | ✅ GET `/api/providers/{provider}/presets` |
+| `app/routers/api_models.py` | ✅ GET `/api/providers/{provider}/presets` (junto con params y validate) |
 | `app/static/index.html` | ✅ `sidebar-presets-actions`, modal presets |
 | `app/static/js/app.js` | ✅ openPresetModal, closePresetModal, applyPresetToControls, resetParamsToDefaults |
 | `app/static/css/style.css` | ✅ .sidebar-presets-actions, .modal-overlay, .preset-list |
