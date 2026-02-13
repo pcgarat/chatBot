@@ -1,0 +1,10 @@
+---
+description: 
+alwaysApply: true
+---
+
+Utiliza principios solid y buenas prácticas de programación. 
+Piensa y propón patrones de diseño que puedan encajar.
+Haz tests cada vez que se cree o modifique una funcionalidad, cuando se acabe la implementación pásalos. 
+Cuando se reporte un error por parte del usuario, antes de arreglarlo haz un test que detecte el error y falle. Luego arreglas el error hasta que ese test pase
+Intenta seguir los principios de arquitectura limpia y hexagonal.

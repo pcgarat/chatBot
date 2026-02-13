@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import crud, rag
 from app.config import settings
+from app.provider_params import build_extra_body
 from app.providers import get_provider
 from app.slash_commands import parse_slash_command
 from app.db import get_db
@@ -230,15 +231,19 @@ async def _stream_generator_async(
     user_message_id: str | None = None,
     save_to_chromadb: str = "user",
     mcp_contexts: list[str] | None = None,
+    extra_body: dict | None = None,
 ):
     """Generador async que hace streaming al LLM via provider.chat_stream().
 
     Al desconectar el cliente (GeneratorExit) se cierra la conexión al proveedor
     para que deje de generar.
     mcp_contexts: cuando se integre MCP, aquí se usarán para inyectar tools (ej. ['git']).
+    extra_body: parámetros de generación (temperature, etc.) a fusionar en el payload.
     """
     meta_lines: list[str] = []  # Solo metadata (sin los chunks de content)
     payload = {"model": model_id, "messages": llm_messages, "stream": True}
+    if extra_body:
+        payload.update(extra_body)
     debug_request_json = json.dumps(payload, ensure_ascii=False, indent=2)
 
     # Emitir debug_request primero (para que el frontend lo muestre si el checkbox está activo)
@@ -282,7 +287,7 @@ async def _stream_generator_async(
         return
 
     try:
-        async for chunk in provider.chat_stream(model_id, llm_messages):
+        async for chunk in provider.chat_stream(model_id, llm_messages, extra_body=extra_body):
             if chunk.type == "content":
                 full_content.append(chunk.content)
                 try:
@@ -438,6 +443,7 @@ async def send_message_stream(
         fut = loop.run_in_executor(None, _add_user_to_rag)
         fut.add_done_callback(_on_rag_done)
 
+    extra_body = build_extra_body(conv.provider, body.model_params)
     return StreamingResponse(
         _stream_generator_async(
             conversation_id,
@@ -447,6 +453,7 @@ async def send_message_stream(
             user_message_id=user_msg.id,
             save_to_chromadb=save_to_chromadb,
             mcp_contexts=mcp_contexts,
+            extra_body=extra_body,
         ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -485,9 +492,10 @@ def send_message(
         rag_context=rag_context,
     )
 
+    extra_body = build_extra_body(conv.provider, body.model_params)
     try:
         provider = get_provider(conv.provider)
-        assistant_content = provider.chat(conv.model_id, llm_messages)
+        assistant_content = provider.chat(conv.model_id, llm_messages, extra_body=extra_body)
     except ValueError as e:
         raise HTTPException(
             status_code=400,
