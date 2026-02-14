@@ -92,31 +92,31 @@ Cada proveedor expone distinta información, endpoints o acciones: Ollama tiene 
 
 ## 6. Frontend: ficha del modelo
 
-- [ ] **6.1** Punto de entrada a la ficha: desde el selector de modelo o desde la cabecera del chat (ej. enlace/icono “Info del modelo” o “Editar ficha”) que abra un panel o modal con la información del modelo seleccionado (provider + model_name).
+- [x] **6.1** Punto de entrada a la ficha: desde el selector de modelo o desde la cabecera del chat (ej. enlace/icono “Info del modelo” o “Editar ficha”) que abra un panel o modal con la información del modelo seleccionado (provider + model_name).
 
-- [ ] **6.2** Mostrar en la ficha:
+- [x] **6.2** Mostrar en la ficha:
   - Bloque de solo lectura con `provider_info` (resumen legible: family, parameter_size, context_length, template, license, etc., según lo que exista).
   - Bloque editable: checkbox **Uncensored**, lista de **Instrucciones que funcionan bien** (añadir/quitar líneas), y **Tags** (input con autocompletado).
 
-- [ ] **6.3** Al editar uncensored / instructions / tags, enviar **PUT** (o PATCH) al endpoint de actualización de `user_info` y refrescar la vista o mostrar confirmación.
+- [x] **6.3** Al editar uncensored / instructions / tags, enviar **PUT** (o PATCH) al endpoint de actualización de `user_info` y refrescar la vista o mostrar confirmación.
 
 ---
 
 ## 7. Frontend: autocompletado de tags
 
-- [ ] **7.1** Al escribir en el campo de tags, obtener sugerencias vía **GET** `/api/models/tags` (o endpoint de tags). Filtrar en cliente por prefijo (o enviar query si el backend lo soporta) y mostrar lista desplegable.
+- [x] **7.1** Al escribir en el campo de tags, obtener sugerencias vía **GET** `/api/models/tags` (o endpoint de tags). Filtrar en cliente por prefijo (o enviar query si el backend lo soporta) y mostrar lista desplegable.
 
-- [ ] **7.2** Comportamiento: al elegir un tag de la lista, añadirlo al modelo; si el usuario escribe un tag nuevo (no existente), permitir añadirlo igualmente (tags libres). Separar tags con comas o chips según diseño.
+- [x] **7.2** Comportamiento: al elegir un tag de la lista, añadirlo al modelo; si el usuario escribe un tag nuevo (no existente), permitir añadirlo igualmente (tags libres). Separar tags con comas o chips según diseño.
 
-- [ ] **7.3** Persistir los tags del modelo al guardar la ficha (igual que instructions y uncensored).
+- [x] **7.3** Persistir los tags del modelo al guardar la ficha (igual que instructions y uncensored).
 
 ---
 
 ## 8. Integración y casos borde
 
-- [ ] **8.1** Modelo sin ficha previa: al abrir la ficha (GET info), devolver ficha con provider_info vacío (o lo que se tenga de list_models) y user_info por defecto (uncensored: false, instructions: [], tags: []), y persistirla. El usuario puede pulsar "Refrescar desde proveedor" para rellenar provider_info si el proveedor soporta show_model. Así el GET sigue siendo rápido y predecible.
+- [x] **8.1** Modelo sin ficha previa: al abrir la ficha (GET info), devolver ficha con provider_info vacío (o lo que se tenga de list_models) y user_info por defecto (uncensored: false, instructions: [], tags: []), y persistirla. El usuario puede pulsar "Refrescar desde proveedor" para rellenar provider_info si el proveedor soporta show_model. Así el GET sigue siendo rápido y predecible.
 
-- [ ] **8.2** Si Ollama (u otro) no está disponible al refrescar provider_info: mantener el último provider_info guardado y mostrar aviso en la UI si se intenta “refrescar desde proveedor”.
+- [x] **8.2** Si Ollama (u otro) no está disponible al refrescar provider_info: mantener el último provider_info guardado y mostrar aviso en la UI si se intenta “refrescar desde proveedor”.
 
 - [ ] **8.3** Considerar permisos/lectura: por ahora todo en local; si en el futuro hay multi-usuario, definir si model_info es global o por usuario.
 
@@ -140,9 +140,9 @@ Cada proveedor expone distinta información, endpoints o acciones: Ollama tiene 
 
 ## 10. Documentación y limpieza
 
-- [ ] **10.1** Documentar en README o en docs la existencia de la ficha de modelo (provider_info + user_info), dónde se persiste y cómo se obtiene/actualiza.
+- [x] **10.1** Documentar en README o en docs la existencia de la ficha de modelo (provider_info + user_info), dónde se persiste y cómo se obtiene/actualiza. Ver **docs/MODEL_INFO.md**.
 
-- [ ] **10.2** Comentar en código que los tags son libres y el autocompletado se basa en tags ya usados en otras fichas.
+- [x] **10.2** Comentar en código que los tags son libres y el autocompletado se basa en tags ya usados en otras fichas. Comentario en **app/model_info.py** (docstring del módulo).
 
 ---
 

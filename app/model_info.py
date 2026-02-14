@@ -3,7 +3,10 @@ Ficha de información por modelo (provider + usuario).
 
 Persistencia en data/model_info.json. Clave: "{provider}:{model_name}".
 Cada ficha tiene provider_info (datos del proveedor, ej. Ollama show) y user_info
-(uncensored, instructions, tags). Los tags se derivan al vuelo de todas las fichas.
+(uncensored, instructions, tags). Los tags son libres (el usuario puede crear
+cualquiera); el autocompletado en la UI se basa en los tags ya usados en otras
+fichas (get_all_tags). Los tags se derivan al vuelo de todas las fichas, no se
+almacenan por separado.
 """
 
 from __future__ import annotations
