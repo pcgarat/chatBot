@@ -95,9 +95,17 @@ Prioridad: **survived** > **suspicious** > killed/skipped.
 
 ---
 
-## 4. Problemas conocidos en este entorno
+## 4. Ajustes aplicados para que mutmut funcione
 
-Al ejecutar `make mutation-test` o `mutmut run` pueden aparecer:
+Se aplicaron dos cambios para que los tests de mutación pasen (incl. Python 3.12):
+
+1. **Parche en `tests/conftest.py`**: se parchea `multiprocessing.set_start_method` para que, si el contexto ya está establecido (p. ej. por pytest al correr desde `mutants/`), no se lance `RuntimeError: context has already been set` cuando el código mutado importa mutmut.
+
+2. **`also_copy=config` en `setup.cfg`**: se copia la carpeta `config/` a `mutants/` para que el código que usa rutas relativas a `__file__` (provider_params.json, ollama.json, etc.) encuentre los archivos durante la fase de stats y al ejecutar cada mutante.
+
+Con esto, `make mutation-test` o `mutmut run` completan la fase de stats y la ejecución de mutantes. La pasada completa tarda varios minutos.
+
+**Antes (problemas que ya no aplican):**
 
 1. **Fase de “Running stats”**  
    Mutmut ejecuta la suite de tests para recoger estadísticas; en algunos entornos (p. ej. Python 3.14 + pytest desde el directorio `mutants/`) se produce:
@@ -105,19 +113,18 @@ Al ejecutar `make mutation-test` o `mutmut run` pueden aparecer:
    - O bien `BadTestExecutionCommandsException` por el formato de argumentos de pytest.  
    **Workaround:** ejecutar mutmut por módulos concretos (`mutmut run app/slash_commands.py`) o usar un entorno con Python 3.12 y las mismas dependencias para la fase de mutación.
 
-2. **`mutate_only_covered_lines=true`**  
-   Con coverage reciente puede aparecer `AssertionError` en `coverage.collector`. Por eso esta opción está comentada en `setup.cfg`. Cuando la compatibilidad esté resuelta, se puede descomentar para mutar solo líneas cubiertas.
-
-3. **Directorios generados**  
-   `mutants/` y `.mutmut-cache/` se crean durante la ejecución. Están en `.gitignore`; no es necesario versionarlos.
+- **`mutate_only_covered_lines=true`**: comentada en `setup.cfg` si en tu entorno aparece `AssertionError` en `coverage.collector`.
+- **Directorios generados**: `mutants/` y `.mutmut-cache/` están en `.gitignore`.
 
 ---
 
 ## 5. Resultados de la última ejecución
 
-**Estado:** No se ha completado una pasada global de mutación en este entorno por los fallos descritos en §4 (fase de stats / multiprocessing).
+**Estado:** Con los ajustes de §4 (conftest + also_copy=config), la pasada global de mutación se ejecuta correctamente. Una pasada completa tarda varios minutos.
 
-Cuando la ejecución termine correctamente, en esta sección se puede pegar:
+**Informe automático:** Tras `make mutation-test` se genera **`INFORME_MUTACIONES_RESULTADOS.md`** en la raíz del proyecto (script `scripts/generate_mutation_report.py`). Ese informe incluye resumen (totales, mutation score), lista de mutantes **survived** agrupados por módulo y **suspicious**, y cómo usar `mutmut show <id>` para el detalle. Úsalo para decidir qué tests o código mejorar. Si no existe `.mutmut-cache` (no se ha ejecutado mutmut), el script no generará informe. Para generar solo el informe después de una pasada previa: `make mutation-report` (o `python scripts/generate_mutation_report.py`).
+
+Opcionalmente, en esta sección se puede pegar un resumen manual:
 
 - Número total de mutantes generados.
 - Killed / Survived / Suspicious / Skipped.

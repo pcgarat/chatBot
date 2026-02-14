@@ -1,0 +1,26 @@
+---
+description: Al ejecutar tests no incluir e2e salvo que el usuario lo pida explícitamente.
+alwaysApply: true
+---
+
+## Tests: exclusión de e2e por defecto
+
+Cuando **ejecutes**, **recomiendes** o **escribas comandos** para pasar los tests en este proyecto:
+
+- **No incluyas los tests e2e** a menos que el usuario pida explícitamente ejecutarlos.
+- Los tests e2e requieren Ollama levantado y ralentizan mucho; el flujo habitual es usar solo el resto de tests.
+
+**Comandos correctos:**
+
+- **Tests sin e2e (por defecto):**  
+  `make test`  
+  o  
+  `pytest tests/ -m "not e2e"`  
+  (con cobertura: `pytest tests/ -m "not e2e" --cov=app --cov-report=term-missing`)
+
+- **Solo cuando el usuario pida tests e2e:**  
+  `make test-e2e`  
+  o  
+  `pytest -m e2e`
+
+No sugieras `pytest tests/` sin `-m "not e2e"` para el día a día. Si el usuario dice "pasa los tests" o "ejecuta los tests", usa la variante que excluye e2e.

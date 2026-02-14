@@ -10,6 +10,13 @@ COVERAGE_OPTS := --cov=app --cov-report=term-missing
 PORT ?= 8000
 PIDFILE := .server.pid
 
+# Versión de Python para crear el entorno virtual. Lee .env (PYTHON_VERSION=3.12); si no existe, 3.12 por defecto.
+PYTHON_VERSION := $(strip $(shell grep '^PYTHON_VERSION=' .env 2>/dev/null | cut -d= -f2- | tr -d '\r'))
+ifeq ($(PYTHON_VERSION),)
+PYTHON_VERSION := 3.12
+endif
+PYTHON_CMD := python$(PYTHON_VERSION)
+
 .PHONY: help up down start start-verbose stop reload reload-dev restart-dev test coverage-html mutation-test status clean setup
 .PHONY: chroma-up chroma-down chroma-logs chroma-status chroma-clean chroma-ping ingest venv312
 
@@ -17,14 +24,16 @@ help:
 	@echo "Chat IA con Ollama - Comandos disponibles:"
 	@echo ""
 	@echo "  App (no tocan el contenedor Docker de Chroma):"
-	@echo "  make up      Crear entorno virtual, instalar dependencias e iniciar la aplicación"
+	@echo "  make up      Crear entorno virtual (Python desde .env PYTHON_VERSION, por defecto 3.12), instalar deps e iniciar"
 	@echo "  make down    Detener la aplicación y eliminar el entorno virtual"
 	@echo "  make start   Iniciar el servidor (puerto $(PORT))"
 	@echo "  make stop    Detener el servidor"
 	@echo "  make reload  make down + make up (reinicio completo)"
 	@echo "  make reload-dev  make down + setup + tests + start-verbose (dev con tests antes de levantar)"
 	@echo "  make restart-dev  make stop + tests + start-verbose (rápido: sin recrear venv)"
-	@echo "  make test    Ejecutar los tests (con cobertura sobre app; exclusiones en .coveragerc)"
+	@echo "  make test    Ejecutar los tests sin e2e (con cobertura sobre app); e2e solo con make test-e2e"
+	@echo "  make test-e2e  Ejecutar solo tests e2e (requieren Ollama levantado)"
+	@echo "  make test-no-e2e  Alias de make test (tests sin e2e)"
 	@echo "  make coverage-html  Tests + informe HTML de cobertura (htmlcov/index.html)"
 	@echo "  make mutation-test  Tests de mutación con mutmut (config en setup.cfg); genera .mutmut-cache"
 	@echo "  make status  Mostrar estado del entorno y del servidor"
@@ -59,7 +68,8 @@ setup:
 	@existing_openai=$$(grep '^OPENAI_API_KEY=' .env 2>/dev/null | head -1 | cut -d= -f2-); \
 	existing_chroma=$$(grep '^CHROMA_HOST=' .env 2>/dev/null | head -1 | cut -d= -f2-); \
 	existing_mancer=$$(grep '^MANCER_API_KEY=' .env 2>/dev/null | head -1 | cut -d= -f2-); \
-	grep -v '^OPENAI_API_KEY=' .env 2>/dev/null | grep -v '^CHROMA_HOST=' | grep -v '^MANCER_API_KEY=' > .env.tmp || true; \
+	existing_python=$$(grep '^PYTHON_VERSION=' .env 2>/dev/null | head -1 | cut -d= -f2-); \
+	grep -v '^OPENAI_API_KEY=' .env 2>/dev/null | grep -v '^CHROMA_HOST=' | grep -v '^MANCER_API_KEY=' | grep -v '^PYTHON_VERSION=' > .env.tmp || true; \
 	mv .env.tmp .env 2>/dev/null || true; \
 	if [ -n "$$OPENAI_API_KEY" ]; then \
 		echo "OPENAI_API_KEY=$$OPENAI_API_KEY" >> .env; \
@@ -88,8 +98,22 @@ setup:
 		echo "  MANCER_API_KEY preservada"; \
 	else \
 		echo "  MANCER_API_KEY no definida (opcional para Mancer LLM)"; \
+	fi; \
+	if [ -n "$$PYTHON_VERSION" ]; then \
+		echo "PYTHON_VERSION=$$PYTHON_VERSION" >> .env; \
+		echo "  PYTHON_VERSION actualizada desde entorno"; \
+	elif [ -n "$$existing_python" ]; then \
+		echo "PYTHON_VERSION=$$existing_python" >> .env; \
+		echo "  PYTHON_VERSION preservada ($$existing_python)"; \
+	else \
+		echo "PYTHON_VERSION=3.12" >> .env; \
+		echo "  PYTHON_VERSION=3.12 (default para crear .venv)"; \
 	fi
-	@if [ ! -d $(VENV) ]; then echo "Creando entorno virtual..."; python3 -m venv $(VENV); fi
+	@if [ ! -d $(VENV) ]; then \
+		command -v $(PYTHON_CMD) >/dev/null || { echo "Error: $(PYTHON_CMD) no encontrado. Instálalo o define PYTHON_VERSION en .env (ej. 3.12)."; exit 1; }; \
+		echo "Creando entorno virtual con $(PYTHON_CMD)..."; \
+		$(PYTHON_CMD) -m venv $(VENV); \
+	fi
 	@echo "Instalando dependencias..."
 	@$(PIP) install -r requirements.txt
 
@@ -162,8 +186,17 @@ stop:
 		fi; \
 	fi
 
+# Por defecto no se incluyen e2e (ralentizan); usar make test-e2e para ejecutarlos
 test: $(VENV)/bin/pytest
-	$(PYTEST) $(COVERAGE_OPTS)
+	$(PYTEST) -m "not e2e" $(COVERAGE_OPTS)
+
+# Tests e2e: requieren Ollama accesible; solo se ejecutan con make test-e2e
+test-e2e: $(VENV)/bin/pytest
+	$(PYTEST) -m e2e -v
+
+# Alias explícito: tests sin e2e (mismo que make test)
+test-no-e2e: $(VENV)/bin/pytest
+	$(PYTEST) -m "not e2e" $(COVERAGE_OPTS)
 
 # Tests de mutación (mutmut). Config en setup.cfg; ver INFORME_MUTACIONES.md.
 # En algunos entornos la fase "stats" puede fallar (multiprocessing); entonces ejecutar
@@ -171,10 +204,15 @@ test: $(VENV)/bin/pytest
 mutation-test: $(VENV)/bin/pytest
 	$(PIP) install -q mutmut
 	$(VENV)/bin/python -m mutmut run
+	$(PYTHON) scripts/generate_mutation_report.py || true
 
-# Informe HTML de cobertura (mismo criterio que make test; abre htmlcov/index.html)
+# Solo generar el informe de mutaciones (requiere haber ejecutado antes make mutation-test)
+mutation-report:
+	$(PYTHON) scripts/generate_mutation_report.py
+
+# Informe HTML de cobertura (sin e2e; mismo criterio que make test)
 coverage-html: $(VENV)/bin/pytest
-	$(PYTEST) --cov=app --cov-report=term-missing --cov-report=html
+	$(PYTEST) -m "not e2e" --cov=app --cov-report=term-missing --cov-report=html
 
 # Ingestar archivo de texto en Chroma (ChromaDB no va con Python 3.14; se usa .venv312 con 3.12 si existe)
 FILE ?= archivo.txt
@@ -195,8 +233,10 @@ venv312:
 
 status:
 	@echo "=== Estado ==="
+	@echo "Python para crear .venv: $(PYTHON_CMD) (desde .env PYTHON_VERSION, default 3.12)"
 	@if [ -d $(VENV) ]; then \
 		echo "Entorno virtual: existe ($(VENV))"; \
+		$(VENV)/bin/python --version 2>/dev/null || true; \
 	else \
 		echo "Entorno virtual: no existe. Ejecuta 'make up'."; \
 	fi
