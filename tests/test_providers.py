@@ -7,6 +7,8 @@ Tests unitarios para:
 - ProviderFactory
 """
 
+import asyncio
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -134,6 +136,157 @@ class TestOllamaProvider:
 
         assert result == "Hello! How can I help you?"
 
+    def test_chat_with_extra_body(self):
+        """Chat con extra_body usa httpx y fusiona options en el payload."""
+        provider = OllamaProvider(host="http://localhost:11434")
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"message": {"content": "Con temperatura 0.5"}}
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("app.providers.ollama.httpx") as mock_httpx:
+            mock_httpx.Timeout.return_value = None
+            mock_client_ctx = MagicMock()
+            mock_client_ctx.post.return_value = mock_resp
+            mock_httpx.Client.return_value.__enter__.return_value = mock_client_ctx
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            with patch("app.providers.ollama.settings") as mock_settings:
+                mock_settings.verbose = False
+                result = provider.chat(
+                    "llama3.2",
+                    [{"role": "user", "content": "Hi"}],
+                    extra_body={"options": {"temperature": 0.5}},
+                )
+        assert result == "Con temperatura 0.5"
+        call_payload = mock_client_ctx.post.call_args[1]["json"]
+        assert call_payload.get("options", {}).get("temperature") == 0.5
+        assert call_payload.get("stream") is False
+
+    def test_chat_connection_error(self):
+        """Chat lanza ConnectionError cuando Ollama falla."""
+        provider = OllamaProvider(host="http://localhost:11434")
+        with patch.object(provider, "_get_client") as mock_client:
+            mock_client.return_value.chat.side_effect = Exception("Connection refused")
+            with patch("app.providers.ollama.settings") as mock_settings:
+                mock_settings.verbose = False
+                with pytest.raises(ConnectionError) as exc_info:
+                    provider.chat("llama3.2", [{"role": "user", "content": "Hi"}])
+                assert "Ollama" in str(exc_info.value)
+
+    def test_chat_stream_chunks_and_done(self):
+        """chat_stream emite chunks de contenido y un chunk done al finalizar."""
+        provider = OllamaProvider(host="http://localhost:11434")
+        lines = [
+            json.dumps({"message": {"content": "Hello"}}),
+            json.dumps({"message": {"content": " "}}),
+            json.dumps({"message": {"content": "world"}}),
+            json.dumps({"done": True, "model": "llama3.2", "eval_count": 10}),
+        ]
+
+        async def fake_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.aiter_lines = lambda: fake_aiter_lines()
+
+        mock_stream_ctx = MagicMock()
+        mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        async def run():
+            with patch("app.providers.ollama.httpx") as mock_httpx:
+                mock_async_client = MagicMock()
+                mock_async_client.stream.return_value = mock_stream_ctx
+                mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
+                mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=None)
+                with patch("app.providers.ollama.settings") as mock_settings:
+                    mock_settings.verbose = False
+                    chunks = []
+                    async for ch in provider.chat_stream("llama3.2", [{"role": "user", "content": "Hi"}]):
+                        chunks.append(ch)
+            return chunks
+
+        chunks = asyncio.run(run())
+        content_chunks = [c for c in chunks if c.type == "content"]
+        done_chunks = [c for c in chunks if c.type == "done"]
+        assert len(content_chunks) == 3
+        assert "".join(c.content for c in content_chunks) == "Hello world"
+        assert len(done_chunks) == 1
+        assert done_chunks[0].metadata.get("model") == "llama3.2"
+
+    def test_chat_stream_error_chunk(self):
+        """chat_stream emite chunk de error cuando Ollama devuelve error en la línea."""
+        provider = OllamaProvider(host="http://localhost:11434")
+        lines = [json.dumps({"error": "Model not found"})]
+
+        async def fake_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.aiter_lines = lambda: fake_aiter_lines()
+
+        mock_stream_ctx = MagicMock()
+        mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        async def run():
+            with patch("app.providers.ollama.httpx") as mock_httpx:
+                mock_async_client = MagicMock()
+                mock_async_client.stream.return_value = mock_stream_ctx
+                mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
+                mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=None)
+                with patch("app.providers.ollama.settings") as mock_settings:
+                    mock_settings.verbose = False
+                    chunks = []
+                    async for ch in provider.chat_stream("llama3.2", [{"role": "user", "content": "Hi"}]):
+                        chunks.append(ch)
+            return chunks
+
+        chunks = asyncio.run(run())
+        error_chunks = [c for c in chunks if c.type == "error"]
+        assert len(error_chunks) == 1
+        assert error_chunks[0].error == "Model not found"
+
+    def test_chat_stream_http_error(self):
+        """chat_stream emite error cuando HTTP status != 200."""
+        class EmptyAsyncIter:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+        provider = OllamaProvider(host="http://localhost:11434")
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.reason_phrase = "Service Unavailable"
+        mock_response.aiter_lines = lambda: EmptyAsyncIter()
+
+        mock_stream_ctx = MagicMock()
+        mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        async def run():
+            with patch("app.providers.ollama.httpx") as mock_httpx:
+                mock_async_client = MagicMock()
+                mock_async_client.stream.return_value = mock_stream_ctx
+                mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
+                mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=None)
+                with patch("app.providers.ollama.settings") as mock_settings:
+                    mock_settings.verbose = False
+                    chunks = []
+                    async for ch in provider.chat_stream("llama3.2", [{"role": "user", "content": "Hi"}]):
+                        chunks.append(ch)
+            return chunks
+
+        chunks = asyncio.run(run())
+        error_chunks = [c for c in chunks if c.type == "error"]
+        assert len(error_chunks) == 1
+        assert "503" in (error_chunks[0].error or "")
+
     def test_validate_connection_success(self):
         """Test validación de conexión exitosa."""
         provider = OllamaProvider(host="http://localhost:11434")
@@ -154,6 +307,49 @@ class TestOllamaProvider:
         """Test que OllamaProvider implementa LLMProvider protocol."""
         provider = OllamaProvider(host="http://localhost:11434")
         assert isinstance(provider, LLMProvider)
+
+    def test_show_model_success(self):
+        """show_model devuelve dict normalizado con fetched_at cuando Ollama responde 200."""
+        provider = OllamaProvider(host="http://localhost:11434")
+        with patch("app.providers.ollama.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "details": {"family": "llama", "parameter_size": "3B"},
+                "template": "{{ .System }}",
+                "modified_at": "2025-01-01T00:00:00Z",
+            }
+            mock_client = MagicMock()
+            mock_client.post.return_value = mock_resp
+            mock_httpx.Client.return_value.__enter__.return_value = mock_client
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            result = provider.show_model("llama3.2")
+        assert result is not None
+        assert result.get("details", {}).get("family") == "llama"
+        assert result.get("template") == "{{ .System }}"
+        assert "fetched_at" in result
+
+    def test_show_model_returns_none_on_http_error(self):
+        """show_model devuelve None si la API responde distinto de 200."""
+        provider = OllamaProvider(host="http://localhost:11434")
+        with patch("app.providers.ollama.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_client = MagicMock()
+            mock_client.post.return_value = mock_resp
+            mock_httpx.Client.return_value.__enter__.return_value = mock_client
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            result = provider.show_model("nonexistent")
+        assert result is None
+
+    def test_show_model_returns_none_on_exception(self):
+        """show_model devuelve None si hay excepción (timeout, conexión)."""
+        provider = OllamaProvider(host="http://localhost:11434")
+        with patch("app.providers.ollama.httpx") as mock_httpx:
+            mock_httpx.Client.return_value.__enter__.return_value.post.side_effect = Exception("timeout")
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            result = provider.show_model("llama3.2")
+        assert result is None
 
 
 class TestOllamaProviderSingleton:

@@ -102,6 +102,33 @@ def get_presets(provider_name: str) -> dict[str, Any]:
     return data
 
 
+def get_context_length_max(provider_name: str, model_name: str) -> int | None:
+    """
+    Devuelve el contexto máximo (tokens) para un modelo según su preset.
+
+    Lee config/{provider_name}.json y busca el preset del modelo; si tiene
+    el parámetro num_ctx (o equivalente) con "max", devuelve ese valor.
+    Si no existe preset o no hay max definido, devuelve None.
+
+    Usado para la barra de uso de contexto cuando no hay provider_info (show_model).
+    """
+    presets = get_presets(provider_name)
+    if not isinstance(presets, dict):
+        return None
+    model_preset = presets.get(model_name)
+    if not isinstance(model_preset, dict):
+        return None
+    # Ollama y otros usan num_ctx; otros proveedores podrían usar otro key
+    for param_key in ("num_ctx", "context_length", "max_context"):
+        spec = model_preset.get(param_key)
+        if isinstance(spec, dict) and "max" in spec:
+            try:
+                return int(spec["max"])
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
 def build_extra_body(provider_name: str, model_params: dict[str, Any] | None) -> dict[str, Any]:
     """
     Construye el fragmento de payload a fusionar con la petición al proveedor.
