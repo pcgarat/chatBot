@@ -208,12 +208,21 @@ class OllamaProvider:
                         if content:
                             yield StreamChunk.content_chunk(content)
 
-                        # Verificar si terminó
+                        # Verificar si terminó (Ollama incluye prompt_eval_count y eval_count en el chunk final)
                         if data.get("done"):
+                            usage = None
+                            prompt_eval = data.get("prompt_eval_count")
+                            eval_count = data.get("eval_count")
+                            if prompt_eval is not None or eval_count is not None:
+                                usage = {
+                                    "prompt_tokens": int(prompt_eval) if prompt_eval is not None else 0,
+                                    "completion_tokens": int(eval_count) if eval_count is not None else 0,
+                                }
                             yield StreamChunk.done_chunk(
                                 model=data.get("model"),
                                 total_duration=data.get("total_duration"),
-                                eval_count=data.get("eval_count"),
+                                eval_count=eval_count,
+                                usage=usage,
                             )
                             return
 

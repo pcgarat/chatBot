@@ -198,6 +198,16 @@
           </label>
           <button type="button" id="btn-save" class="btn btn-secondary">Guardar</button>
         </div>
+        <div id="context-usage-row" class="context-usage-row" aria-live="polite">
+          <span id="context-usage-label" class="context-usage-label">Uso de contexto:</span>
+          <div id="context-usage-bar-wrap" class="context-usage-bar-wrap" hidden>
+            <div id="context-usage-bar" class="context-usage-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Tokens de prompt y respuesta">
+              <div id="context-usage-segment-prompt" class="context-usage-segment context-usage-prompt"></div>
+              <div id="context-usage-segment-completion" class="context-usage-segment context-usage-completion"></div>
+            </div>
+          </div>
+          <span id="context-usage-text" class="context-usage-text"></span>
+        </div>
       </div>
       <div class="messages-container" id="messages-container"></div>
       <div class="input-area">

@@ -56,6 +56,16 @@ class ProviderCapabilitiesResponse(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
 
 
+class StreamUsageInfo(BaseModel):
+    """
+    Uso de tokens en el stream (normalizado para todos los proveedores).
+    Los proveedores mapean sus campos (Ollama: prompt_eval_count/eval_count,
+    Mancer: usage.prompt_tokens/completion_tokens) a este esquema.
+    """
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
 # ----- Conversation -----
 class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"

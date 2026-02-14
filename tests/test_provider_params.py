@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from app.provider_params import get_presets, set_nested, build_extra_body, get_params_config
+from app.provider_params import get_context_length_max, get_presets, set_nested, build_extra_body, get_params_config
 
 
 def _clear_presets_cache(provider_name: str | None = None):
@@ -134,3 +134,29 @@ def test_build_extra_body_proveedor_sin_specs(mock_get_params):
     mock_get_params.return_value = {}
     result = build_extra_body("unknown", {"temperature": 0.5})
     assert result == {}
+
+
+# ----- get_context_length_max -----
+
+
+@patch("app.provider_params.get_presets")
+def test_get_context_length_max_from_num_ctx(mock_get_presets):
+    """get_context_length_max devuelve num_ctx.max del preset del modelo."""
+    mock_get_presets.return_value = {
+        "llama3.2": {"num_ctx": {"default": 2048, "min": 512, "max": 8192}},
+    }
+    assert get_context_length_max("ollama", "llama3.2") == 8192
+
+
+@patch("app.provider_params.get_presets")
+def test_get_context_length_max_sin_preset(mock_get_presets):
+    """Si el modelo no tiene preset, devuelve None."""
+    mock_get_presets.return_value = {}
+    assert get_context_length_max("ollama", "unknown") is None
+
+
+@patch("app.provider_params.get_presets")
+def test_get_context_length_max_sin_num_ctx(mock_get_presets):
+    """Si el preset no tiene num_ctx.max, devuelve None."""
+    mock_get_presets.return_value = {"m1": {"temperature": {"default": 0.8}}}
+    assert get_context_length_max("ollama", "m1") is None
