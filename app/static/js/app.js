@@ -9,6 +9,10 @@
   let currentAbortController = null;
   /** Parámetros del proveedor actual: { provider, params: { paramId: { type, default, min, max, api_key } } } */
   let paramsConfig = { provider: "", params: {} };
+  /** Uso de contexto (último turno): prompt_tokens, completion_tokens. null si no hay datos. */
+  let lastUsage = null;
+  /** Contexto máximo del modelo actual (tokens). null si no se conoce. */
+  let contextLength = null;
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
@@ -48,6 +52,12 @@
     modelInfoTagsSuggestions: document.getElementById("model-info-tags-suggestions"),
     btnModelInfoSave: document.getElementById("btn-model-info-save"),
     modelInfoModalClose: document.getElementById("model-info-modal-close"),
+    contextUsageRow: document.getElementById("context-usage-row"),
+    contextUsageBarWrap: document.getElementById("context-usage-bar-wrap"),
+    contextUsageBar: document.getElementById("context-usage-bar"),
+    contextUsageSegmentPrompt: document.getElementById("context-usage-segment-prompt"),
+    contextUsageSegmentCompletion: document.getElementById("context-usage-segment-completion"),
+    contextUsageText: document.getElementById("context-usage-text"),
   };
 
   const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
@@ -275,6 +285,56 @@
 
   function getModelInfoPath(provider, modelId) {
     return `${API}/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(modelId)}`;
+  }
+
+  async function loadContextLength() {
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
+    const modelId = (el.modelSelect && el.modelSelect.value) || "";
+    if (!modelId) {
+      contextLength = null;
+      renderContextUsageBar();
+      return;
+    }
+    try {
+      const data = await fetchJson(getModelInfoPath(provider, modelId) + "/context-length");
+      contextLength = data.context_length != null ? data.context_length : null;
+    } catch (_) {
+      contextLength = null;
+    }
+    renderContextUsageBar();
+  }
+
+  function renderContextUsageBar() {
+    if (!el.contextUsageRow) return;
+    const hasUsage = lastUsage && (lastUsage.prompt_tokens > 0 || lastUsage.completion_tokens > 0);
+    const pt = (lastUsage && lastUsage.prompt_tokens) || 0;
+    const ct = (lastUsage && lastUsage.completion_tokens) || 0;
+    if (!hasUsage) {
+      if (el.contextUsageText) el.contextUsageText.textContent = "—";
+      if (el.contextUsageBarWrap) el.contextUsageBarWrap.hidden = true;
+      if (el.contextUsageBar) el.contextUsageBar.setAttribute("aria-valuenow", "0");
+      return;
+    }
+    if (el.contextUsageText) {
+      if (contextLength != null) {
+        el.contextUsageText.textContent = `Prompt: ${pt} · Respuesta: ${ct} / ${contextLength} tokens`;
+      } else {
+        el.contextUsageText.textContent = `Prompt: ${pt} · Respuesta: ${ct} tokens`;
+      }
+    }
+    if (contextLength != null && contextLength > 0 && el.contextUsageBarWrap && el.contextUsageSegmentPrompt && el.contextUsageSegmentCompletion) {
+      el.contextUsageBarWrap.hidden = false;
+      const total = pt + ct;
+      const pctTotal = Math.min(100, (total / contextLength) * 100);
+      const pctPrompt = total > 0 ? (pt / total) * pctTotal : 0;
+      const pctCompletion = total > 0 ? (ct / total) * pctTotal : 0;
+      el.contextUsageSegmentPrompt.style.width = pctPrompt + "%";
+      el.contextUsageSegmentCompletion.style.width = pctCompletion + "%";
+      el.contextUsageBar.setAttribute("aria-valuenow", Math.round(pctTotal));
+      el.contextUsageBar.setAttribute("aria-valuemax", 100);
+    } else {
+      if (el.contextUsageBarWrap) el.contextUsageBarWrap.hidden = true;
+    }
   }
 
   async function loadAllTags() {
@@ -551,6 +611,8 @@
         }),
       }).catch(() => {});
     }
+    lastUsage = null;
+    await loadContextLength();
   }
 
   async function loadConversations() {
@@ -691,6 +753,8 @@
     }
     renderMessages();
     loadConversations();
+    lastUsage = null;
+    await loadContextLength();
   }
 
   async function openConversation(id) {
@@ -930,6 +994,13 @@
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
               if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
             }
+            if (data.stream_metadata && data.stream_metadata.usage) {
+              lastUsage = {
+                prompt_tokens: data.stream_metadata.usage.prompt_tokens ?? 0,
+                completion_tokens: data.stream_metadata.usage.completion_tokens ?? 0,
+              };
+              renderContextUsageBar();
+            }
             if (data.done) {
               msgEl.remove();
               messages.push({
@@ -951,10 +1022,15 @@
       currentAbortController = null;
       setCancelButtonState();
     } catch (e) {
+      const lastUserContent = messages.length > 0 ? (messages[messages.length - 1].content || "") : "";
       if (e.name === "AbortError") {
         msgEl.remove();
         messages.pop();
         renderMessages();
+        if (el.messageInput) {
+          el.messageInput.value = lastUserContent;
+          el.messageInput.focus();
+        }
         if (currentConversationId) {
           fetch(`${API}/conversations/${currentConversationId}/messages/last`, { method: "DELETE" }).catch(() => {});
         }
@@ -963,6 +1039,10 @@
         msgEl.remove();
         messages.pop();
         renderMessages();
+        if (el.messageInput) {
+          el.messageInput.value = lastUserContent;
+          el.messageInput.focus();
+        }
         showError("Error al enviar: " + e.message);
       }
       currentAbortController = null;
@@ -1011,6 +1091,8 @@
         body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "" }),
       }).catch(() => {});
     }
+    lastUsage = null;
+    await loadContextLength();
   }
 
   if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
@@ -1254,6 +1336,7 @@
     }
     await loadParamsForProvider(currentProvider);
     await loadConversations();
+    await loadContextLength();
   }
   initLoad();
   loadParamsHelp().then(function () {

@@ -242,6 +242,47 @@ def test_list_provider_models_invalid_provider(mock_get_provider, client):
     assert "no soportado" in r.json()["detail"]
 
 
+@patch("app.routers.api_models.get_model_info")
+@patch("app.routers.api_models.get_provider")
+def test_get_context_length_from_provider_info(mock_get_provider, mock_get_model_info, client):
+    """GET .../context-length devuelve context_length desde ficha (provider_info)."""
+    mock_get_provider.return_value = MagicMock()
+    mock_get_model_info.return_value = {
+        "provider_info": {"model_info": {"llama.context_length": 4096}},
+        "user_info": {},
+    }
+    r = client.get("/api/providers/ollama/models/llama3.2/context-length")
+    assert r.status_code == 200
+    assert r.json() == {"context_length": 4096}
+
+
+@patch("app.routers.api_models.get_context_length_max")
+@patch("app.routers.api_models.get_model_info")
+@patch("app.routers.api_models.get_provider")
+def test_get_context_length_from_preset(mock_get_provider, mock_get_model_info, mock_get_ctx_max, client):
+    """GET .../context-length usa preset cuando la ficha no tiene context_length."""
+    mock_get_provider.return_value = MagicMock()
+    mock_get_model_info.return_value = {"provider_info": {}, "user_info": {}}
+    mock_get_ctx_max.return_value = 8192
+    r = client.get("/api/providers/ollama/models/llama3.2/context-length")
+    assert r.status_code == 200
+    assert r.json() == {"context_length": 8192}
+
+
+@patch("app.routers.api_models.get_context_length_max")
+@patch("app.routers.api_models.get_model_info")
+@patch("app.routers.api_models.get_provider")
+def test_get_context_length_null_when_unknown(mock_get_provider, mock_get_model_info, mock_get_ctx_max, client):
+    """GET .../context-length devuelve context_length null si no hay fuente."""
+    mock_get_provider.return_value = MagicMock()
+    mock_get_provider.return_value.list_models.return_value = []
+    mock_get_model_info.return_value = {"provider_info": {}, "user_info": {}}
+    mock_get_ctx_max.return_value = None
+    r = client.get("/api/providers/ollama/models/unknown/context-length")
+    assert r.status_code == 200
+    assert r.json()["context_length"] is None
+
+
 # ----- Ficha de modelo: capabilities, info, tags, refresh -----
 
 

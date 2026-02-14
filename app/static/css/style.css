@@ -572,6 +572,53 @@ body {
   min-width: 140px;
 }
 
+.context-usage-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.context-usage-label {
+  flex-shrink: 0;
+}
+
+.context-usage-bar-wrap {
+  flex: 1;
+  min-width: 80px;
+  max-width: 200px;
+  height: 8px;
+  background: var(--bg-input);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.context-usage-bar {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.context-usage-segment {
+  height: 100%;
+  transition: width 0.15s ease;
+}
+
+.context-usage-prompt {
+  background: var(--border);
+}
+
+.context-usage-completion {
+  background: var(--accent);
+}
+
+.context-usage-text {
+  flex-shrink: 0;
+}
+
 .btn-icon {
   padding: 0.35rem;
   border: none;

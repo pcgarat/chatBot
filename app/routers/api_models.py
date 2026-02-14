@@ -6,7 +6,7 @@ Incluye ficha de modelo (provider_info + user_info) y capacidades por proveedor.
 from fastapi import APIRouter, HTTPException, Query
 
 from app.model_info import get_all_tags, get_model_info, set_model_info, update_user_info
-from app.provider_params import get_params_config, get_presets
+from app.provider_params import get_context_length_max, get_params_config, get_presets
 from app.providers import ProviderFactory, get_provider
 from app.providers.capabilities import get_model_details, get_provider_capabilities
 from app.schemas import (
@@ -243,6 +243,53 @@ def refresh_model_provider_info(provider_name: str, model_id: str):
         provider_info=raw["provider_info"],
         user_info=ModelInfoUserInfo(**raw["user_info"]),
     )
+
+
+def _resolve_context_length(provider_name: str, model_id: str) -> int | None:
+    """
+    Resuelve el contexto máximo (tokens) para un modelo.
+    Prioridad: 1) ficha (provider_info), 2) preset (num_ctx.max), 3) list_models.
+    """
+    raw = get_model_info(provider_name, model_id)
+    provider_info = raw.get("provider_info") or {}
+    model_info = provider_info.get("model_info") or {}
+    details = provider_info.get("details") or {}
+    ctx = (
+        model_info.get("llama.context_length")
+        or model_info.get("context_length")
+        or details.get("context_length")
+        or provider_info.get("context_length")
+    )
+    if ctx is not None:
+        try:
+            return int(ctx)
+        except (TypeError, ValueError):
+            pass
+    ctx = get_context_length_max(provider_name, model_id)
+    if ctx is not None:
+        return ctx
+    try:
+        provider = get_provider(provider_name)
+        for m in provider.list_models():
+            if m.name == model_id and m.context_length is not None:
+                return m.context_length
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/providers/{provider_name}/models/{model_id:path}/context-length")
+def get_model_context_length(provider_name: str, model_id: str):
+    """
+    Devuelve el contexto máximo (tokens) del modelo para la barra de uso.
+    Origen: ficha del modelo (show), preset (num_ctx.max) o list_models.
+    """
+    try:
+        get_provider(provider_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    ctx = _resolve_context_length(provider_name, model_id)
+    return {"context_length": ctx}
 
 
 @router.get("/models/tags", response_model=TagsResponse)
