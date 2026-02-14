@@ -39,6 +39,8 @@ archivo.txt
 htmlcov/
 .tox/
 .nox/
+.mutmut-cache/
+mutants/
 
 # IDE y OS
 .idea/

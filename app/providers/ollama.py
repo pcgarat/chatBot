@@ -239,6 +239,37 @@ class OllamaProvider:
         except Exception:
             return False
 
+    def show_model(self, model_name: str) -> dict[str, Any] | None:
+        """
+        Capacidad opcional: detalles del modelo vía POST /api/show.
+        Devuelve un dict normalizado para almacenar en provider_info (con fetched_at).
+        None si el modelo no existe o hay error de conexión.
+        """
+        from datetime import datetime, timezone
+
+        url = f"{self._host.rstrip('/')}/api/show"
+        payload = {"model": model_name}
+        try:
+            with httpx.Client(timeout=httpx.Timeout(30)) as client:
+                resp = client.post(url, json=payload)
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+        except Exception:
+            return None
+        # Normalizar: incluir fetched_at y campos típicos de la API show
+        out = {
+            "fetched_at": datetime.now(tz=timezone.utc).isoformat(),
+            "parameters": data.get("parameters"),
+            "template": data.get("template"),
+            "license": data.get("license"),
+            "modified_at": data.get("modified_at"),
+            "details": data.get("details"),
+            "capabilities": data.get("capabilities"),
+            "model_info": data.get("model_info"),
+        }
+        return {k: v for k, v in out.items() if v is not None}
+
     # --- Métodos adicionales específicos de Ollama ---
 
     def list_running_models(self) -> list[str]:

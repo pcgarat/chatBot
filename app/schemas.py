@@ -25,6 +25,37 @@ class ProviderInfo(BaseModel):
     available: bool = True
 
 
+# ----- Model info (ficha por modelo: provider_info + user_info) -----
+class ModelInfoUserInfo(BaseModel):
+    """Datos que el usuario asocia a un modelo (uncensored, instrucciones, tags)."""
+    uncensored: bool = False
+    instructions: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class ModelInfoResponse(BaseModel):
+    """Respuesta de GET /api/providers/{provider}/models/.../info."""
+    provider_info: dict[str, Any] = Field(default_factory=dict)
+    user_info: ModelInfoUserInfo = Field(default_factory=lambda: ModelInfoUserInfo())
+
+
+class ModelInfoUpdateRequest(BaseModel):
+    """Body de PUT/PATCH para actualizar solo user_info (todos los campos opcionales). Límites aplicados en backend."""
+    uncensored: Optional[bool] = None
+    instructions: Optional[list[str]] = None
+    tags: Optional[list[str]] = None
+
+
+class TagsResponse(BaseModel):
+    """Respuesta de GET /api/models/tags (lista de tags únicos para autocompletado)."""
+    tags: list[str] = Field(default_factory=list)
+
+
+class ProviderCapabilitiesResponse(BaseModel):
+    """Respuesta de GET /api/providers/{provider}/capabilities."""
+    capabilities: list[str] = Field(default_factory=list)
+
+
 # ----- Conversation -----
 class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"
