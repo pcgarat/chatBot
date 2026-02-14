@@ -24,6 +24,27 @@ from app.schemas import (
 router = APIRouter(prefix="/api", tags=["conversations"])
 
 
+def _normalize_stream_metadata_usage(metadata: dict | None) -> dict:
+    """
+    Asegura que stream_metadata incluya "usage" normalizado para el frontend.
+    Los proveedores pueden enviar usage en metadata o prompt_tokens/completion_tokens
+    (o Ollama: prompt_eval_count/eval_count). Siempre emitimos usage con el mismo esquema.
+    """
+    if not metadata:
+        return {}
+    out = dict(metadata)
+    if isinstance(out.get("usage"), dict):
+        return out
+    pt = out.get("prompt_tokens") or out.get("prompt_eval_count")
+    ct = out.get("completion_tokens") or out.get("eval_count")
+    if pt is not None or ct is not None:
+        out["usage"] = {
+            "prompt_tokens": int(pt) if pt is not None else 0,
+            "completion_tokens": int(ct) if ct is not None else 0,
+        }
+    return out
+
+
 @router.get("/conversations", response_model=list[ConversationListItem])
 def list_conversations(db: Session = Depends(get_db)):
     convs = crud.list_conversations(db)
@@ -323,9 +344,10 @@ async def _stream_generator_async(
                     yield _emit(json.dumps({"done": True, "id": assistant_id}) + "\n", meta_lines)
                     return
             elif chunk.type == "done":
-                # Guardar metadata del done si hay
+                # Metadata normalizada: siempre incluir "usage" si el proveedor envió tokens
                 if chunk.metadata:
-                    meta_line = json.dumps({"stream_metadata": chunk.metadata}) + "\n"
+                    normalized = _normalize_stream_metadata_usage(chunk.metadata)
+                    meta_line = json.dumps({"stream_metadata": normalized}) + "\n"
                     yield _emit(meta_line, meta_lines)
                 break
             elif chunk.type == "metadata":

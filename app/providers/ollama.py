@@ -208,12 +208,21 @@ class OllamaProvider:
                         if content:
                             yield StreamChunk.content_chunk(content)
 
-                        # Verificar si terminó
+                        # Verificar si terminó (Ollama incluye prompt_eval_count y eval_count en el chunk final)
                         if data.get("done"):
+                            usage = None
+                            prompt_eval = data.get("prompt_eval_count")
+                            eval_count = data.get("eval_count")
+                            if prompt_eval is not None or eval_count is not None:
+                                usage = {
+                                    "prompt_tokens": int(prompt_eval) if prompt_eval is not None else 0,
+                                    "completion_tokens": int(eval_count) if eval_count is not None else 0,
+                                }
                             yield StreamChunk.done_chunk(
                                 model=data.get("model"),
                                 total_duration=data.get("total_duration"),
-                                eval_count=data.get("eval_count"),
+                                eval_count=eval_count,
+                                usage=usage,
                             )
                             return
 
@@ -238,6 +247,37 @@ class OllamaProvider:
             return True
         except Exception:
             return False
+
+    def show_model(self, model_name: str) -> dict[str, Any] | None:
+        """
+        Capacidad opcional: detalles del modelo vía POST /api/show.
+        Devuelve un dict normalizado para almacenar en provider_info (con fetched_at).
+        None si el modelo no existe o hay error de conexión.
+        """
+        from datetime import datetime, timezone
+
+        url = f"{self._host.rstrip('/')}/api/show"
+        payload = {"model": model_name}
+        try:
+            with httpx.Client(timeout=httpx.Timeout(30)) as client:
+                resp = client.post(url, json=payload)
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+        except Exception:
+            return None
+        # Normalizar: incluir fetched_at y campos típicos de la API show
+        out = {
+            "fetched_at": datetime.now(tz=timezone.utc).isoformat(),
+            "parameters": data.get("parameters"),
+            "template": data.get("template"),
+            "license": data.get("license"),
+            "modified_at": data.get("modified_at"),
+            "details": data.get("details"),
+            "capabilities": data.get("capabilities"),
+            "model_info": data.get("model_info"),
+        }
+        return {k: v for k, v in out.items() if v is not None}
 
     # --- Métodos adicionales específicos de Ollama ---
 

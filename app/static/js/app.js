@@ -9,6 +9,10 @@
   let currentAbortController = null;
   /** Parámetros del proveedor actual: { provider, params: { paramId: { type, default, min, max, api_key } } } */
   let paramsConfig = { provider: "", params: {} };
+  /** Uso de contexto (último turno): prompt_tokens, completion_tokens. null si no hay datos. */
+  let lastUsage = null;
+  /** Contexto máximo del modelo actual (tokens). null si no se conoce. */
+  let contextLength = null;
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
@@ -32,6 +36,28 @@
     presetModal: document.getElementById("preset-modal"),
     presetList: document.getElementById("preset-list"),
     presetModalClose: document.getElementById("preset-modal-close"),
+    btnModelInfo: document.getElementById("btn-model-info"),
+    modelInfoModal: document.getElementById("model-info-modal"),
+    modelInfoModalTitle: document.getElementById("model-info-modal-title"),
+    modelInfoModalSubtitle: document.getElementById("model-info-modal-subtitle"),
+    modelInfoProviderContent: document.getElementById("model-info-provider-content"),
+    modelInfoRefreshRow: document.getElementById("model-info-refresh-row"),
+    btnModelInfoRefresh: document.getElementById("btn-model-info-refresh"),
+    modelInfoRefreshStatus: document.getElementById("model-info-refresh-status"),
+    modelInfoUncensored: document.getElementById("model-info-uncensored"),
+    modelInfoInstructionsList: document.getElementById("model-info-instructions-list"),
+    btnAddInstruction: document.getElementById("btn-add-instruction"),
+    modelInfoTagsChips: document.getElementById("model-info-tags-chips"),
+    modelInfoTagsInput: document.getElementById("model-info-tags-input"),
+    modelInfoTagsSuggestions: document.getElementById("model-info-tags-suggestions"),
+    btnModelInfoSave: document.getElementById("btn-model-info-save"),
+    modelInfoModalClose: document.getElementById("model-info-modal-close"),
+    contextUsageRow: document.getElementById("context-usage-row"),
+    contextUsageBarWrap: document.getElementById("context-usage-bar-wrap"),
+    contextUsageBar: document.getElementById("context-usage-bar"),
+    contextUsageSegmentPrompt: document.getElementById("context-usage-segment-prompt"),
+    contextUsageSegmentCompletion: document.getElementById("context-usage-segment-completion"),
+    contextUsageText: document.getElementById("context-usage-text"),
   };
 
   const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
@@ -252,6 +278,294 @@
     if (el.presetModal) el.presetModal.hidden = true;
   }
 
+  // ----- Ficha del modelo (model info modal) -----
+  let modelInfoCurrentProvider = "";
+  let modelInfoCurrentModelId = "";
+  let allTagsCache = [];
+
+  function getModelInfoPath(provider, modelId) {
+    return `${API}/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(modelId)}`;
+  }
+
+  async function loadContextLength() {
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
+    const modelId = (el.modelSelect && el.modelSelect.value) || "";
+    if (!modelId) {
+      contextLength = null;
+      renderContextUsageBar();
+      return;
+    }
+    try {
+      const data = await fetchJson(getModelInfoPath(provider, modelId) + "/context-length");
+      contextLength = data.context_length != null ? data.context_length : null;
+    } catch (_) {
+      contextLength = null;
+    }
+    renderContextUsageBar();
+  }
+
+  function renderContextUsageBar() {
+    if (!el.contextUsageRow) return;
+    const hasUsage = lastUsage && (lastUsage.prompt_tokens > 0 || lastUsage.completion_tokens > 0);
+    const pt = (lastUsage && lastUsage.prompt_tokens) || 0;
+    const ct = (lastUsage && lastUsage.completion_tokens) || 0;
+    if (!hasUsage) {
+      if (el.contextUsageText) el.contextUsageText.textContent = "—";
+      if (el.contextUsageBarWrap) el.contextUsageBarWrap.hidden = true;
+      if (el.contextUsageBar) el.contextUsageBar.setAttribute("aria-valuenow", "0");
+      return;
+    }
+    if (el.contextUsageText) {
+      if (contextLength != null) {
+        el.contextUsageText.textContent = `Prompt: ${pt} · Respuesta: ${ct} / ${contextLength} tokens`;
+      } else {
+        el.contextUsageText.textContent = `Prompt: ${pt} · Respuesta: ${ct} tokens`;
+      }
+    }
+    if (contextLength != null && contextLength > 0 && el.contextUsageBarWrap && el.contextUsageSegmentPrompt && el.contextUsageSegmentCompletion) {
+      el.contextUsageBarWrap.hidden = false;
+      const total = pt + ct;
+      const pctTotal = Math.min(100, (total / contextLength) * 100);
+      const pctPrompt = total > 0 ? (pt / total) * pctTotal : 0;
+      const pctCompletion = total > 0 ? (ct / total) * pctTotal : 0;
+      el.contextUsageSegmentPrompt.style.width = pctPrompt + "%";
+      el.contextUsageSegmentCompletion.style.width = pctCompletion + "%";
+      el.contextUsageBar.setAttribute("aria-valuenow", Math.round(pctTotal));
+      el.contextUsageBar.setAttribute("aria-valuemax", 100);
+    } else {
+      if (el.contextUsageBarWrap) el.contextUsageBarWrap.hidden = true;
+    }
+  }
+
+  async function loadAllTags() {
+    try {
+      const data = await fetchJson(`${API}/models/tags`);
+      allTagsCache = (data && data.tags) ? data.tags : [];
+      return allTagsCache;
+    } catch (_) {
+      allTagsCache = [];
+      return [];
+    }
+  }
+
+  function formatProviderInfoForDisplay(providerInfo) {
+    if (!providerInfo || Object.keys(providerInfo).length === 0) return "";
+    const lines = [];
+    const details = providerInfo.details || {};
+    if (details.family) lines.push("Familia: " + details.family);
+    if (details.parameter_size) lines.push("Tamaño: " + details.parameter_size);
+    if (details.quantization_level) lines.push("Cuantización: " + details.quantization_level);
+    if (details.format) lines.push("Formato: " + details.format);
+    const modelInfo = providerInfo.model_info || {};
+    const ctx = modelInfo["llama.context_length"] ?? modelInfo["context_length"] ?? providerInfo.context_length;
+    if (ctx) lines.push("Contexto: " + ctx + " tokens");
+    if (providerInfo.fetched_at) lines.push("Actualizado: " + new Date(providerInfo.fetched_at).toLocaleString("es"));
+    if (providerInfo.modified_at) lines.push("Modificado (modelo): " + new Date(providerInfo.modified_at).toLocaleString("es"));
+    if (providerInfo.license) lines.push("Licencia: " + providerInfo.license);
+    const caps = providerInfo.capabilities;
+    if (caps && caps.length) lines.push("Capacidades: " + caps.join(", "));
+    if (providerInfo.template && providerInfo.template.trim()) {
+      lines.push("");
+      lines.push("Template (extracto):");
+      lines.push(providerInfo.template.trim().slice(0, 400) + (providerInfo.template.length > 400 ? "…" : ""));
+    }
+    return lines.join("\n");
+  }
+
+  function renderProviderInfoBlock(providerInfo) {
+    if (!el.modelInfoProviderContent) return;
+    el.modelInfoProviderContent.textContent = formatProviderInfoForDisplay(providerInfo || {});
+  }
+
+  function fillUserInfoInModal(userInfo) {
+    if (!userInfo) return;
+    if (el.modelInfoUncensored) el.modelInfoUncensored.checked = !!userInfo.uncensored;
+    if (el.modelInfoInstructionsList) {
+      const list = Array.isArray(userInfo.instructions) ? userInfo.instructions : [];
+      el.modelInfoInstructionsList.innerHTML = list
+        .map(
+          (line, i) =>
+            `<div class="model-info-instruction-row" data-index="${i}">
+              <input type="text" value="${escapeHtml(line)}" data-instruction />
+              <button type="button" class="btn-icon model-info-instruction-remove" data-index="${i}" title="Quitar">×</button>
+            </div>`
+        )
+        .join("");
+      el.modelInfoInstructionsList.querySelectorAll(".model-info-instruction-remove").forEach((btn) => {
+        btn.addEventListener("click", function () {
+          const row = btn.closest(".model-info-instruction-row");
+          if (row) row.remove();
+        });
+      });
+    }
+    const tags = Array.isArray(userInfo.tags) ? userInfo.tags : [];
+    renderModelInfoTagsChips(tags);
+    if (el.modelInfoTagsInput) el.modelInfoTagsInput.value = "";
+    if (el.modelInfoTagsSuggestions) {
+      el.modelInfoTagsSuggestions.hidden = true;
+      el.modelInfoTagsSuggestions.innerHTML = "";
+    }
+  }
+
+  function renderModelInfoTagsChips(tags) {
+    if (!el.modelInfoTagsChips) return;
+    el.modelInfoTagsChips.innerHTML = (tags || [])
+      .map(
+        (tag, i) =>
+          `<span class="model-info-tag-chip" data-tag-index="${i}">
+            ${escapeHtml(tag)}
+            <button type="button" class="model-info-tag-chip-remove" data-tag-index="${i}" aria-label="Quitar tag">×</button>
+          </span>`
+      )
+      .join("");
+    el.modelInfoTagsChips.querySelectorAll(".model-info-tag-chip-remove").forEach((btn) => {
+      btn.addEventListener("click", function () {
+        const idx = parseInt(btn.getAttribute("data-tag-index"), 10);
+        const currentTags = getModelInfoTagsFromModal();
+        const next = currentTags.filter((_, i) => i !== idx);
+        renderModelInfoTagsChips(next);
+      });
+    });
+  }
+
+  function getModelInfoTagsFromModal() {
+    if (!el.modelInfoTagsChips) return [];
+    return Array.from(el.modelInfoTagsChips.querySelectorAll(".model-info-tag-chip"))
+      .map((c) => (c.textContent || "").replace(/×\s*$/, "").trim())
+      .filter(Boolean);
+  }
+
+  function getModelInfoInstructionsFromModal() {
+    if (!el.modelInfoInstructionsList) return [];
+    return Array.from(el.modelInfoInstructionsList.querySelectorAll("input[data-instruction]"))
+      .map((inp) => (inp.value || "").trim())
+      .filter(Boolean);
+  }
+
+  function collectUserInfoFromModal() {
+    return {
+      uncensored: el.modelInfoUncensored ? el.modelInfoUncensored.checked : false,
+      instructions: getModelInfoInstructionsFromModal(),
+      tags: getModelInfoTagsFromModal(),
+    };
+  }
+
+  function showModelInfoTagsSuggestions(prefix) {
+    const pre = (prefix || "").trim().toLowerCase();
+    const filtered = pre ? allTagsCache.filter((t) => t.toLowerCase().startsWith(pre) && !getModelInfoTagsFromModal().includes(t)) : allTagsCache.filter((t) => !getModelInfoTagsFromModal().includes(t));
+    if (!el.modelInfoTagsSuggestions) return;
+    el.modelInfoTagsSuggestions.hidden = filtered.length === 0;
+    el.modelInfoTagsSuggestions.innerHTML = filtered
+      .slice(0, 15)
+      .map((tag) => `<div class="model-info-tags-suggestion" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</div>`)
+      .join("");
+    el.modelInfoTagsSuggestions.querySelectorAll(".model-info-tags-suggestion").forEach((node) => {
+      node.addEventListener("click", () => {
+        addModelInfoTag(node.getAttribute("data-tag"));
+        el.modelInfoTagsInput.value = "";
+        el.modelInfoTagsSuggestions.hidden = true;
+        el.modelInfoTagsSuggestions.innerHTML = "";
+      });
+    });
+  }
+
+  function addModelInfoTag(tag) {
+    const t = (tag || "").trim();
+    if (!t) return;
+    const current = getModelInfoTagsFromModal();
+    if (current.includes(t)) return;
+    renderModelInfoTagsChips([...current, t]);
+    if (el.modelInfoTagsInput) el.modelInfoTagsInput.value = "";
+    if (el.modelInfoTagsSuggestions) {
+      el.modelInfoTagsSuggestions.hidden = true;
+      el.modelInfoTagsSuggestions.innerHTML = "";
+    }
+  }
+
+  async function openModelInfoModal() {
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
+    const modelId = (el.modelSelect && el.modelSelect.value) || "";
+    if (!modelId) {
+      showError("Selecciona un modelo.");
+      return;
+    }
+    modelInfoCurrentProvider = provider;
+    modelInfoCurrentModelId = modelId;
+    if (el.modelInfoModalTitle) el.modelInfoModalTitle.textContent = "Ficha del modelo";
+    if (el.modelInfoModalSubtitle) el.modelInfoModalSubtitle.textContent = provider + " / " + modelId;
+    if (el.modelInfoRefreshStatus) {
+      el.modelInfoRefreshStatus.textContent = "";
+      el.modelInfoRefreshStatus.className = "model-info-status";
+    }
+    const baseUrl = getModelInfoPath(provider, modelId);
+    try {
+      const [infoData, capsData] = await Promise.all([
+        fetchJson(`${baseUrl}/info`),
+        fetchJson(`${API}/providers/${encodeURIComponent(provider)}/capabilities`).catch(() => ({ capabilities: [] })),
+      ]);
+      const capabilities = (capsData && capsData.capabilities) || [];
+      const hasShowModel = capabilities.includes("show_model");
+      if (el.modelInfoRefreshRow) el.modelInfoRefreshRow.style.display = hasShowModel ? "" : "none";
+      renderProviderInfoBlock(infoData.provider_info || {});
+      fillUserInfoInModal(infoData.user_info || { uncensored: false, instructions: [], tags: [] });
+      await loadAllTags();
+    } catch (e) {
+      showError("No se pudo cargar la ficha: " + e.message);
+      renderProviderInfoBlock({});
+      fillUserInfoInModal({ uncensored: false, instructions: [], tags: [] });
+      if (el.modelInfoRefreshRow) el.modelInfoRefreshRow.style.display = "none";
+    }
+    if (el.modelInfoModal) el.modelInfoModal.hidden = false;
+  }
+
+  function closeModelInfoModal() {
+    if (el.modelInfoModal) el.modelInfoModal.hidden = true;
+  }
+
+  async function saveModelInfo() {
+    const provider = modelInfoCurrentProvider;
+    const modelId = modelInfoCurrentModelId;
+    if (!provider || !modelId) return;
+    const body = collectUserInfoFromModal();
+    try {
+      await fetchJson(getModelInfoPath(provider, modelId) + "/info", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      showNotice("Ficha guardada.");
+      const infoData = await fetchJson(getModelInfoPath(provider, modelId) + "/info");
+      renderProviderInfoBlock(infoData.provider_info || {});
+      fillUserInfoInModal(infoData.user_info || {});
+    } catch (e) {
+      showError("Error al guardar: " + e.message);
+    }
+  }
+
+  async function refreshModelInfoProvider() {
+    const provider = modelInfoCurrentProvider;
+    const modelId = modelInfoCurrentModelId;
+    if (!provider || !modelId) return;
+    if (el.modelInfoRefreshStatus) {
+      el.modelInfoRefreshStatus.textContent = "Actualizando…";
+      el.modelInfoRefreshStatus.className = "model-info-status";
+    }
+    try {
+      await fetchJson(getModelInfoPath(provider, modelId) + "/info/refresh", { method: "POST" });
+      if (el.modelInfoRefreshStatus) {
+        el.modelInfoRefreshStatus.textContent = "Actualizado.";
+        el.modelInfoRefreshStatus.className = "model-info-status success";
+      }
+      const infoData = await fetchJson(getModelInfoPath(provider, modelId) + "/info");
+      renderProviderInfoBlock(infoData.provider_info || {});
+    } catch (e) {
+      if (el.modelInfoRefreshStatus) {
+        el.modelInfoRefreshStatus.textContent = "No se pudo actualizar. " + (e.message || "");
+        el.modelInfoRefreshStatus.className = "model-info-status error";
+      }
+      showError("Error al refrescar: " + e.message);
+    }
+  }
+
   function buildModelParams() {
     const out = {};
     for (const paramId of Object.keys(paramsConfig.params)) {
@@ -297,6 +611,8 @@
         }),
       }).catch(() => {});
     }
+    lastUsage = null;
+    await loadContextLength();
   }
 
   async function loadConversations() {
@@ -437,6 +753,8 @@
     }
     renderMessages();
     loadConversations();
+    lastUsage = null;
+    await loadContextLength();
   }
 
   async function openConversation(id) {
@@ -676,6 +994,13 @@
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
               if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
             }
+            if (data.stream_metadata && data.stream_metadata.usage) {
+              lastUsage = {
+                prompt_tokens: data.stream_metadata.usage.prompt_tokens ?? 0,
+                completion_tokens: data.stream_metadata.usage.completion_tokens ?? 0,
+              };
+              renderContextUsageBar();
+            }
             if (data.done) {
               msgEl.remove();
               messages.push({
@@ -697,10 +1022,15 @@
       currentAbortController = null;
       setCancelButtonState();
     } catch (e) {
+      const lastUserContent = messages.length > 0 ? (messages[messages.length - 1].content || "") : "";
       if (e.name === "AbortError") {
         msgEl.remove();
         messages.pop();
         renderMessages();
+        if (el.messageInput) {
+          el.messageInput.value = lastUserContent;
+          el.messageInput.focus();
+        }
         if (currentConversationId) {
           fetch(`${API}/conversations/${currentConversationId}/messages/last`, { method: "DELETE" }).catch(() => {});
         }
@@ -709,6 +1039,10 @@
         msgEl.remove();
         messages.pop();
         renderMessages();
+        if (el.messageInput) {
+          el.messageInput.value = lastUserContent;
+          el.messageInput.focus();
+        }
         showError("Error al enviar: " + e.message);
       }
       currentAbortController = null;
@@ -757,6 +1091,8 @@
         body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "" }),
       }).catch(() => {});
     }
+    lastUsage = null;
+    await loadContextLength();
   }
 
   if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
@@ -778,6 +1114,38 @@
     el.presetModal.addEventListener("click", (e) => {
       if (e.target === el.presetModal) closePresetModal();
     });
+  }
+  if (el.btnModelInfo) el.btnModelInfo.addEventListener("click", openModelInfoModal);
+  if (el.modelInfoModalClose) el.modelInfoModalClose.addEventListener("click", closeModelInfoModal);
+  if (el.modelInfoModal) {
+    el.modelInfoModal.addEventListener("click", (e) => {
+      if (e.target === el.modelInfoModal) closeModelInfoModal();
+    });
+  }
+  if (el.btnModelInfoSave) el.btnModelInfoSave.addEventListener("click", saveModelInfo);
+  if (el.btnModelInfoRefresh) el.btnModelInfoRefresh.addEventListener("click", refreshModelInfoProvider);
+  if (el.btnAddInstruction) {
+    el.btnAddInstruction.addEventListener("click", () => {
+      if (!el.modelInfoInstructionsList) return;
+      const idx = el.modelInfoInstructionsList.querySelectorAll(".model-info-instruction-row").length;
+      const row = document.createElement("div");
+      row.className = "model-info-instruction-row";
+      row.setAttribute("data-index", String(idx));
+      row.innerHTML = `<input type="text" value="" data-instruction placeholder="Nueva instrucción" /><button type="button" class="btn-icon model-info-instruction-remove" title="Quitar">×</button>`;
+      row.querySelector(".model-info-instruction-remove").addEventListener("click", () => row.remove());
+      el.modelInfoInstructionsList.appendChild(row);
+    });
+  }
+  if (el.modelInfoTagsInput) {
+    el.modelInfoTagsInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const v = (el.modelInfoTagsInput.value || "").trim();
+        if (v) addModelInfoTag(v);
+      }
+    });
+    el.modelInfoTagsInput.addEventListener("input", () => showModelInfoTagsSuggestions(el.modelInfoTagsInput.value));
+    el.modelInfoTagsInput.addEventListener("focus", () => loadAllTags().then(() => showModelInfoTagsSuggestions(el.modelInfoTagsInput.value)));
   }
   if (el.btnRefreshModels) el.btnRefreshModels.addEventListener("click", refreshModels);
   if (el.providerSelect) el.providerSelect.addEventListener("change", onProviderChange);
@@ -968,6 +1336,7 @@
     }
     await loadParamsForProvider(currentProvider);
     await loadConversations();
+    await loadContextLength();
   }
   initLoad();
   loadParamsHelp().then(function () {

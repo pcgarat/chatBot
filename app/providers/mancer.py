@@ -284,13 +284,19 @@ class MancerProvider:
                                 # Verificar finish_reason
                                 finish_reason = choices[0].get("finish_reason")
                                 if finish_reason:
-                                    # Emitir metadata de uso si está disponible
-                                    usage = data.get("usage", {})
+                                    # Objeto usage normalizado (mismo esquema que Ollama)
+                                    raw = data.get("usage", {})
+                                    pt, ct = raw.get("prompt_tokens"), raw.get("completion_tokens")
+                                    usage = None
+                                    if pt is not None or ct is not None:
+                                        usage = {
+                                            "prompt_tokens": int(pt) if pt is not None else 0,
+                                            "completion_tokens": int(ct) if ct is not None else 0,
+                                        }
                                     yield StreamChunk.done_chunk(
                                         model=data.get("model", model),
                                         finish_reason=finish_reason,
-                                        prompt_tokens=usage.get("prompt_tokens"),
-                                        completion_tokens=usage.get("completion_tokens"),
+                                        usage=usage,
                                     )
                                     return
 

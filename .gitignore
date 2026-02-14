@@ -1,5 +1,6 @@
 # Entorno virtual
 .venv/
+.venv_mut/
 .venv312/
 venv/
 env/
@@ -39,6 +40,8 @@ archivo.txt
 htmlcov/
 .tox/
 .nox/
+.mutmut-cache/
+mutants/
 
 # IDE y OS
 .idea/
