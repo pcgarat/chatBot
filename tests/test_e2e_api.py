@@ -211,6 +211,20 @@ def test_e2e_list_model_tags(client, ollama_available):
     assert isinstance(data["tags"], list)
 
 
+def test_e2e_get_context_length(client, ollama_available):
+    """GET /api/providers/ollama/models/{model_id}/context-length devuelve context_length (número o null)."""
+    model_id = _get_first_ollama_model(client)
+    path_id = _encode_model_id(model_id)
+    r = client.get(f"/api/providers/ollama/models/{path_id}/context-length")
+    assert r.status_code == 200
+    data = r.json()
+    assert "context_length" in data
+    # Puede ser int (desde ficha, preset o list_models) o null si no hay fuente
+    assert data["context_length"] is None or isinstance(data["context_length"], int)
+    if data["context_length"] is not None:
+        assert data["context_length"] > 0
+
+
 # ----- API Conversations -----
 
 
