@@ -92,3 +92,68 @@ def test_touch_conversation(db_session):
     # updated_at puede ser el mismo en el mismo segundo; al menos no falla
     crud.touch_conversation(db_session, "00000000-0000-0000-0000-000000000000")
     # No debe lanzar
+
+
+def test_get_message(db_session):
+    """get_message devuelve el mensaje por id o None si no existe."""
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    msg = crud.add_message(db_session, conv.id, "user", "Hola")
+    found = crud.get_message(db_session, conv.id, msg.id)
+    assert found is not None
+    assert found.id == msg.id
+    assert found.content == "Hola"
+    assert crud.get_message(db_session, conv.id, "00000000-0000-0000-0000-000000000000") is None
+    assert crud.get_message(db_session, "00000000-0000-0000-0000-000000000000", msg.id) is None
+
+
+def test_delete_message(db_session):
+    """delete_message elimina por id; devuelve True si existía, False si no."""
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    msg = crud.add_message(db_session, conv.id, "user", "Borrar")
+    ok = crud.delete_message(db_session, conv.id, msg.id)
+    assert ok is True
+    assert crud.get_message(db_session, conv.id, msg.id) is None
+    assert crud.get_messages(db_session, conv.id) == []
+
+    assert crud.delete_message(db_session, conv.id, "00000000-0000-0000-0000-000000000000") is False
+    assert crud.delete_message(db_session, "00000000-0000-0000-0000-000000000000", msg.id) is False
+
+
+def test_delete_last_message(db_session):
+    """delete_last_message elimina el último mensaje; False si no hay mensajes."""
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    assert crud.delete_last_message(db_session, conv.id) is False
+
+    crud.add_message(db_session, conv.id, "user", "Uno")
+    crud.add_message(db_session, conv.id, "assistant", "Dos")
+    ok = crud.delete_last_message(db_session, conv.id)
+    assert ok is True
+    msgs = crud.get_messages(db_session, conv.id)
+    assert len(msgs) == 1
+    assert msgs[0].content == "Uno"
+
+    ok = crud.delete_last_message(db_session, conv.id)
+    assert ok is True
+    assert crud.get_messages(db_session, conv.id) == []
+    assert crud.delete_last_message(db_session, conv.id) is False
+
+
+def test_clear_conversation_messages(db_session):
+    """clear_conversation_messages elimina todos los mensajes y devuelve el count."""
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    assert crud.clear_conversation_messages(db_session, conv.id) == 0
+    crud.add_message(db_session, conv.id, "user", "A")
+    crud.add_message(db_session, conv.id, "assistant", "B")
+    count = crud.clear_conversation_messages(db_session, conv.id)
+    assert count == 2
+    assert crud.get_messages(db_session, conv.id) == []
+
+
+def test_update_conversation_inject_instruction_every(db_session):
+    """update_conversation puede actualizar inject_instruction_every."""
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    updated = crud.update_conversation(db_session, conv.id, inject_instruction_every=5)
+    assert updated is not None
+    assert updated.inject_instruction_every == 5
+    updated2 = crud.update_conversation(db_session, conv.id, inject_instruction_every=0)
+    assert updated2.inject_instruction_every is None

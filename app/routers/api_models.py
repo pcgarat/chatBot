@@ -1,12 +1,24 @@
 """
 Endpoints para listar modelos y proveedores de LLM.
+Incluye ficha de modelo (provider_info + user_info) y capacidades por proveedor.
 """
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.model_info import get_all_tags, get_model_info, set_model_info, update_user_info
 from app.provider_params import get_params_config, get_presets
 from app.providers import ProviderFactory, get_provider
-from app.schemas import ModelInfo, ProviderInfo, ProviderModelInfo
+from app.providers.capabilities import get_model_details, get_provider_capabilities
+from app.schemas import (
+    ModelInfo,
+    ModelInfoResponse,
+    ModelInfoUpdateRequest,
+    ModelInfoUserInfo,
+    ProviderCapabilitiesResponse,
+    ProviderInfo,
+    ProviderModelInfo,
+    TagsResponse,
+)
 
 router = APIRouter(prefix="/api", tags=["models"])
 
@@ -144,3 +156,96 @@ def list_all_models():
             # Si un proveedor falla, continuar con los demás
             continue
     return all_models
+
+
+# ----- Ficha de modelo (provider_info + user_info) y capacidades -----
+
+
+@router.get("/providers/{provider_name}/capabilities", response_model=ProviderCapabilitiesResponse)
+def get_capabilities(provider_name: str):
+    """Lista las capacidades que soporta el proveedor (ej. show_model, unload_model)."""
+    try:
+        caps = get_provider_capabilities(provider_name)
+        return ProviderCapabilitiesResponse(capabilities=caps)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/providers/{provider_name}/models/{model_id:path}/info",
+    response_model=ModelInfoResponse,
+)
+def get_model_info_route(provider_name: str, model_id: str):
+    """
+    Devuelve la ficha del modelo (provider_info + user_info).
+    Si no existe ficha, devuelve user_info por defecto y provider_info vacío (no llama a show).
+    model_id puede contener ':' (ej. llama3.2:latest); irá URL-encoded en la ruta.
+    """
+    try:
+        get_provider(provider_name)  # validar que el proveedor existe
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    raw = get_model_info(provider_name, model_id)
+    return ModelInfoResponse(
+        provider_info=raw["provider_info"],
+        user_info=ModelInfoUserInfo(**raw["user_info"]),
+    )
+
+
+@router.put(
+    "/providers/{provider_name}/models/{model_id:path}/info",
+    response_model=ModelInfoResponse,
+)
+def put_model_info_route(provider_name: str, model_id: str, body: ModelInfoUpdateRequest):
+    """Actualiza solo user_info (uncensored, instructions, tags). Campos opcionales."""
+    try:
+        get_provider(provider_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    update_user_info(
+        provider_name,
+        model_id,
+        uncensored=body.uncensored,
+        instructions=body.instructions,
+        tags=body.tags,
+    )
+    raw = get_model_info(provider_name, model_id)
+    return ModelInfoResponse(
+        provider_info=raw["provider_info"],
+        user_info=ModelInfoUserInfo(**raw["user_info"]),
+    )
+
+
+@router.post(
+    "/providers/{provider_name}/models/{model_id:path}/info/refresh",
+    response_model=ModelInfoResponse,
+)
+def refresh_model_provider_info(provider_name: str, model_id: str):
+    """
+    Refresca provider_info llamando a la capacidad show_model del proveedor.
+    Si falla, no sobrescribe el provider_info existente; devuelve la ficha actual.
+    """
+    try:
+        get_provider(provider_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    details = get_model_details(provider_name, model_id)
+    if details is not None:
+        current = get_model_info(provider_name, model_id)
+        set_model_info(
+            provider_name,
+            model_id,
+            provider_info=details,
+            user_info=current["user_info"],
+        )
+    raw = get_model_info(provider_name, model_id)
+    return ModelInfoResponse(
+        provider_info=raw["provider_info"],
+        user_info=ModelInfoUserInfo(**raw["user_info"]),
+    )
+
+
+@router.get("/models/tags", response_model=TagsResponse)
+def list_model_tags():
+    """Lista todos los tags únicos de las fichas (para autocompletado en la UI)."""
+    return TagsResponse(tags=get_all_tags())

@@ -1,0 +1,19 @@
+# Cobertura: solo paquete app. Exclusiones según INFORME_COBERTURA_TESTS.md §4.
+# omit: ollama_client (legacy), main (entrada FastAPI), db (migraciones), base (Protocol), api_ollama (Ollama real).
+
+[run]
+source = app
+omit =
+    app/ollama_client.py
+    app/main.py
+    app/db.py
+    app/providers/base.py
+    app/routers/api_ollama.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:

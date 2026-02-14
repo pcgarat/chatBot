@@ -5,10 +5,12 @@ PYTHON := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 UVICORN := $(VENV)/bin/uvicorn
 PYTEST := $(VENV)/bin/pytest
+# Cobertura: siempre sobre app; exclusiones en .coveragerc
+COVERAGE_OPTS := --cov=app --cov-report=term-missing
 PORT ?= 8000
 PIDFILE := .server.pid
 
-.PHONY: help up down start start-verbose stop reload reload-dev restart-dev test status clean setup
+.PHONY: help up down start start-verbose stop reload reload-dev restart-dev test coverage-html mutation-test status clean setup
 .PHONY: chroma-up chroma-down chroma-logs chroma-status chroma-clean chroma-ping ingest venv312
 
 help:
@@ -22,7 +24,9 @@ help:
 	@echo "  make reload  make down + make up (reinicio completo)"
 	@echo "  make reload-dev  make down + setup + tests + start-verbose (dev con tests antes de levantar)"
 	@echo "  make restart-dev  make stop + tests + start-verbose (rápido: sin recrear venv)"
-	@echo "  make test    Ejecutar los tests"
+	@echo "  make test    Ejecutar los tests (con cobertura sobre app; exclusiones en .coveragerc)"
+	@echo "  make coverage-html  Tests + informe HTML de cobertura (htmlcov/index.html)"
+	@echo "  make mutation-test  Tests de mutación con mutmut (config en setup.cfg); genera .mutmut-cache"
 	@echo "  make status  Mostrar estado del entorno y del servidor"
 	@echo "  make clean   Parar la app y borrar .server.pid (no toca Docker ni Chroma)"
 	@echo "  make start-verbose  Iniciar con -v (volcar en stderr lo enviado a Ollama)"
@@ -159,7 +163,18 @@ stop:
 	fi
 
 test: $(VENV)/bin/pytest
-	$(PYTEST) --cov=app --cov-report=term-missing
+	$(PYTEST) $(COVERAGE_OPTS)
+
+# Tests de mutación (mutmut). Config en setup.cfg; ver INFORME_MUTACIONES.md.
+# En algunos entornos la fase "stats" puede fallar (multiprocessing); entonces ejecutar
+# por módulo: python -m mutmut run app/slash_commands.py
+mutation-test: $(VENV)/bin/pytest
+	$(PIP) install -q mutmut
+	$(VENV)/bin/python -m mutmut run
+
+# Informe HTML de cobertura (mismo criterio que make test; abre htmlcov/index.html)
+coverage-html: $(VENV)/bin/pytest
+	$(PYTEST) --cov=app --cov-report=term-missing --cov-report=html
 
 # Ingestar archivo de texto en Chroma (ChromaDB no va con Python 3.14; se usa .venv312 con 3.12 si existe)
 FILE ?= archivo.txt

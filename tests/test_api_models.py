@@ -1,4 +1,4 @@
-"""Tests del endpoint GET /api/models y /api/providers."""
+"""Tests del endpoint GET /api/models, /api/providers y ficha de modelo (info, tags, capabilities)."""
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -40,6 +40,121 @@ def test_list_models_provider_error(mock_get_provider, client):
     r = client.get("/api/models")
     assert r.status_code == 503
     assert "proveedor" in r.json()["detail"].lower()
+
+
+@patch("app.routers.api_models.get_provider")
+def test_list_models_with_provider_query(mock_get_provider, client):
+    """GET /api/models?provider=X lista solo modelos de ese proveedor."""
+    mock_provider = MagicMock()
+    mock_provider.list_models.return_value = [
+        ProviderModelInfo(name="m1", provider="mancer"),
+    ]
+    mock_get_provider.return_value = mock_provider
+    r = client.get("/api/models?provider=mancer")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["name"] == "m1"
+    mock_get_provider.assert_called_once_with("mancer")
+
+
+@patch("app.routers.api_models.get_provider")
+def test_list_models_value_error(mock_get_provider, client):
+    """GET /api/models con proveedor inválido devuelve 400."""
+    mock_get_provider.side_effect = ValueError("Proveedor 'x' no soportado")
+    r = client.get("/api/models?provider=x")
+    assert r.status_code == 400
+    assert "no soportado" in r.json()["detail"].lower()
+
+
+# ----- validate_provider -----
+
+
+@patch("app.routers.api_models.get_provider")
+def test_validate_provider_200(mock_get_provider, client):
+    """GET /api/providers/{name}/validate devuelve 200 cuando el proveedor está disponible."""
+    mock_provider = MagicMock()
+    mock_provider.validate_connection.return_value = True
+    mock_get_provider.return_value = mock_provider
+    r = client.get("/api/providers/ollama/validate")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    mock_provider.validate_connection.assert_called_once()
+
+
+@patch("app.routers.api_models.get_provider")
+def test_validate_provider_503(mock_get_provider, client):
+    """GET /api/providers/{name}/validate devuelve 503 cuando no está disponible."""
+    mock_provider = MagicMock()
+    mock_provider.validate_connection.return_value = False
+    mock_get_provider.return_value = mock_provider
+    r = client.get("/api/providers/ollama/validate")
+    assert r.status_code == 503
+    assert "no disponible" in r.json()["detail"].lower()
+
+
+@patch("app.routers.api_models.get_provider")
+def test_validate_provider_503_on_exception(mock_get_provider, client):
+    """validate_connection lanza excepción -> 503."""
+    mock_provider = MagicMock()
+    mock_provider.validate_connection.side_effect = ConnectionError("Connection refused")
+    mock_get_provider.return_value = mock_provider
+    r = client.get("/api/providers/ollama/validate")
+    assert r.status_code == 503
+
+
+# ----- list_provider_models excepciones -----
+
+
+@patch("app.routers.api_models.get_provider")
+def test_list_provider_models_connection_error(mock_get_provider, client):
+    """GET /api/providers/X/models con ConnectionError devuelve 503."""
+    mock_provider = MagicMock()
+    mock_provider.list_models.side_effect = ConnectionError("No connection")
+    mock_get_provider.return_value = mock_provider
+    r = client.get("/api/providers/mancer/models")
+    assert r.status_code == 503
+    assert "conectar" in r.json()["detail"].lower()
+
+
+@patch("app.routers.api_models.get_provider")
+def test_list_provider_models_generic_exception(mock_get_provider, client):
+    """GET /api/providers/X/models con Exception genérica devuelve 503."""
+    mock_provider = MagicMock()
+    mock_provider.list_models.side_effect = RuntimeError("Algo falló")
+    mock_get_provider.return_value = mock_provider
+    r = client.get("/api/providers/mancer/models")
+    assert r.status_code == 503
+    assert "listar" in r.json()["detail"].lower() or "mancer" in r.json()["detail"].lower()
+
+
+# ----- list_all_models: un proveedor falla, se continúa con el siguiente -----
+
+
+@patch("app.routers.api_models.get_provider")
+@patch("app.routers.api_models.ProviderFactory.list_available_providers")
+def test_list_all_models_one_provider_fails_continue(mock_list_providers, mock_get_provider, client):
+    """Si un proveedor falla al listar, se devuelven los modelos del resto."""
+    mock_list_providers.return_value = ["ollama", "mancer"]
+    ollama_provider = MagicMock()
+    ollama_provider.list_models.side_effect = ConnectionError("Ollama down")
+    mancer_provider = MagicMock()
+    mancer_provider.list_models.return_value = [
+        ProviderModelInfo(name="mytho", provider="mancer"),
+    ]
+
+    def get_provider_side_effect(name):
+        if name == "ollama":
+            return ollama_provider
+        return mancer_provider
+
+    mock_get_provider.side_effect = get_provider_side_effect
+    r = client.get("/api/models/all")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["name"] == "mytho"
+    assert data[0]["provider"] == "mancer"
 
 
 def test_get_provider_params_ollama(client):
@@ -125,3 +240,111 @@ def test_list_provider_models_invalid_provider(mock_get_provider, client):
     r = client.get("/api/providers/invalid/models")
     assert r.status_code == 400
     assert "no soportado" in r.json()["detail"]
+
+
+# ----- Ficha de modelo: capabilities, info, tags, refresh -----
+
+
+@patch("app.routers.api_models.get_provider_capabilities")
+def test_get_capabilities_ollama(mock_get_caps, client):
+    """GET /api/providers/ollama/capabilities devuelve lista de capacidades."""
+    mock_get_caps.return_value = ["show_model", "unload_model"]
+    r = client.get("/api/providers/ollama/capabilities")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["capabilities"] == ["show_model", "unload_model"]
+    mock_get_caps.assert_called_once_with("ollama")
+
+
+@patch("app.routers.api_models.get_provider_capabilities")
+def test_get_capabilities_invalid_provider(mock_get_caps, client):
+    """GET /api/providers/invalid/capabilities con proveedor inexistente devuelve 400."""
+    mock_get_caps.side_effect = ValueError("Proveedor no soportado")
+    r = client.get("/api/providers/invalid/capabilities")
+    assert r.status_code == 400
+
+
+@pytest.fixture
+def model_info_use_tmp_path(tmp_path):
+    """Redirige persistencia de model_info a tmp_path para tests de API."""
+    with (
+        patch("app.model_info._MODEL_INFO_DIR", tmp_path),
+        patch("app.model_info._MODEL_INFO_PATH", tmp_path / "model_info.json"),
+        patch("app.model_info._MODEL_INFO_TMP", tmp_path / "model_info.json.tmp"),
+    ):
+        yield tmp_path
+
+
+def test_get_model_info_returns_defaults_when_missing(client, model_info_use_tmp_path):
+    """GET .../models/{model_id}/info devuelve ficha por defecto si no existe."""
+    r = client.get("/api/providers/ollama/models/llama3.2/info")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider_info"] == {}
+    assert data["user_info"]["uncensored"] is False
+    assert data["user_info"]["instructions"] == []
+    assert data["user_info"]["tags"] == []
+
+
+def test_put_model_info_updates_user_info(client, model_info_use_tmp_path):
+    """PUT .../models/{model_id}/info actualiza user_info."""
+    r = client.put(
+        "/api/providers/ollama/models/llama3.2/info",
+        json={"uncensored": True, "tags": ["local", "test"]},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["user_info"]["uncensored"] is True
+    assert data["user_info"]["tags"] == ["local", "test"]
+
+    r2 = client.get("/api/providers/ollama/models/llama3.2/info")
+    assert r2.status_code == 200
+    assert r2.json()["user_info"]["uncensored"] is True
+    assert set(r2.json()["user_info"]["tags"]) == {"local", "test"}
+
+
+def test_get_models_tags_empty_then_after_put(client, model_info_use_tmp_path):
+    """GET /api/models/tags devuelve tags únicos; vacío al inicio, con datos tras PUT."""
+    r = client.get("/api/models/tags")
+    assert r.status_code == 200
+    assert r.json()["tags"] == []
+
+    client.put("/api/providers/ollama/models/m1/info", json={"tags": ["a", "b"]})
+    client.put("/api/providers/ollama/models/m2/info", json={"tags": ["b", "c"]})
+    r2 = client.get("/api/models/tags")
+    assert r2.status_code == 200
+    assert set(r2.json()["tags"]) == {"a", "b", "c"}
+
+
+def test_get_model_info_invalid_provider(client, model_info_use_tmp_path):
+    """GET .../info con proveedor inexistente devuelve 400."""
+    r = client.get("/api/providers/nonexistent_provider_xyz/models/llama3.2/info")
+    assert r.status_code == 400
+
+
+@patch("app.routers.api_models.get_model_details")
+def test_post_info_refresh_updates_provider_info(mock_get_model_details, client, model_info_use_tmp_path):
+    """POST .../info/refresh llama a show_model y persiste provider_info."""
+    mock_get_model_details.return_value = {
+        "fetched_at": "2025-01-01T12:00:00Z",
+        "details": {"family": "llama"},
+        "template": "{{ .System }}",
+    }
+    r = client.post("/api/providers/ollama/models/llama3.2/info/refresh")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider_info"].get("details", {}).get("family") == "llama"
+    assert "fetched_at" in data["provider_info"]
+    mock_get_model_details.assert_called_once_with("ollama", "llama3.2")
+
+
+@patch("app.routers.api_models.get_model_details")
+def test_post_info_refresh_when_show_fails_returns_current(mock_get_model_details, client, model_info_use_tmp_path):
+    """POST .../info/refresh cuando show_model devuelve None no sobrescribe; devuelve ficha actual."""
+    client.put("/api/providers/ollama/models/llama3.2/info", json={"tags": ["keep"]})
+    mock_get_model_details.return_value = None  # show falla
+    r = client.post("/api/providers/ollama/models/llama3.2/info/refresh")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider_info"] == {}
+    assert data["user_info"]["tags"] == ["keep"]

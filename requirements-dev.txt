@@ -1,0 +1,5 @@
+# Dependencias opcionales para desarrollo (pip install -r requirements-dev.txt)
+-r requirements.txt
+
+# Mutation testing
+mutmut>=3.0.0

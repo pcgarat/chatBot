@@ -237,6 +237,78 @@ def test_clear_conversation_messages_404(client):
 
 
 @patch("app.routers.api_conversations.get_provider")
+@patch("app.routers.api_conversations.rag.delete_message_document")
+def test_delete_last_message_204(mock_rag_delete, mock_get_provider, client):
+    """DELETE last mensaje devuelve 204 y elimina el último mensaje."""
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Respuesta"
+    mock_get_provider.return_value = mock_provider
+    create = client.post("/api/conversations", json={"title": "Conv", "model_id": "m"})
+    cid = create.json()["id"]
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "Uno"})
+    r = client.delete(f"/api/conversations/{cid}/messages/last")
+    assert r.status_code == 204
+    conv = client.get(f"/api/conversations/{cid}").json()
+    # Solo queda el mensaje user; el último (assistant) fue eliminado
+    assert len(conv["messages"]) == 1
+    assert conv["messages"][0]["role"] == "user"
+    assert conv["messages"][0]["content"] == "Uno"
+
+
+def test_delete_last_message_404(client):
+    """DELETE last cuando no hay mensajes devuelve 404."""
+    create = client.post("/api/conversations", json={"title": "Conv", "model_id": "m"})
+    cid = create.json()["id"]
+    r = client.delete(f"/api/conversations/{cid}/messages/last")
+    assert r.status_code == 404
+    assert "no hay mensajes" in r.json()["detail"].lower()
+
+
+@patch("app.routers.api_conversations.get_provider")
+@patch("app.routers.api_conversations.rag.delete_message_document")
+def test_delete_message_by_id_204(mock_rag_delete, mock_get_provider, client):
+    """DELETE message por id devuelve 204 y elimina ese mensaje."""
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Respuesta"
+    mock_get_provider.return_value = mock_provider
+    create = client.post("/api/conversations", json={"title": "Conv", "model_id": "m"})
+    cid = create.json()["id"]
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "Uno"})
+    conv = client.get(f"/api/conversations/{cid}").json()
+    msg_id = conv["messages"][0]["id"]
+    r = client.delete(f"/api/conversations/{cid}/messages/{msg_id}")
+    assert r.status_code == 204
+    conv2 = client.get(f"/api/conversations/{cid}").json()
+    # Queda solo el mensaje assistant
+    assert len(conv2["messages"]) == 1
+    assert conv2["messages"][0]["role"] == "assistant"
+    mock_rag_delete.assert_called_once_with(cid, msg_id)
+
+
+def test_delete_message_by_id_404(client):
+    """DELETE message con id inexistente devuelve 404."""
+    create = client.post("/api/conversations", json={"title": "Conv", "model_id": "m"})
+    cid = create.json()["id"]
+    r = client.delete(f"/api/conversations/{cid}/messages/00000000-0000-0000-0000-000000000000")
+    assert r.status_code == 404
+    assert "mensaje" in r.json()["detail"].lower()
+
+
+@patch("app.routers.api_conversations.settings")
+def test_build_llm_messages_incluye_rag_context(mock_settings):
+    """Si hay rag_context se incluye en el system message."""
+    mock_settings.ollama_history_turns = 10
+    conv = _mock_conv("Global.")
+    msgs, _ = _build_llm_messages(
+        conv, [], "Hola", None, system_instruction_global=None, rag_context="Contexto RAG aquí."
+    )
+    assert msgs[0]["role"] == "system"
+    assert "Contexto relevante del historial" in msgs[0]["content"]
+    assert "Contexto RAG aquí." in msgs[0]["content"]
+    assert "Global." in msgs[0]["content"]
+
+
+@patch("app.routers.api_conversations.get_provider")
 def test_send_message_ok(mock_get_provider, client):
     mock_provider = MagicMock()
     mock_provider.chat.return_value = "Hola, soy el asistente."
