@@ -53,11 +53,7 @@
     btnSend: document.getElementById("btn-send"),
     btnCancelMessage: document.getElementById("btn-cancel-message"),
     btnClearMemory: document.getElementById("btn-clear-memory"),
-    btnLoadPreset: document.getElementById("btn-load-preset"),
     btnResetParams: document.getElementById("btn-reset-params"),
-    presetModal: document.getElementById("preset-modal"),
-    presetList: document.getElementById("preset-list"),
-    presetModalClose: document.getElementById("preset-modal-close"),
     btnModelInfo: document.getElementById("btn-model-info"),
     modelInfoModal: document.getElementById("model-info-modal"),
     modelInfoModalTitle: document.getElementById("model-info-modal-title"),
@@ -283,52 +279,6 @@
         control.value = def !== undefined && def !== null ? String(def) : "";
       }
     });
-  }
-
-  let currentPresets = {};
-
-  async function openPresetModal() {
-    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
-    try {
-      const data = await fetchJson(`${API}/providers/${provider}/presets`);
-      currentPresets = data.presets || {};
-      const names = Object.keys(currentPresets);
-      if (names.length === 0) {
-        showNotice("No hay presets para este proveedor.");
-        return;
-      }
-      if (el.presetList) {
-        el.presetList.innerHTML = names
-          .map((name) => `<button type="button" class="preset-list-item" data-preset-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`)
-          .join("");
-        el.presetList.querySelectorAll(".preset-list-item").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const presetName = btn.getAttribute("data-preset-name");
-            const presetData = currentPresets[presetName];
-            if (presetData) {
-              applyPresetToControls(presetData);
-              if (el.modelSelect && models.includes(presetName)) {
-                el.modelSelect.value = presetName;
-              }
-              paramsSource = "user";
-              renderParamsSourceLabel();
-              debouncedSaveParams();
-              showNotice("Preset \"" + presetName + "\" aplicado.");
-            }
-            closePresetModal();
-          });
-        });
-      }
-      if (el.presetModal) {
-        el.presetModal.hidden = false;
-      }
-    } catch (e) {
-      showError("No se pudieron cargar los presets: " + e.message);
-    }
-  }
-
-  function closePresetModal() {
-    if (el.presetModal) el.presetModal.hidden = true;
   }
 
   // ----- Ficha del modelo (model info modal) -----
@@ -1339,7 +1289,6 @@
   if (el.showDebugModeCheck) el.showDebugModeCheck.addEventListener("change", renderMessages);
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
-  if (el.btnLoadPreset) el.btnLoadPreset.addEventListener("click", openPresetModal);
   if (el.btnResetParams) el.btnResetParams.addEventListener("click", function () {
     resetParamsToDefaults();
     paramsSource = "default";
@@ -1489,12 +1438,6 @@
   if (el.ruleEditModal) {
     el.ruleEditModal.addEventListener("click", function (e) {
       if (e.target === el.ruleEditModal) closeRuleEditModal();
-    });
-  }
-  if (el.presetModalClose) el.presetModalClose.addEventListener("click", closePresetModal);
-  if (el.presetModal) {
-    el.presetModal.addEventListener("click", (e) => {
-      if (e.target === el.presetModal) closePresetModal();
     });
   }
   if (el.btnModelInfo) el.btnModelInfo.addEventListener("click", openModelInfoModal);

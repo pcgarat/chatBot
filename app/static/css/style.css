@@ -397,6 +397,10 @@ body {
 
 .params-source-row {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.25rem 1rem 0.35rem;
   border-top: 1px solid var(--border);
   min-height: 1.5em;
@@ -405,6 +409,12 @@ body {
 .params-source-label {
   font-size: 0.7rem;
   color: var(--text-muted);
+}
+
+.btn-reset-params-inline {
+  flex-shrink: 0;
+  padding: 0.2rem;
+  margin-left: auto;
 }
 
 .sidebar-footer {
@@ -686,11 +696,53 @@ body {
   flex-shrink: 0;
 }
 
+.context-usage-right-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.context-usage-separator {
+  width: 1px;
+  height: 1em;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 0.5rem;
+}
+
+.chromadb-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.chromadb-inline-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.chromadb-inline-select {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.35rem;
+  min-height: unset;
+  height: 1.5rem;
+  line-height: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  max-width: 5rem;
+}
+
 .font-size-controls {
   display: inline-flex;
   align-items: center;
   gap: 0.125rem;
-  margin-left: auto;
   flex-shrink: 0;
   line-height: 0;
   vertical-align: middle;
@@ -961,31 +1013,6 @@ body {
 
 .rule-edit-btn-delete:hover {
   color: var(--text);
-}
-
-.sidebar-option.chromadb-save-option {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.85rem;
-  flex-shrink: 0;
-}
-
-.chromadb-label {
-  color: var(--text-muted);
-}
-
-.chromadb-save-option select {
-  width: 100%;
-  padding: 0.35rem 0.6rem;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 0.9rem;
-  box-sizing: border-box;
 }
 
 .messages-container {
