@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.config import sync_env_to_dotenv
 from app.db import init_db, SessionLocal
 from app.migrate_conversation_rules_to_library import migrate_all as migrate_conversation_rules_to_library
 from app.migrate_fill_instruction_ids import migrate_all as migrate_fill_instruction_ids
@@ -24,6 +25,7 @@ if static_dir.exists():
 
 @app.on_event("startup")
 def startup():
+    sync_env_to_dotenv()
     init_db()
     db = SessionLocal()
     try:
