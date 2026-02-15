@@ -119,6 +119,7 @@ class ConversationUpdate(BaseModel):
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora.
     model_params: Optional[dict[str, Any]] = None  # Parámetros del modelo guardados por el usuario en esta conversación
     history_turns: Optional[int] = None  # Pares user+assistant a enviar en el prompt; null = default 5
+    instruction_override: Optional[str] = None  # Instrucción solo para el siguiente mensaje; último valor por conversación
 
 
 class MessageInChat(BaseModel):
@@ -139,6 +140,7 @@ class ConversationOut(BaseModel):
     inject_instruction_every: Optional[int] = None
     model_params: Optional[dict[str, Any]] = None
     history_turns: Optional[int] = None  # Pares user+assistant en el prompt; null = default 5
+    instruction_override: Optional[str] = None  # Último valor de instrucción por mensaje en esta conversación
     created_at: datetime
     updated_at: datetime
     messages: list[MessageInChat] = []

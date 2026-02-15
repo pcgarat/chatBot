@@ -264,6 +264,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         inject_instruction_every=conv.inject_instruction_every,
         model_params=_parse_model_params(getattr(conv, "model_params", None)),
         history_turns=getattr(conv, "history_turns", None),
+        instruction_override=getattr(conv, "instruction_override", None),
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=messages,
@@ -286,6 +287,7 @@ def update_conversation(
         inject_instruction_every=body.inject_instruction_every,
         model_params=body.model_params,
         history_turns=body.history_turns,
+        instruction_override=body.instruction_override,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
@@ -310,6 +312,7 @@ def update_conversation(
         inject_instruction_every=conv.inject_instruction_every,
         model_params=_parse_model_params(getattr(conv, "model_params", None)),
         history_turns=getattr(conv, "history_turns", None),
+        instruction_override=getattr(conv, "instruction_override", None),
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=messages,
@@ -632,6 +635,7 @@ async def send_message_stream(
         content=user_content,
         instruction_override=body.instruction_override,
     )
+    crud.update_conversation(db, conversation_id, instruction_override=body.instruction_override)
     save_to_chromadb = (body.save_to_chromadb or "user").strip().lower()
     if save_to_chromadb not in ("none", "user", "assistant", "both"):
         save_to_chromadb = "user"
@@ -727,6 +731,7 @@ def send_message(
         content=user_content,
         instruction_override=body.instruction_override,
     )
+    crud.update_conversation(db, conversation_id, instruction_override=body.instruction_override)
     save_to_chromadb = (body.save_to_chromadb or "user").strip().lower()
     if save_to_chromadb not in ("none", "user", "assistant", "both"):
         save_to_chromadb = "user"
