@@ -3,8 +3,11 @@ Endpoints para listar modelos y proveedores de LLM.
 Incluye ficha de modelo (provider_info + user_info) y capacidades por proveedor.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
+from app.crud import get_rule as crud_get_rule
+from app.db import get_db
 from app.model_info import get_all_tags, get_model_info, set_model_info, update_user_info
 from app.provider_params import get_context_length_max, get_params_config, get_presets
 from app.providers import ProviderFactory, get_provider
@@ -17,6 +20,7 @@ from app.schemas import (
     ProviderCapabilitiesResponse,
     ProviderInfo,
     ProviderModelInfo,
+    RuleItem,
     TagsResponse,
 )
 
@@ -171,33 +175,59 @@ def get_capabilities(provider_name: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def _resolve_instruction_ids(instruction_ids: list[str], db: Session) -> list[RuleItem]:
+    """Resuelve ids de reglas a RuleItem (rule_id, title, content). Reglas borradas se omiten."""
+    out = []
+    for rid in instruction_ids:
+        rule = crud_get_rule(db, rid)
+        if rule:
+            out.append(RuleItem(rule_id=rule.id, title=rule.title, content=rule.content))
+    return out
+
+
 @router.get(
     "/providers/{provider_name}/models/{model_id:path}/info",
     response_model=ModelInfoResponse,
 )
-def get_model_info_route(provider_name: str, model_id: str):
+def get_model_info_route(provider_name: str, model_id: str, db: Session = Depends(get_db)):
     """
     Devuelve la ficha del modelo (provider_info + user_info).
-    Si no existe ficha, devuelve user_info por defecto y provider_info vacío (no llama a show).
-    model_id puede contener ':' (ej. llama3.2:latest); irá URL-encoded en la ruta.
+    instruction_ids se resuelven a instructions (lista de RuleItem) desde la biblioteca.
+    Si no hay instruction_ids pero sí instructions (legado list[str]), se devuelven como RuleItem.
     """
     try:
-        get_provider(provider_name)  # validar que el proveedor existe
+        get_provider(provider_name)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     raw = get_model_info(provider_name, model_id)
-    return ModelInfoResponse(
-        provider_info=raw["provider_info"],
-        user_info=ModelInfoUserInfo(**raw["user_info"]),
+    user_raw = raw["user_info"] or {}
+    instruction_ids = user_raw.get("instruction_ids") or []
+    instructions_resolved = _resolve_instruction_ids(instruction_ids, db)
+    # Compatibilidad: si no hay instruction_ids pero sí instructions (legado list[str]), devolverlas como RuleItem
+    if not instructions_resolved and instruction_ids == []:
+        legacy = user_raw.get("instructions") or []
+        if isinstance(legacy, list) and legacy:
+            instructions_resolved = [
+                RuleItem(title=("Instrucción %d" % (i + 1)), content=(s if isinstance(s, str) else str(s)))
+                for i, s in enumerate(legacy)
+            ]
+    user_info = ModelInfoUserInfo(
+        uncensored=user_raw.get("uncensored", False),
+        instructions=instructions_resolved,
+        instruction_ids=instruction_ids,
+        tags=user_raw.get("tags") or [],
     )
+    return ModelInfoResponse(provider_info=raw["provider_info"], user_info=user_info)
 
 
 @router.put(
     "/providers/{provider_name}/models/{model_id:path}/info",
     response_model=ModelInfoResponse,
 )
-def put_model_info_route(provider_name: str, model_id: str, body: ModelInfoUpdateRequest):
-    """Actualiza solo user_info (uncensored, instructions, tags). Campos opcionales."""
+def put_model_info_route(
+    provider_name: str, model_id: str, body: ModelInfoUpdateRequest, db: Session = Depends(get_db)
+):
+    """Actualiza solo user_info (uncensored, instructions/instruction_ids, tags). Campos opcionales."""
     try:
         get_provider(provider_name)
     except ValueError as e:
@@ -207,13 +237,20 @@ def put_model_info_route(provider_name: str, model_id: str, body: ModelInfoUpdat
         model_id,
         uncensored=body.uncensored,
         instructions=body.instructions,
+        instruction_ids=body.instruction_ids,
         tags=body.tags,
     )
     raw = get_model_info(provider_name, model_id)
-    return ModelInfoResponse(
-        provider_info=raw["provider_info"],
-        user_info=ModelInfoUserInfo(**raw["user_info"]),
+    user_raw = raw["user_info"] or {}
+    instruction_ids = user_raw.get("instruction_ids") or []
+    instructions_resolved = _resolve_instruction_ids(instruction_ids, db)
+    user_info = ModelInfoUserInfo(
+        uncensored=user_raw.get("uncensored", False),
+        instructions=instructions_resolved,
+        instruction_ids=instruction_ids,
+        tags=user_raw.get("tags") or [],
     )
+    return ModelInfoResponse(provider_info=raw["provider_info"], user_info=user_info)
 
 
 @router.post(
