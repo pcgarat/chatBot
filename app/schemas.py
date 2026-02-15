@@ -67,11 +67,18 @@ class StreamUsageInfo(BaseModel):
 
 
 # ----- Conversation -----
+class RuleItem(BaseModel):
+    """Una regla con título y contenido; el contenido se concatena para el mensaje system."""
+    title: str = ""
+    content: str = ""
+
+
 class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"
     model_id: str = "llama3.2"
     provider: str = "ollama"  # ollama | mancer
     system_instruction_global: Optional[str] = None
+    system_instructions: Optional[list[RuleItem]] = None  # Lista de reglas (título + contenido)
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora. Las instrucciones se envían siempre.
 
 
@@ -80,7 +87,9 @@ class ConversationUpdate(BaseModel):
     model_id: Optional[str] = None
     provider: Optional[str] = None  # ollama | mancer
     system_instruction_global: Optional[str] = None
+    system_instructions: Optional[list[RuleItem]] = None
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora.
+    model_params: Optional[dict[str, Any]] = None  # Parámetros del modelo guardados por el usuario en esta conversación
 
 
 class MessageInChat(BaseModel):
@@ -97,7 +106,9 @@ class ConversationOut(BaseModel):
     model_id: str
     provider: str = "ollama"
     system_instruction_global: Optional[str] = None
+    system_instructions: Optional[list[RuleItem]] = None
     inject_instruction_every: Optional[int] = None
+    model_params: Optional[dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
     messages: list[MessageInChat] = []

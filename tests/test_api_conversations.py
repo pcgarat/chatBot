@@ -167,6 +167,8 @@ def test_get_conversation_ok(client):
     assert r.status_code == 200
     assert r.json()["title"] == "Test"
     assert r.json()["messages"] == []
+    assert "model_params" in r.json()
+    assert r.json()["model_params"] is None
 
 
 def test_update_conversation_ok(client):
@@ -181,6 +183,48 @@ def test_update_conversation_ok(client):
     assert data["title"] == "Después"
     assert data["model_id"] == "m2"
     assert data["system_instruction_global"] == "Sé breve."
+
+
+def test_update_and_get_conversation_model_params(client):
+    create = client.post("/api/conversations", json={"title": "Params", "model_id": "m"})
+    cid = create.json()["id"]
+    params = {"temperature": 0.7, "num_ctx": 4096}
+    r = client.put(f"/api/conversations/{cid}", json={"model_params": params})
+    assert r.status_code == 200
+    assert r.json()["model_params"] == params
+    get_r = client.get(f"/api/conversations/{cid}")
+    assert get_r.status_code == 200
+    assert get_r.json()["model_params"] == params
+
+
+def test_conversation_system_instructions(client):
+    """Crear y actualizar conversación con system_instructions (lista de reglas con título y contenido)."""
+    create = client.post(
+        "/api/conversations",
+        json={
+            "title": "Reglas",
+            "model_id": "m",
+            "system_instructions": [
+                {"title": "R1", "content": "Regla A"},
+                {"title": "R2", "content": "Regla B"},
+            ],
+        },
+    )
+    assert create.status_code == 200
+    data = create.json()
+    assert data.get("system_instructions") == [
+        {"title": "R1", "content": "Regla A"},
+        {"title": "R2", "content": "Regla B"},
+    ]
+    cid = data["id"]
+    r = client.put(
+        f"/api/conversations/{cid}",
+        json={"system_instructions": [{"title": "Solo", "content": "Solo una"}]},
+    )
+    assert r.status_code == 200
+    assert r.json()["system_instructions"] == [{"title": "Solo", "content": "Solo una"}]
+    get_r = client.get(f"/api/conversations/{cid}")
+    assert get_r.json()["system_instructions"] == [{"title": "Solo", "content": "Solo una"}]
 
 
 def test_update_conversation_404(client):

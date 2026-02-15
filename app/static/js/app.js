@@ -9,10 +9,14 @@
   let currentAbortController = null;
   /** Parámetros del proveedor actual: { provider, params: { paramId: { type, default, min, max, api_key } } } */
   let paramsConfig = { provider: "", params: {} };
+  /** Origen de los parámetros mostrados: "user" | "preset" | "default" */
+  let paramsSource = "default";
   /** Uso de contexto (último turno): prompt_tokens, completion_tokens. null si no hay datos. */
   let lastUsage = null;
   /** Contexto máximo del modelo actual (tokens). null si no se conoce. */
   let contextLength = null;
+  /** Lista de reglas (system instructions) de la conversación actual. Se concatenan con espacio al enviar. */
+  let rules = [];
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
@@ -20,7 +24,10 @@
     providerSelect: document.getElementById("provider-select"),
     modelSelect: document.getElementById("model-select"),
     btnRefreshModels: document.getElementById("btn-refresh-models"),
-    systemInstructionGlobal: document.getElementById("system-instruction-global"),
+    rulesList: document.getElementById("rules-list"),
+    ruleNewTitle: document.getElementById("rule-new-title"),
+    ruleNewInput: document.getElementById("rule-new-input"),
+    btnAddRule: document.getElementById("btn-add-rule"),
     saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
     showDebugModeCheck: document.getElementById("show-debug-mode"),
     messagesContainer: document.getElementById("messages-container"),
@@ -58,6 +65,9 @@
     contextUsageSegmentPrompt: document.getElementById("context-usage-segment-prompt"),
     contextUsageSegmentCompletion: document.getElementById("context-usage-segment-completion"),
     contextUsageText: document.getElementById("context-usage-text"),
+    btnFontSizeDecrease: document.getElementById("btn-font-size-decrease"),
+    btnFontSizeIncrease: document.getElementById("btn-font-size-increase"),
+    paramsSourceLabel: document.getElementById("params-source-label"),
   };
 
   const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
@@ -210,6 +220,31 @@
   }
 
   /**
+   * Aplica valores guardados por el usuario (objeto param_id -> value) a los controles.
+   * Solo afecta a controles que existan en paramsConfig.params.
+   */
+  function applyUserParamsToControls(modelParamsObj) {
+    if (!modelParamsObj || typeof modelParamsObj !== "object") return;
+    Object.keys(modelParamsObj).forEach((paramId) => {
+      const spec = paramsConfig.params[paramId];
+      const control = document.querySelector(`[data-control-id="${paramId}"]`);
+      if (!spec || !control || control.disabled) return;
+      const val = modelParamsObj[paramId];
+      if (control.tagName === "INPUT") {
+        if (control.type === "number") {
+          control.value = val !== null && val !== undefined && val !== "" ? String(val) : "";
+        } else {
+          control.value = val !== null && val !== undefined ? String(val) : "";
+        }
+      } else if (control.tagName === "TEXTAREA") {
+        control.value = Array.isArray(val) ? val.join("\n") : (val !== null && val !== undefined ? String(val) : "");
+      } else if (control.tagName === "SELECT") {
+        control.value = val !== null && val !== undefined ? String(val) : "";
+      }
+    });
+  }
+
+  /**
    * Aplica los valores de un preset (objeto param_id -> { default, type, ... }) a los controles.
    * Solo afecta a controles que existan y estén en paramsConfig.params (habilitados).
    */
@@ -260,6 +295,9 @@
               if (el.modelSelect && models.includes(presetName)) {
                 el.modelSelect.value = presetName;
               }
+              paramsSource = "user";
+              renderParamsSourceLabel();
+              debouncedSaveParams();
               showNotice("Preset \"" + presetName + "\" aplicado.");
             }
             closePresetModal();
@@ -566,6 +604,28 @@
     }
   }
 
+  let saveParamsDebounceTimer = null;
+  const SAVE_PARAMS_DEBOUNCE_MS = 800;
+
+  function saveParamsToConversation() {
+    if (!currentConversationId) return;
+    const modelParams = buildModelParams();
+    fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ model_params: modelParams }),
+    }).catch(() => {});
+  }
+
+  function debouncedSaveParams() {
+    paramsSource = "user";
+    renderParamsSourceLabel();
+    if (saveParamsDebounceTimer) clearTimeout(saveParamsDebounceTimer);
+    saveParamsDebounceTimer = setTimeout(function () {
+      saveParamsDebounceTimer = null;
+      saveParamsToConversation();
+    }, SAVE_PARAMS_DEBOUNCE_MS);
+  }
+
   function buildModelParams() {
     const out = {};
     for (const paramId of Object.keys(paramsConfig.params)) {
@@ -608,6 +668,7 @@
         body: JSON.stringify({
           provider: currentProvider,
           model_id: (el.modelSelect && el.modelSelect.value) || (models[0] || ""),
+          model_params: buildModelParams(),
         }),
       }).catch(() => {});
     }
@@ -723,18 +784,46 @@
     return div.innerHTML;
   }
 
+  function saveLastConversationId(id) {
+    try {
+      if (id) localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, id);
+      else localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+    } catch (_) {}
+  }
+
+  function renderParamsSourceLabel() {
+    if (el.paramsSourceLabel) el.paramsSourceLabel.textContent = paramsSource;
+  }
+
   async function setCurrentConversation(conv) {
     currentConversationId = conv ? conv.id : null;
+    saveLastConversationId(currentConversationId);
     if (conv) {
       if (el.conversationTitle) el.conversationTitle.value = conv.title;
-      // Establecer el proveedor primero
       currentProvider = conv.provider || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
-      // Cargar modelos del proveedor y luego establecer el modelo
       await loadModels(false);
       if (el.modelSelect) el.modelSelect.value = conv.model_id;
-      if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = conv.system_instruction_global || "";
+      rules = normalizeRulesFromApi(conv.system_instructions, conv.system_instruction_global);
       await loadParamsForProvider(currentProvider);
+      if (conv.model_params && typeof conv.model_params === "object" && Object.keys(conv.model_params).length > 0) {
+        applyUserParamsToControls(conv.model_params);
+        paramsSource = "user";
+      } else {
+        try {
+          const data = await fetchJson(`${API}/providers/${currentProvider}/presets`);
+          const presets = data.presets || {};
+          const preset = presets[conv.model_id];
+          if (preset) {
+            applyPresetToControls(preset);
+            paramsSource = "preset";
+          } else {
+            paramsSource = "default";
+          }
+        } catch (_) {
+          paramsSource = "default";
+        }
+      }
       messages = (conv.messages || []).map((m) => ({
         role: m.role,
         content: m.content,
@@ -747,14 +836,83 @@
       currentProvider = providers[0] || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
       if (el.modelSelect) el.modelSelect.value = models[0] || "";
-      if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = "";
+      rules = [];
       await loadParamsForProvider(currentProvider);
+      paramsSource = "default";
       messages = [];
     }
+    renderRules();
+    renderParamsSourceLabel();
     renderMessages();
     loadConversations();
     lastUsage = null;
     await loadContextLength();
+  }
+
+  let saveRulesDebounceTimer = null;
+  const SAVE_RULES_DEBOUNCE_MS = 600;
+
+  function saveRulesToConversation() {
+    if (!currentConversationId) return;
+    fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ system_instructions: rules }),
+    }).catch(() => {});
+  }
+
+  function debouncedSaveRules() {
+    if (saveRulesDebounceTimer) clearTimeout(saveRulesDebounceTimer);
+    saveRulesDebounceTimer = setTimeout(function () {
+      saveRulesDebounceTimer = null;
+      saveRulesToConversation();
+    }, SAVE_RULES_DEBOUNCE_MS);
+  }
+
+  function normalizeRulesFromApi(apiRules, legacyGlobal) {
+    if (Array.isArray(apiRules) && apiRules.length > 0) {
+      return apiRules.map(function (r, i) {
+        if (typeof r === "string") return { title: "Regla " + (i + 1), content: r };
+        return {
+          title: (r && r.title != null ? String(r.title) : "") || "Regla " + (i + 1),
+          content: (r && r.content != null ? String(r.content) : "") || "",
+        };
+      });
+    }
+    if (legacyGlobal && (legacyGlobal = (legacyGlobal || "").trim())) {
+      return [{ title: "Instrucción global", content: legacyGlobal }];
+    }
+    return [];
+  }
+
+  function getRulesTextForSystem() {
+    return rules
+      .map(function (r) { return (r && r.content) ? r.content.trim() : ""; })
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  function renderRules() {
+    if (!el.rulesList) return;
+    el.rulesList.innerHTML = rules
+      .map((rule, index) => {
+        const title = (rule && rule.title != null ? rule.title : "") || "";
+        const displayTitle = title.trim() || "Sin título";
+        return `<span class="rule-tag" role="listitem" data-rule-index="${index}">
+          <span class="rule-tag-label">${escapeHtml(displayTitle)}</span>
+          <button type="button" class="rule-tag-remove" title="Eliminar regla" aria-label="Eliminar regla" data-rule-index="${index}">×</button>
+        </span>`;
+      })
+      .join("");
+    el.rulesList.querySelectorAll(".rule-tag-remove").forEach((btn) => {
+      btn.addEventListener("click", function () {
+        const idx = parseInt(btn.getAttribute("data-rule-index"), 10);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) {
+          rules.splice(idx, 1);
+          renderRules();
+          debouncedSaveRules();
+        }
+      });
+    });
   }
 
   async function openConversation(id) {
@@ -776,7 +934,7 @@
           title: getDefaultConversationTitle(),
           model_id: model,
           provider: provider,
-          system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
+          system_instructions: rules.length ? rules : null,
         }),
       });
       await setCurrentConversation(conv);
@@ -797,7 +955,8 @@
           title: (el.conversationTitle && el.conversationTitle.value.trim()) || getDefaultConversationTitle(),
           model_id: (el.modelSelect && el.modelSelect.value) || "",
           provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
-          system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
+          system_instructions: rules,
+          model_params: buildModelParams(),
         }),
       });
       await setCurrentConversation(conv);
@@ -932,7 +1091,7 @@
     currentAbortController = new AbortController();
     setCancelButtonState();
     try {
-      const systemInstructionGlobal = (el.systemInstructionGlobal && el.systemInstructionGlobal.value) ? el.systemInstructionGlobal.value.trim() : "";
+      const systemInstructionGlobal = getRulesTextForSystem();
       const saveToChromadb = (el.saveToChromadbSelect && el.saveToChromadbSelect.value) ? el.saveToChromadbSelect.value : "user";
       const modelParams = buildModelParams();
       const bodyPayload = {
@@ -1088,7 +1247,10 @@
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
-        body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "" }),
+        body: JSON.stringify({
+          model_id: (el.modelSelect && el.modelSelect.value) || "",
+          model_params: buildModelParams(),
+        }),
       }).catch(() => {});
     }
     lastUsage = null;
@@ -1108,7 +1270,28 @@
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
   if (el.btnLoadPreset) el.btnLoadPreset.addEventListener("click", openPresetModal);
-  if (el.btnResetParams) el.btnResetParams.addEventListener("click", resetParamsToDefaults);
+  if (el.btnResetParams) el.btnResetParams.addEventListener("click", function () {
+    resetParamsToDefaults();
+    paramsSource = "default";
+    renderParamsSourceLabel();
+    debouncedSaveParams();
+  });
+  document.querySelectorAll("[data-control-id]").forEach(function (control) {
+    control.addEventListener("change", debouncedSaveParams);
+    control.addEventListener("input", debouncedSaveParams);
+  });
+  if (el.btnAddRule && el.ruleNewInput) {
+    el.btnAddRule.addEventListener("click", function () {
+      const content = (el.ruleNewInput.value || "").trim();
+      const title = (el.ruleNewTitle && el.ruleNewTitle.value ? el.ruleNewTitle.value.trim() : "") || "Regla " + (rules.length + 1);
+      if (!content) return;
+      rules.push({ title: title || "Regla " + (rules.length + 1), content: content });
+      if (el.ruleNewTitle) el.ruleNewTitle.value = "";
+      el.ruleNewInput.value = "";
+      renderRules();
+      debouncedSaveRules();
+    });
+  }
   if (el.presetModalClose) el.presetModalClose.addEventListener("click", closePresetModal);
   if (el.presetModal) {
     el.presetModal.addEventListener("click", (e) => {
@@ -1257,6 +1440,56 @@
   }
 
   const ACCORDION_STORAGE_KEY = "chatbot_sidebar_accordion";
+  const SIDEBAR_TAB_STORAGE_KEY = "chatbot_sidebar_tab";
+  const LAST_CONVERSATION_STORAGE_KEY = "chatbot_last_conversation_id";
+  const FONT_SIZE_STORAGE_KEY = "chatbot_conversation_font_size_rem";
+  const FONT_SIZE_DEFAULT = 0.95;
+  const FONT_SIZE_MIN = 0.75;
+  const FONT_SIZE_MAX = 1.4;
+  const FONT_SIZE_STEP = 0.05;
+
+  function getStoredFontSize() {
+    try {
+      const raw = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+      if (raw == null) return FONT_SIZE_DEFAULT;
+      const n = parseFloat(raw, 10);
+      if (Number.isFinite(n)) return Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, n));
+    } catch (_) {}
+    return FONT_SIZE_DEFAULT;
+  }
+
+  function setStoredFontSize(rem) {
+    try {
+      localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(rem));
+    } catch (_) {}
+  }
+
+  function applyConversationFontSize(rem) {
+    if (!el.messagesContainer) return;
+    el.messagesContainer.style.setProperty("--chat-font-size", rem + "rem");
+  }
+
+  function initConversationFontSize() {
+    const rem = getStoredFontSize();
+    applyConversationFontSize(rem);
+    if (el.btnFontSizeDecrease) {
+      el.btnFontSizeDecrease.disabled = rem <= FONT_SIZE_MIN;
+    }
+    if (el.btnFontSizeIncrease) {
+      el.btnFontSizeIncrease.disabled = rem >= FONT_SIZE_MAX;
+    }
+  }
+
+  function setConversationFontSize(delta) {
+    const current = getStoredFontSize();
+    let next = Math.round((current + delta) / FONT_SIZE_STEP) * FONT_SIZE_STEP;
+    next = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, next));
+    next = Math.round(next * 100) / 100;
+    setStoredFontSize(next);
+    applyConversationFontSize(next);
+    if (el.btnFontSizeDecrease) el.btnFontSizeDecrease.disabled = next <= FONT_SIZE_MIN;
+    if (el.btnFontSizeIncrease) el.btnFontSizeIncrease.disabled = next >= FONT_SIZE_MAX;
+  }
 
   function getAccordionState() {
     try {
@@ -1299,7 +1532,72 @@
     });
   }
 
+  const SIDEBAR_TAB_IDS = ["conversaciones", "reglas", "parametros"];
+
+  function getStoredSidebarTab() {
+    try {
+      const t = localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY);
+      if (t && SIDEBAR_TAB_IDS.includes(t)) return t;
+    } catch (_) {}
+    return "conversaciones";
+  }
+
+  function switchSidebarTab(tabId) {
+    if (!SIDEBAR_TAB_IDS.includes(tabId)) return;
+    try {
+      localStorage.setItem(SIDEBAR_TAB_STORAGE_KEY, tabId);
+    } catch (_) {}
+    document.querySelectorAll(".sidebar-tabs [role=\"tab\"]").forEach((tab) => {
+      const id = tab.getAttribute("data-tab");
+      const selected = id === tabId;
+      tab.setAttribute("aria-selected", selected);
+    });
+    document.querySelectorAll(".sidebar-tabpanel").forEach((panel) => {
+      const panelId = panel.id;
+      const isConversaciones = panelId === "tab-conversaciones";
+      const isReglas = panelId === "tab-reglas";
+      const isParametros = panelId === "tab-parametros";
+      const active =
+        (tabId === "conversaciones" && isConversaciones) ||
+        (tabId === "reglas" && isReglas) ||
+        (tabId === "parametros" && isParametros);
+      panel.classList.toggle("is-active", active);
+      panel.hidden = !active;
+    });
+  }
+
+  function initSidebarTabs() {
+    switchSidebarTab(getStoredSidebarTab());
+    document.querySelectorAll(".sidebar-tabs [role=\"tab\"]").forEach((tab) => {
+      tab.addEventListener("click", function () {
+        const tabId = tab.getAttribute("data-tab");
+        if (tabId) switchSidebarTab(tabId);
+      });
+      tab.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        const tabs = Array.from(document.querySelectorAll(".sidebar-tabs [role=\"tab\"]"));
+        const idx = tabs.indexOf(tab);
+        if (e.key === "ArrowLeft" && idx > 0) switchSidebarTab(tabs[idx - 1].getAttribute("data-tab"));
+        if (e.key === "ArrowRight" && idx < tabs.length - 1) switchSidebarTab(tabs[idx + 1].getAttribute("data-tab"));
+      });
+    });
+  }
+
   initAccordionState();
+  initSidebarTabs();
+  initConversationFontSize();
+
+  if (el.btnFontSizeDecrease) {
+    el.btnFontSizeDecrease.addEventListener("click", function () {
+      setConversationFontSize(-FONT_SIZE_STEP);
+    });
+  }
+  if (el.btnFontSizeIncrease) {
+    el.btnFontSizeIncrease.addEventListener("click", function () {
+      setConversationFontSize(FONT_SIZE_STEP);
+    });
+  }
 
   document.querySelectorAll(".accordion-header").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1336,8 +1634,23 @@
     }
     await loadParamsForProvider(currentProvider);
     await loadConversations();
+    const storedId = (function () {
+      try {
+        return localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
+      } catch (_) {
+        return null;
+      }
+    })();
+    if (storedId) {
+      try {
+        await openConversation(storedId);
+      } catch (_) {
+        saveLastConversationId(null);
+      }
+    }
     await loadContextLength();
   }
+  renderParamsSourceLabel();
   initLoad();
   loadParamsHelp().then(function () {
     initParamHelpTooltip();

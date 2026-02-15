@@ -50,3 +50,17 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # Migración: añadir model_params en conversations (JSON guardado por conversación)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN model_params TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Migración: añadir system_instructions en conversations (JSON lista de reglas)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN system_instructions TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()

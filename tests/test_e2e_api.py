@@ -251,10 +251,14 @@ def test_e2e_create_conversation(client, ollama_available):
     assert data["provider"] == "ollama"
     assert "created_at" in data
     assert data.get("messages", []) == []
+    assert "model_params" in data
+    assert data["model_params"] is None
+    assert "system_instructions" in data
+    assert data["system_instructions"] is None
 
 
 def test_e2e_get_conversation(client, ollama_available):
-    """GET /api/conversations/{id} devuelve la conversación con mensajes."""
+    """GET /api/conversations/{id} devuelve la conversación con mensajes y model_params."""
     model_name = _get_first_ollama_model(client)
     r_create = client.post(
         "/api/conversations",
@@ -268,10 +272,13 @@ def test_e2e_get_conversation(client, ollama_available):
     assert data["id"] == cid
     assert "messages" in data
     assert isinstance(data["messages"], list)
+    assert "model_params" in data
+    assert data["model_params"] is None
+    assert "system_instructions" in data
 
 
 def test_e2e_update_conversation(client, ollama_available):
-    """PUT /api/conversations/{id} actualiza título/model_id/provider."""
+    """PUT /api/conversations/{id} actualiza título/model_id/provider/model_params."""
     model_name = _get_first_ollama_model(client)
     r_create = client.post(
         "/api/conversations",
@@ -285,6 +292,85 @@ def test_e2e_update_conversation(client, ollama_available):
     )
     assert r.status_code == 200
     assert r.json()["title"] == "Updated title"
+    assert "model_params" in r.json()
+    assert r.json()["model_params"] is None
+
+
+def test_e2e_conversation_model_params_persist(client, ollama_available):
+    """
+    E2E: guardar model_params en una conversación y comprobar que se persisten y devuelven.
+    Crear conversación → PUT model_params → GET comprueba model_params → enviar mensaje con model_params.
+    """
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={"title": "E2E params", "model_id": model_name, "provider": "ollama"},
+    )
+    assert r_create.status_code == 200
+    cid = r_create.json()["id"]
+    params = {"temperature": 0.3, "num_ctx": 2048}
+    r_put = client.put(f"/api/conversations/{cid}", json={"model_params": params})
+    assert r_put.status_code == 200
+    assert r_put.json()["model_params"] == params
+    r_get = client.get(f"/api/conversations/{cid}")
+    assert r_get.status_code == 200
+    assert r_get.json()["model_params"] == params
+    # Enviar mensaje usando esos params (el backend usa model_params del body o de la conv)
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages/stream",
+        json={"content": "Di: listo", "model_params": params},
+    )
+    assert r_msg.status_code == 200
+    lines = [line for line in r_msg.text.strip().split("\n") if line]
+    assert len(lines) >= 1
+    last = json.loads(lines[-1])
+    assert last.get("done") is True
+
+
+def test_e2e_conversation_system_instructions(client, ollama_available):
+    """
+    E2E: guardar system_instructions (lista de reglas) en una conversación, persistir y usar en mensaje.
+    Crear con system_instructions → PUT actualizar lista → GET comprueba → enviar mensaje con system (concatenado).
+    """
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={
+            "title": "E2E reglas",
+            "model_id": model_name,
+            "provider": "ollama",
+            "system_instructions": [
+                {"title": "Brevedad", "content": "Responde breve."},
+                {"title": "Idioma", "content": "Siempre en español."},
+            ],
+        },
+    )
+    assert r_create.status_code == 200
+    data = r_create.json()
+    assert data.get("system_instructions") == [
+        {"title": "Brevedad", "content": "Responde breve."},
+        {"title": "Idioma", "content": "Siempre en español."},
+    ]
+    cid = data["id"]
+    r_put = client.put(
+        f"/api/conversations/{cid}",
+        json={"system_instructions": [{"title": "Una", "content": "Solo una regla"}]},
+    )
+    assert r_put.status_code == 200
+    assert r_put.json()["system_instructions"] == [{"title": "Una", "content": "Solo una regla"}]
+    r_get = client.get(f"/api/conversations/{cid}")
+    assert r_get.status_code == 200
+    assert r_get.json()["system_instructions"] == [{"title": "Una", "content": "Solo una regla"}]
+    # Enviar mensaje; el backend usa system_instructions de la conv (concatenados) si no se envía system_instruction_global
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages/stream",
+        json={"content": "Di: ok"},
+    )
+    assert r_msg.status_code == 200
+    lines = [line for line in r_msg.text.strip().split("\n") if line]
+    assert len(lines) >= 1
+    last = json.loads(lines[-1])
+    assert last.get("done") is True
 
 
 def test_e2e_send_message_stream(client, ollama_available):
