@@ -27,9 +27,10 @@ class ProviderInfo(BaseModel):
 
 # ----- Model info (ficha por modelo: provider_info + user_info) -----
 class ModelInfoUserInfo(BaseModel):
-    """Datos que el usuario asocia a un modelo (uncensored, instrucciones, tags)."""
+    """Datos que el usuario asocia a un modelo. instructions = reglas resueltas desde instruction_ids."""
     uncensored: bool = False
-    instructions: list[str] = Field(default_factory=list)
+    instructions: list["RuleItem"] = Field(default_factory=list)  # Reglas resueltas (rule_id, title, content)
+    instruction_ids: list[str] = Field(default_factory=list)  # Ids de reglas en la biblioteca
     tags: list[str] = Field(default_factory=list)
 
 
@@ -42,7 +43,8 @@ class ModelInfoResponse(BaseModel):
 class ModelInfoUpdateRequest(BaseModel):
     """Body de PUT/PATCH para actualizar solo user_info (todos los campos opcionales). Límites aplicados en backend."""
     uncensored: Optional[bool] = None
-    instructions: Optional[list[str]] = None
+    instructions: Optional[list[str]] = None  # Legado
+    instruction_ids: Optional[list[str]] = None  # Ids de reglas (biblioteca)
     tags: Optional[list[str]] = None
 
 
@@ -66,9 +68,35 @@ class StreamUsageInfo(BaseModel):
     completion_tokens: int = 0
 
 
+# ----- Rules (biblioteca) -----
+class RuleCreate(BaseModel):
+    """Body para crear una regla en la biblioteca."""
+    title: str = ""
+    content: str = ""
+
+
+class RuleUpdate(BaseModel):
+    """Body para actualizar una regla (todos opcionales)."""
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+
+class RuleOut(BaseModel):
+    """Regla devuelta por la API (biblioteca)."""
+    id: str
+    title: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ----- Conversation -----
 class RuleItem(BaseModel):
-    """Una regla con título y contenido; el contenido se concatena para el mensaje system."""
+    """Ítem de regla en una conversación: puede ser referencia (rule_id) o inline (title+content)."""
+    rule_id: Optional[str] = None  # Si existe, se resuelve desde la biblioteca
     title: str = ""
     content: str = ""
 

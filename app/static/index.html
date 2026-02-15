@@ -36,23 +36,34 @@
           <div class="conversations-list" id="conversations-list"></div>
         </div>
         <div role="tabpanel" id="tab-reglas" class="sidebar-tabpanel" aria-labelledby="tab-btn-reglas" hidden>
-          <div class="sidebar-option rules-panel">
-            <label class="instructions-label">Reglas (se envían como un solo mensaje system, concatenadas con espacio):</label>
-            <div id="rules-list" class="rules-list" role="list"></div>
-            <div class="rules-add">
-              <input type="text" id="rule-new-title" class="rule-new-title" placeholder="Título de la nueva regla" aria-label="Título" />
-              <textarea id="rule-new-input" rows="2" placeholder="Contenido de la regla..." aria-label="Contenido de la nueva regla"></textarea>
-              <button type="button" id="btn-add-rule" class="btn btn-secondary btn-small">Añadir regla</button>
+          <div class="rules-tab-scroll">
+            <div class="sidebar-option rules-panel">
+              <label class="instructions-label">Reglas (se envían como un solo mensaje system, concatenadas con espacio):</label>
+              <div id="rules-list" class="rules-list" role="list"></div>
+              <div class="rules-actions">
+                <div class="rules-add-existing">
+                  <label class="rules-add-existing-label">Añadir regla existente:</label>
+                  <select id="rule-library-select" class="rule-library-select" aria-label="Seleccionar regla de la biblioteca">
+                    <option value="">-- Elegir regla --</option>
+                  </select>
+                  <button type="button" id="btn-add-library-rule" class="btn btn-secondary btn-small">Añadir</button>
+                </div>
+              </div>
+            </div>
+            <div class="sidebar-option chromadb-save-option">
+              <label class="chromadb-label">Guardar en ChromaDB (RAG):</label>
+              <select id="save-to-chromadb-select">
+                <option value="none" selected>Nada</option>
+                <option value="user">Mensajes introducidos</option>
+                <option value="assistant">Respuestas</option>
+                <option value="both">Ambas</option>
+              </select>
             </div>
           </div>
-          <div class="sidebar-option chromadb-save-option">
-            <label class="chromadb-label">Guardar en ChromaDB (RAG):</label>
-            <select id="save-to-chromadb-select">
-              <option value="none" selected>Nada</option>
-              <option value="user">Mensajes introducidos</option>
-              <option value="assistant">Respuestas</option>
-              <option value="both">Ambas</option>
-            </select>
+          <div id="rules-add-block" class="rules-create-block">
+            <input type="text" id="rule-new-title" class="rule-new-title" placeholder="Título" aria-label="Título" />
+            <textarea id="rule-new-input" rows="2" placeholder="Contenido..." aria-label="Contenido"></textarea>
+            <button type="button" id="btn-add-rule" class="btn btn-secondary btn-small">Crear y añadir</button>
           </div>
         </div>
         <div role="tabpanel" id="tab-parametros" class="sidebar-tabpanel" aria-labelledby="tab-btn-parametros" hidden>
@@ -169,10 +180,10 @@
           </div>
         </div>
           </div>
+        <div class="params-source-row">
+          <span id="params-source-label" class="params-source-label" aria-live="polite"></span>
         </div>
-      </div>
-      <div class="params-source-row">
-        <span id="params-source-label" class="params-source-label" aria-live="polite"></span>
+        </div>
       </div>
       <div class="sidebar-footer">
         <div class="sidebar-option sidebar-debug-option">
@@ -287,6 +298,22 @@
       <div class="model-info-modal-actions">
         <button type="button" id="btn-model-info-save" class="btn btn-primary">Guardar</button>
         <button type="button" id="model-info-modal-close" class="btn btn-secondary">Cerrar</button>
+      </div>
+    </div>
+  </div>
+  <div id="rule-edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="rule-edit-modal-title" hidden>
+    <div class="modal-content rule-edit-modal-content">
+      <h2 id="rule-edit-modal-title" class="modal-title">Editar regla</h2>
+      <div class="rule-edit-form">
+        <label class="rule-edit-label" for="rule-edit-title">Título</label>
+        <input type="text" id="rule-edit-title" class="rule-edit-input" placeholder="Título" />
+        <label class="rule-edit-label" for="rule-edit-content">Contenido</label>
+        <textarea id="rule-edit-content" class="rule-edit-textarea" rows="4" placeholder="Contenido de la regla"></textarea>
+      </div>
+      <div class="rule-edit-actions">
+        <button type="button" id="rule-edit-btn-delete" class="btn rule-edit-btn-delete">Eliminar regla</button>
+        <button type="button" id="rule-edit-btn-save" class="btn btn-primary">Guardar</button>
+        <button type="button" id="rule-edit-btn-save-new" class="btn btn-secondary">Guardar nuevo</button>
       </div>
     </div>
   </div>

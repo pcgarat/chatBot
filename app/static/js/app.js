@@ -1,6 +1,12 @@
 (function () {
   function init() {
   const API = "/api";
+  const appRoot = document.getElementById("app");
+  const chatArea = document.querySelector(".chat-area");
+  if (!appRoot || !chatArea || !appRoot.contains(chatArea)) {
+    console.error("DOM roto: #app o .chat-area no encontrados o fuera de #app.");
+    return;
+  }
   let currentConversationId = null;
   let messages = [];
   let providers = [];
@@ -25,9 +31,18 @@
     modelSelect: document.getElementById("model-select"),
     btnRefreshModels: document.getElementById("btn-refresh-models"),
     rulesList: document.getElementById("rules-list"),
+    rulesAddBlock: document.getElementById("rules-add-block"),
     ruleNewTitle: document.getElementById("rule-new-title"),
     ruleNewInput: document.getElementById("rule-new-input"),
     btnAddRule: document.getElementById("btn-add-rule"),
+    ruleLibrarySelect: document.getElementById("rule-library-select"),
+    btnAddLibraryRule: document.getElementById("btn-add-library-rule"),
+    ruleEditModal: document.getElementById("rule-edit-modal"),
+    ruleEditTitle: document.getElementById("rule-edit-title"),
+    ruleEditContent: document.getElementById("rule-edit-content"),
+    ruleEditBtnDelete: document.getElementById("rule-edit-btn-delete"),
+    ruleEditBtnSave: document.getElementById("rule-edit-btn-save"),
+    ruleEditBtnSaveNew: document.getElementById("rule-edit-btn-save-new"),
     saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
     showDebugModeCheck: document.getElementById("show-debug-mode"),
     messagesContainer: document.getElementById("messages-container"),
@@ -847,6 +862,9 @@
     loadConversations();
     lastUsage = null;
     await loadContextLength();
+    // Si el panel Reglas está visible, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
+    const reglasPanel = document.getElementById("tab-reglas");
+    if (reglasPanel && !reglasPanel.hidden) loadLibraryRules();
   }
 
   let saveRulesDebounceTimer = null;
@@ -868,18 +886,18 @@
     }, SAVE_RULES_DEBOUNCE_MS);
   }
 
-  function normalizeRulesFromApi(apiRules, legacyGlobal) {
+  /** Convierte system_instructions de la API a lista de reglas para la UI. Solo reglas reales (biblioteca o inline); no se mezcla system_instruction_global como regla. */
+  function normalizeRulesFromApi(apiRules, _legacyGlobalUnused) {
     if (Array.isArray(apiRules) && apiRules.length > 0) {
       return apiRules.map(function (r, i) {
         if (typeof r === "string") return { title: "Regla " + (i + 1), content: r };
-        return {
+        const item = {
           title: (r && r.title != null ? String(r.title) : "") || "Regla " + (i + 1),
           content: (r && r.content != null ? String(r.content) : "") || "",
         };
+        if (r && r.rule_id) item.rule_id = String(r.rule_id);
+        return item;
       });
-    }
-    if (legacyGlobal && (legacyGlobal = (legacyGlobal || "").trim())) {
-      return [{ title: "Instrucción global", content: legacyGlobal }];
     }
     return [];
   }
@@ -891,6 +909,25 @@
       .join(" ");
   }
 
+  let ruleEditIndex = -1;
+
+  function openRuleEditModal(index) {
+    if (index < 0 || index >= rules.length) return;
+    ruleEditIndex = index;
+    const r = rules[index];
+    if (el.ruleEditTitle) el.ruleEditTitle.value = (r && r.title != null ? r.title : "") || "";
+    if (el.ruleEditContent) el.ruleEditContent.value = (r && r.content != null ? r.content : "") || "";
+    if (el.ruleEditModal) {
+      el.ruleEditModal.hidden = false;
+      el.ruleEditTitle && el.ruleEditTitle.focus();
+    }
+  }
+
+  function closeRuleEditModal() {
+    ruleEditIndex = -1;
+    if (el.ruleEditModal) el.ruleEditModal.hidden = true;
+  }
+
   function renderRules() {
     if (!el.rulesList) return;
     el.rulesList.innerHTML = rules
@@ -898,20 +935,53 @@
         const title = (rule && rule.title != null ? rule.title : "") || "";
         const displayTitle = title.trim() || "Sin título";
         return `<span class="rule-tag" role="listitem" data-rule-index="${index}">
-          <span class="rule-tag-label">${escapeHtml(displayTitle)}</span>
+          <span class="rule-tag-label" tabindex="0" role="button" title="Editar regla" data-rule-index="${index}">${escapeHtml(displayTitle)}</span>
           <button type="button" class="rule-tag-remove" title="Eliminar regla" aria-label="Eliminar regla" data-rule-index="${index}">×</button>
         </span>`;
       })
       .join("");
-    el.rulesList.querySelectorAll(".rule-tag-remove").forEach((btn) => {
-      btn.addEventListener("click", function () {
-        const idx = parseInt(btn.getAttribute("data-rule-index"), 10);
+  }
+
+  /** Delegación en la lista de reglas: eliminar por la cruz o abrir edición por el título. Así el botón × se detecta bien aunque solo quede una regla. */
+  if (el.rulesList) {
+    el.rulesList.addEventListener("click", function (e) {
+      const removeBtn = e.target.closest(".rule-tag-remove");
+      const tag = e.target.closest(".rule-tag");
+      if (removeBtn && tag) {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
         if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) {
           rules.splice(idx, 1);
           renderRules();
-          debouncedSaveRules();
+          if (rules.length === 0) {
+            if (saveRulesDebounceTimer) {
+              clearTimeout(saveRulesDebounceTimer);
+              saveRulesDebounceTimer = null;
+            }
+            saveRulesToConversation();
+          } else {
+            debouncedSaveRules();
+          }
         }
-      });
+        return;
+      }
+      const label = e.target.closest(".rule-tag-label");
+      if (label && tag) {
+        e.preventDefault();
+        const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) openRuleEditModal(idx);
+      }
+    });
+    el.rulesList.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const label = e.target.closest(".rule-tag-label");
+      const tag = e.target.closest(".rule-tag");
+      if (label && tag) {
+        e.preventDefault();
+        const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) openRuleEditModal(idx);
+      }
     });
   }
 
@@ -1280,16 +1350,145 @@
     control.addEventListener("change", debouncedSaveParams);
     control.addEventListener("input", debouncedSaveParams);
   });
+  let libraryRules = [];
+
+  /** Carga TODAS las reglas de la biblioteca (GET /api/rules) para el selector. No depende de la conversación actual. */
+  async function loadLibraryRules() {
+    try {
+      libraryRules = await fetchJson(`${API}/rules`);
+      if (!Array.isArray(libraryRules)) libraryRules = [];
+    } catch (_) {
+      libraryRules = [];
+    }
+    if (el.ruleLibrarySelect) {
+      const selected = el.ruleLibrarySelect.value;
+      el.ruleLibrarySelect.innerHTML = "<option value=\"\">-- Elegir regla --</option>" +
+        libraryRules.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml((r.title || "").trim() || "Sin título")}</option>`).join("");
+      // Solo restaurar la selección si esa regla sigue existiendo en la biblioteca (evita opciones fantasma).
+      if (selected && libraryRules.some((r) => r.id === selected)) {
+        el.ruleLibrarySelect.value = selected;
+      } else {
+        el.ruleLibrarySelect.value = "";
+      }
+    }
+  }
+
+  /** Al abrir el selector, refrescar lista para no mostrar reglas ya eliminadas de la biblioteca. */
+  if (el.ruleLibrarySelect) {
+    el.ruleLibrarySelect.addEventListener("focus", function () {
+      loadLibraryRules();
+    });
+  }
+
   if (el.btnAddRule && el.ruleNewInput) {
-    el.btnAddRule.addEventListener("click", function () {
+    el.btnAddRule.addEventListener("click", async function () {
       const content = (el.ruleNewInput.value || "").trim();
       const title = (el.ruleNewTitle && el.ruleNewTitle.value ? el.ruleNewTitle.value.trim() : "") || "Regla " + (rules.length + 1);
       if (!content) return;
-      rules.push({ title: title || "Regla " + (rules.length + 1), content: content });
+      try {
+        const newRule = await fetchJson(`${API}/rules`, { method: "POST", body: JSON.stringify({ title: title || "Regla " + (rules.length + 1), content: content }) });
+        rules.push({ rule_id: newRule.id, title: newRule.title || "", content: newRule.content || "" });
+        libraryRules.unshift(newRule);
+        if (el.ruleLibrarySelect) {
+          const opt = document.createElement("option");
+          opt.value = newRule.id;
+          opt.textContent = (newRule.title || "").trim() || "Sin título";
+          el.ruleLibrarySelect.insertBefore(opt, el.ruleLibrarySelect.options[1] || null);
+        }
+      } catch (_) {
+        showError("Error al crear la regla en la biblioteca");
+        return;
+      }
       if (el.ruleNewTitle) el.ruleNewTitle.value = "";
       el.ruleNewInput.value = "";
       renderRules();
       debouncedSaveRules();
+    });
+  }
+  if (el.btnAddLibraryRule && el.ruleLibrarySelect) {
+    el.btnAddLibraryRule.addEventListener("click", async function () {
+      const id = (el.ruleLibrarySelect.value || "").trim();
+      if (!id) return;
+      let rule = libraryRules.find((r) => r.id === id);
+      if (!rule) {
+        try {
+          rule = await fetchJson(`${API}/rules/${id}`);
+        } catch (_) {
+          showError("Regla no encontrada");
+          return;
+        }
+      }
+      rules.push({ rule_id: rule.id, title: rule.title || "", content: rule.content || "" });
+      renderRules();
+      debouncedSaveRules();
+    });
+  }
+  if (el.ruleEditBtnDelete) {
+    el.ruleEditBtnDelete.addEventListener("click", function () {
+      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      rules.splice(ruleEditIndex, 1);
+      renderRules();
+      if (rules.length === 0) {
+        if (saveRulesDebounceTimer) {
+          clearTimeout(saveRulesDebounceTimer);
+          saveRulesDebounceTimer = null;
+        }
+        saveRulesToConversation();
+      } else {
+        debouncedSaveRules();
+      }
+      closeRuleEditModal();
+    });
+  }
+  if (el.ruleEditBtnSave) {
+    el.ruleEditBtnSave.addEventListener("click", async function () {
+      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      const title = (el.ruleEditTitle && el.ruleEditTitle.value ? el.ruleEditTitle.value.trim() : "") || "";
+      const content = (el.ruleEditContent && el.ruleEditContent.value ? el.ruleEditContent.value : "") || "";
+      const r = rules[ruleEditIndex];
+      if (r.rule_id) {
+        try {
+          await fetchJson(`${API}/rules/${r.rule_id}`, { method: "PUT", body: JSON.stringify({ title: title || r.title, content: content || r.content }) });
+        } catch (_) {
+          showError("Error al actualizar la regla");
+          return;
+        }
+      }
+      rules[ruleEditIndex] = Object.assign({}, r, { title: title || r.title, content: content || r.content });
+      if (r.rule_id) rules[ruleEditIndex].rule_id = r.rule_id;
+      renderRules();
+      debouncedSaveRules();
+      closeRuleEditModal();
+    });
+  }
+  if (el.ruleEditBtnSaveNew) {
+    el.ruleEditBtnSaveNew.addEventListener("click", async function () {
+      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      const title = (el.ruleEditTitle && el.ruleEditTitle.value ? el.ruleEditTitle.value.trim() : "") || "";
+      const content = (el.ruleEditContent && el.ruleEditContent.value ? el.ruleEditContent.value : "") || "";
+      try {
+        const newRule = await fetchJson(`${API}/rules`, { method: "POST", body: JSON.stringify({ title: title || "Nueva regla", content: content || "" }) });
+        rules.splice(ruleEditIndex, 1);
+        rules.splice(ruleEditIndex, 0, { rule_id: newRule.id, title: newRule.title || "", content: newRule.content || "" });
+        renderRules();
+        debouncedSaveRules();
+        libraryRules.unshift(newRule);
+        if (el.ruleLibrarySelect) {
+          const opt = document.createElement("option");
+          opt.value = newRule.id;
+          opt.textContent = (newRule.title || "").trim() || "Sin título";
+          el.ruleLibrarySelect.insertBefore(opt, el.ruleLibrarySelect.options[1] || null);
+        }
+      } catch (_) {
+        showError("Error al crear la regla");
+        return;
+      }
+      closeRuleEditModal();
+    });
+  }
+  if (el.ruleEditModal) {
+    el.ruleEditModal.addEventListener("click", function (e) {
+      if (e.target === el.ruleEditModal) closeRuleEditModal();
     });
   }
   if (el.presetModalClose) el.presetModalClose.addEventListener("click", closePresetModal);
@@ -1563,6 +1762,7 @@
         (tabId === "parametros" && isParametros);
       panel.classList.toggle("is-active", active);
       panel.hidden = !active;
+      if (active && isReglas) loadLibraryRules();
     });
   }
 

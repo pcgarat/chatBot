@@ -65,10 +65,11 @@ def _save_all(data: dict[str, dict[str, Any]]) -> None:
 
 
 def _default_user_info() -> dict[str, Any]:
-    """user_info por defecto."""
+    """user_info por defecto. instruction_ids = ids de reglas de la biblioteca (misma entidad que conversaciones)."""
     return {
         "uncensored": False,
-        "instructions": [],
+        "instructions": [],  # Legado: list[str]; si instruction_ids está presente se usa ese
+        "instruction_ids": [],
         "tags": [],
     }
 
@@ -130,11 +131,12 @@ def update_user_info(
     model_name: str,
     uncensored: bool | None = None,
     instructions: list[str] | None = None,
+    instruction_ids: list[str] | None = None,
     tags: list[str] | None = None,
 ) -> None:
     """
-    Actualiza solo user_info. Aplica límites y normalización de tags
-    (trim, duplicados eliminados, longitud máxima por tag).
+    Actualiza solo user_info. instruction_ids = ids de reglas (biblioteca).
+    instructions (list[str]) es legado; si se envía instruction_ids se guarda ese.
     """
     key = _storage_key(provider, model_name)
     data = _load_all()
@@ -145,6 +147,8 @@ def update_user_info(
         user["uncensored"] = bool(uncensored)
     if instructions is not None:
         user["instructions"] = list(instructions)[:MAX_INSTRUCTIONS]
+    if instruction_ids is not None:
+        user["instruction_ids"] = list(instruction_ids)[:MAX_INSTRUCTIONS]
     if tags is not None:
         normalized = []
         seen = set()
