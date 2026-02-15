@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic import field_validator
@@ -6,6 +7,52 @@ from pydantic_settings import BaseSettings
 
 # Raíz del proyecto (donde está .env), para cargar .env aunque se arranque desde otro directorio
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_env_files_into_os() -> None:
+    """
+    Carga .env y .env.local en os.environ (solo claves que aún no estén definidas).
+    Así, tanto si se arranca con run.py como con uvicorn app.main:app, el proceso
+    tiene todas las variables y el sync puede llevarlas al .env si faltan (p. ej. MANCER_API_KEY).
+    """
+    for name in (".env", ".env.local"):
+        path = _PROJECT_ROOT / name
+        if not path.exists():
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, _, value = line.partition("=")
+                    key = key.strip()
+                    if key and key not in os.environ:
+                        value = value.strip().strip('"').strip("'")
+                        os.environ[key] = value
+        except OSError:
+            pass
+
+
+_load_env_files_into_os()
+
+# Variables de entorno que, si existen en el sistema al arrancar y no están ya en .env, se añaden al archivo
+ENV_VARS_TO_SYNC = [
+    "PYTHON_VERSION",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_ORGANIZATION_ID",
+    "OPENAI_PROJECT_ID",
+    "CHROMA_HOST",
+    "MANCER_API_KEY",
+    "OLLAMA_HOST",
+    "EMBEDDINGS_PROVIDER",
+    "OLLAMA_EMBEDDING_MODEL",
+    "DEFAULT_LLM_PROVIDER",
+    "OLLAMA_HISTORY_TURNS",
+    "DATABASE_URL",
+    "VERBOSE",
+]
 
 
 class Settings(BaseSettings):
@@ -21,6 +68,13 @@ class Settings(BaseSettings):
     # Por defecto se usa Ollama para embeddings. Si quieres OpenAI: EMBEDDINGS_PROVIDER=openai y OPENAI_API_KEY
     embeddings_provider: str = Field(default="ollama", validation_alias="EMBEDDINGS_PROVIDER")
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    openai_base_url: str = Field(default="https://api.openai.com", validation_alias="OPENAI_BASE_URL")
+    # Opcionales: organización y proyecto (usage se atribuye al proyecto). Ver https://developers.openai.com/api/reference/overview/
+    openai_organization_id: str = Field(default="", validation_alias="OPENAI_ORGANIZATION_ID")
+    openai_project_id: str = Field(
+        default="proj_Db2LsLDFkhd2rVfSMJrSCE5j",
+        validation_alias="OPENAI_PROJECT_ID",
+    )
     # Número de pares usuario-asistente a enviar a Ollama como historial (0 = sin historial). Por defecto 10.
     ollama_history_turns: int = Field(default=10, validation_alias="OLLAMA_HISTORY_TURNS")
 
@@ -46,6 +100,46 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         # Asegurar que se lean las variables del .env (no solo del entorno del proceso)
         extra = "ignore"
+
+
+def _escape_env_value(value: str) -> str:
+    """Escapa un valor para una línea KEY=value en .env (comillas si hace falta)."""
+    if any(c in value for c in " \t\n\"'#"):
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return value
+
+
+def sync_env_to_dotenv(*, skip_if_pytest: bool = True) -> None:
+    """
+    Recorre las variables de ENV_VARS_TO_SYNC que existen en os.environ y, solo si esa
+    variable no está ya en el .env, la añade al final del archivo. No borra ni modifica
+    ninguna línea existente.
+    Si skip_if_pytest es True (por defecto), no hace nada cuando se ejecuta bajo pytest.
+    """
+    if skip_if_pytest and os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    env_path = _PROJECT_ROOT / ".env"
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    lines_all: list[str] = []
+    keys_in_file: set[str] = set()
+    if env_path.exists():
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                lines_all.append(line.rstrip("\n"))
+                stripped = line.strip()
+                if "=" in stripped and not stripped.startswith("#"):
+                    key = stripped.split("=", 1)[0].strip()
+                    if key and not key.startswith("#"):
+                        keys_in_file.add(key)
+    new_lines = []
+    for var in ENV_VARS_TO_SYNC:
+        if var in os.environ and os.environ[var] is not None and var not in keys_in_file:
+            val = _escape_env_value(os.environ[var])
+            new_lines.append(f"{var}={val}")
+    if new_lines:
+        parts = lines_all + ([""] if lines_all else []) + new_lines
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(parts) + "\n")
 
 
 settings = Settings()

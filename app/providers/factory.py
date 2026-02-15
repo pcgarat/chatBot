@@ -32,7 +32,7 @@ class ProviderFactory:
         Obtiene una instancia del proveedor especificado.
 
         Args:
-            provider_type: Tipo de proveedor ("ollama", "mancer").
+            provider_type: Tipo de proveedor ("ollama", "mancer", "openai").
 
         Returns:
             Instancia del proveedor.
@@ -53,10 +53,14 @@ class ProviderFactory:
             from app.providers.mancer import MancerProvider
 
             provider = MancerProvider()
+        elif provider_type == "openai":
+            from app.providers.openai import OpenAIProvider
+
+            provider = OpenAIProvider()
         else:
             raise ValueError(
                 f"Proveedor '{provider_type}' no soportado. "
-                f"Proveedores disponibles: ollama, mancer"
+                f"Proveedores disponibles: ollama, mancer, openai"
             )
 
         cls._providers[provider_type] = provider
@@ -105,7 +109,7 @@ class ProviderFactory:
         if ":" in model_id:
             parts = model_id.split(":", 1)
             # Verificar si el primer parte es un proveedor conocido
-            if parts[0].lower() in ("ollama", "mancer"):
+            if parts[0].lower() in ("ollama", "mancer", "openai"):
                 return parts[0].lower(), parts[1]
         # Si no hay prefijo de proveedor, usar el default
         return settings.default_llm_provider, model_id
@@ -119,9 +123,10 @@ class ProviderFactory:
             Lista de nombres de proveedores.
         """
         providers = ["ollama"]
-        # Mancer solo disponible si hay API key
         if settings.mancer_api_key:
             providers.append("mancer")
+        if settings.openai_api_key:
+            providers.append("openai")
         return providers
 
     @classmethod

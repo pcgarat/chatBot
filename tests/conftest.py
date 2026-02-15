@@ -91,3 +91,17 @@ def ollama_available():
         f"Ollama no está accesible en {host}. "
         "Levanta Ollama (p. ej. 'ollama serve') o ejecuta los tests sin e2e: pytest -m 'not e2e'."
     )
+
+
+@pytest.fixture(scope="session")
+def openai_available():
+    """
+    Comprueba si OpenAI está configurado (OPENAI_API_KEY) para tests e2e de OpenAI.
+    Si no hay key, hace skip de los tests que dependan de esta fixture.
+    """
+    if not getattr(settings, "openai_api_key", ""):
+        pytest.skip(
+            "OPENAI_API_KEY no configurada. "
+            "Configura la variable de entorno para ejecutar tests e2e de OpenAI."
+        )
+    return True
