@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.crud import get_rule as crud_get_rule
 from app.db import get_db
-from app.model_info import get_all_tags, get_model_info, set_model_info, update_user_info
+from app.model_info import MAX_TAG_LENGTH, MAX_TAGS, get_all_tags, get_model_info, set_model_info, update_user_info
 from app.provider_params import get_context_length_max, get_params_config, get_presets
 from app.providers import ProviderFactory, get_provider
 from app.providers.capabilities import get_model_details, get_provider_capabilities
@@ -25,6 +25,23 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api", tags=["models"])
+
+
+def _merged_tags_for_response(provider_name: str, model_id: str, user_tags: list[str]) -> list[str]:
+    """
+    Tags a devolver en la ficha: user_tags + tags del preset (solo openai).
+    Sin duplicados, ordenados, respetando MAX_TAGS y MAX_TAG_LENGTH.
+    """
+    combined = list(user_tags) if user_tags else []
+    if provider_name == "openai":
+        presets = get_presets("openai")
+        if isinstance(presets, dict):
+            preset = presets.get(model_id)
+            if isinstance(preset, dict) and isinstance(preset.get("tags"), list):
+                combined = list(dict.fromkeys(combined + [t for t in preset["tags"] if isinstance(t, str)]))
+    # Aplicar límites: longitud por tag y número total
+    out = [t.strip()[:MAX_TAG_LENGTH] for t in combined if isinstance(t, str) and t.strip()][:MAX_TAGS]
+    return sorted(dict.fromkeys(out))
 
 
 @router.get("/providers", response_model=list[ProviderInfo])
@@ -211,11 +228,12 @@ def get_model_info_route(provider_name: str, model_id: str, db: Session = Depend
                 RuleItem(title=("Instrucción %d" % (i + 1)), content=(s if isinstance(s, str) else str(s)))
                 for i, s in enumerate(legacy)
             ]
+    tags_final = _merged_tags_for_response(provider_name, model_id, user_raw.get("tags") or [])
     user_info = ModelInfoUserInfo(
         uncensored=user_raw.get("uncensored", False),
         instructions=instructions_resolved,
         instruction_ids=instruction_ids,
-        tags=user_raw.get("tags") or [],
+        tags=tags_final,
     )
     return ModelInfoResponse(provider_info=raw["provider_info"], user_info=user_info)
 
@@ -244,11 +262,12 @@ def put_model_info_route(
     user_raw = raw["user_info"] or {}
     instruction_ids = user_raw.get("instruction_ids") or []
     instructions_resolved = _resolve_instruction_ids(instruction_ids, db)
+    tags_final = _merged_tags_for_response(provider_name, model_id, user_raw.get("tags") or [])
     user_info = ModelInfoUserInfo(
         uncensored=user_raw.get("uncensored", False),
         instructions=instructions_resolved,
         instruction_ids=instruction_ids,
-        tags=user_raw.get("tags") or [],
+        tags=tags_final,
     )
     return ModelInfoResponse(provider_info=raw["provider_info"], user_info=user_info)
 
@@ -257,7 +276,7 @@ def put_model_info_route(
     "/providers/{provider_name}/models/{model_id:path}/info/refresh",
     response_model=ModelInfoResponse,
 )
-def refresh_model_provider_info(provider_name: str, model_id: str):
+def refresh_model_provider_info(provider_name: str, model_id: str, db: Session = Depends(get_db)):
     """
     Refresca provider_info llamando a la capacidad show_model del proveedor.
     Si falla, no sobrescribe el provider_info existente; devuelve la ficha actual.
@@ -276,10 +295,17 @@ def refresh_model_provider_info(provider_name: str, model_id: str):
             user_info=current["user_info"],
         )
     raw = get_model_info(provider_name, model_id)
-    return ModelInfoResponse(
-        provider_info=raw["provider_info"],
-        user_info=ModelInfoUserInfo(**raw["user_info"]),
+    user_raw = raw["user_info"] or {}
+    instruction_ids = user_raw.get("instruction_ids") or []
+    instructions_resolved = _resolve_instruction_ids(instruction_ids, db)
+    tags_final = _merged_tags_for_response(provider_name, model_id, user_raw.get("tags") or [])
+    user_info = ModelInfoUserInfo(
+        uncensored=user_raw.get("uncensored", False),
+        instructions=instructions_resolved,
+        instruction_ids=instruction_ids,
+        tags=tags_final,
     )
+    return ModelInfoResponse(provider_info=raw["provider_info"], user_info=user_info)
 
 
 def _resolve_context_length(provider_name: str, model_id: str) -> int | None:

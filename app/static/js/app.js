@@ -17,6 +17,8 @@
   let paramsConfig = { provider: "", params: {} };
   /** Origen de los parámetros mostrados: "user" | "preset" | "default" */
   let paramsSource = "default";
+  /** Valores de referencia para no enviar un param si coincide (preset del modelo o default del provider). */
+  let paramsBaseline = {};
   /** Uso de contexto (último turno): prompt_tokens, completion_tokens. null si no hay datos. */
   let lastUsage = null;
   /** Contexto máximo del modelo actual (tokens). null si no se conoce. */
@@ -223,12 +225,64 @@
         control.classList.add("control-disabled");
       }
     });
+    // Baseline para comparación: si el valor del control coincide con el baseline no se envía el param.
+    paramsBaseline = {};
+    for (const paramId of Object.keys(paramsConfig.params)) {
+      const spec = paramsConfig.params[paramId];
+      if (spec && spec.default !== undefined) paramsBaseline[paramId] = spec.default;
+    }
   }
 
-  /** Restaura todos los controles de parámetros a los valores por defecto del proveedor (no se envía model_params). */
-  function resetParamsToDefaults() {
+  /**
+   * Establece el baseline de parámetros desde un preset de modelo.
+   * Si el valor del control coincide con este baseline, el param no se envía en el request.
+   */
+  function setParamsBaselineFromPreset(presetObj) {
+    if (!presetObj || typeof presetObj !== "object") return;
+    for (const paramId of Object.keys(presetObj)) {
+      const spec = presetObj[paramId];
+      if (spec && spec.default !== undefined) paramsBaseline[paramId] = spec.default;
+    }
+  }
+
+  /** Carga el preset del modelo actual y actualiza paramsBaseline para no enviar params que coincidan con el preset. */
+  async function ensureParamsBaselineForCurrentModel() {
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "";
+    const modelId = (el.modelSelect && el.modelSelect.value) || "";
+    if (!provider || !modelId) return;
+    try {
+      const data = await fetchJson(`${API}/providers/${provider}/presets`);
+      const presets = data.presets || {};
+      const preset = presets[modelId];
+      if (preset) setParamsBaselineFromPreset(preset);
+    } catch (_) {}
+  }
+
+  /**
+   * Restaura parámetros: carga el preset del modelo actual y lo aplica a los controles.
+   * Si no hay preset para el modelo, usa los valores por defecto del proveedor.
+   * Tras restaurar, los valores coinciden con el baseline y no se envían en el request.
+   */
+  async function resetParamsToDefaults() {
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "";
+    const modelId = (el.modelSelect && el.modelSelect.value) || "";
+    if (provider && modelId) {
+      try {
+        const data = await fetchJson(`${API}/providers/${provider}/presets`);
+        const presets = data.presets || {};
+        const preset = presets[modelId];
+        if (preset) {
+          applyPresetToControls(preset);
+          setParamsBaselineFromPreset(preset);
+          paramsSource = "preset";
+          showNotice("Parámetros restaurados al preset del modelo.");
+          return;
+        }
+      } catch (_) {}
+    }
     applyParamsConfig();
-    showNotice("Parámetros restaurados a los valores por defecto.");
+    paramsSource = "default";
+    showNotice("Parámetros restaurados a los valores por defecto del proveedor.");
   }
 
   /**
@@ -297,6 +351,7 @@
     if (!modelId) {
       contextLength = null;
       renderContextUsageBar();
+      syncNumCtxControlFromApi(null);
       return;
     }
     try {
@@ -306,6 +361,22 @@
       contextLength = null;
     }
     renderContextUsageBar();
+    syncNumCtxControlFromApi(contextLength);
+  }
+
+  /**
+   * Si el proveedor no tiene param num_ctx (ej. OpenAI), muestra en "Ventana de contexto"
+   * el context_length de la API. Así gpt-5-mini muestra 400000 en lugar de un valor residual (2048).
+   */
+  function syncNumCtxControlFromApi(apiContextLength) {
+    const numCtxControl = document.getElementById("param-num-ctx");
+    if (!numCtxControl) return;
+    if (paramsConfig.params["num_ctx"]) {
+      return;
+    }
+    numCtxControl.value = apiContextLength != null ? String(apiContextLength) : "";
+    const maxAttr = apiContextLength != null && apiContextLength > 131072 ? String(apiContextLength) : "131072";
+    numCtxControl.setAttribute("max", maxAttr);
   }
 
   function renderContextUsageBar() {
@@ -609,7 +680,7 @@
       } else {
         continue;
       }
-      const def = spec.default;
+      const def = paramsBaseline[paramId] !== undefined ? paramsBaseline[paramId] : spec.default;
       let same = false;
       if (spec.type === "string_list") {
         same = Array.isArray(def) && Array.isArray(current) && def.length === current.length && def.every((d, i) => d === current[i]);
@@ -627,6 +698,7 @@
     currentProvider = el.providerSelect ? el.providerSelect.value : "ollama";
     await loadModels(false);
     await loadParamsForProvider(currentProvider);
+    await ensureParamsBaselineForCurrentModel();
     // Actualizar conversación si hay una abierta
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
@@ -773,6 +845,7 @@
       rules = normalizeRulesFromApi(conv.system_instructions, conv.system_instruction_global);
       await loadParamsForProvider(currentProvider);
       if (conv.model_params && typeof conv.model_params === "object" && Object.keys(conv.model_params).length > 0) {
+        await ensureParamsBaselineForCurrentModel();
         applyUserParamsToControls(conv.model_params);
         paramsSource = "user";
       } else {
@@ -782,6 +855,7 @@
           const preset = presets[conv.model_id];
           if (preset) {
             applyPresetToControls(preset);
+            setParamsBaselineFromPreset(preset);
             paramsSource = "preset";
           } else {
             paramsSource = "default";
@@ -806,6 +880,7 @@
       if (el.modelSelect) el.modelSelect.value = models[0] || "";
       rules = [];
       await loadParamsForProvider(currentProvider);
+      await ensureParamsBaselineForCurrentModel();
       paramsSource = "default";
       messages = [];
       if (el.historyTurnsInput) el.historyTurnsInput.value = "5";
@@ -1120,7 +1195,7 @@
 
     messages.push({ role: "user", content });
     if (el.messageInput) el.messageInput.value = "";
-    if (el.instructionOverride) el.instructionOverride.value = "";
+    // La instrucción solo para este mensaje se mantiene hasta que el usuario la borre.
     renderMessages();
 
     const msgEl = document.createElement("div");
@@ -1301,6 +1376,7 @@
     }
     lastUsage = null;
     await loadContextLength();
+    await ensureParamsBaselineForCurrentModel();
   }
 
   if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
@@ -1315,11 +1391,15 @@
   if (el.showDebugModeCheck) el.showDebugModeCheck.addEventListener("change", renderMessages);
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
-  if (el.btnResetParams) el.btnResetParams.addEventListener("click", function () {
-    resetParamsToDefaults();
-    paramsSource = "default";
+  if (el.btnResetParams) el.btnResetParams.addEventListener("click", async function () {
+    await resetParamsToDefaults();
     renderParamsSourceLabel();
-    debouncedSaveParams();
+    if (currentConversationId) {
+      fetchJson(`${API}/conversations/${currentConversationId}`, {
+        method: "PUT",
+        body: JSON.stringify({ model_params: buildModelParams() }),
+      }).catch(() => {});
+    }
   });
   document.querySelectorAll("[data-control-id]").forEach(function (control) {
     control.addEventListener("change", debouncedSaveParams);

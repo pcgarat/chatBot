@@ -104,7 +104,7 @@ class RuleItem(BaseModel):
 class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"
     model_id: str = "llama3.2"
-    provider: str = "ollama"  # ollama | mancer
+    provider: str = "ollama"  # ollama | mancer | openai
     system_instruction_global: Optional[str] = None
     system_instructions: Optional[list[RuleItem]] = None  # Lista de reglas (título + contenido)
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora. Las instrucciones se envían siempre.
@@ -113,7 +113,7 @@ class ConversationCreate(BaseModel):
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     model_id: Optional[str] = None
-    provider: Optional[str] = None  # ollama | mancer
+    provider: Optional[str] = None  # ollama | mancer | openai
     system_instruction_global: Optional[str] = None
     system_instructions: Optional[list[RuleItem]] = None
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora.
@@ -133,7 +133,7 @@ class ConversationOut(BaseModel):
     id: str
     title: str
     model_id: str
-    provider: str = "ollama"
+    provider: str = "ollama"  # ollama | mancer | openai
     system_instruction_global: Optional[str] = None
     system_instructions: Optional[list[RuleItem]] = None
     inject_instruction_every: Optional[int] = None
@@ -151,7 +151,7 @@ class ConversationListItem(BaseModel):
     id: str
     title: str
     model_id: str
-    provider: str = "ollama"
+    provider: str = "ollama"  # ollama | mancer | openai
     updated_at: datetime
 
     class Config:

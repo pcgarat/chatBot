@@ -4,6 +4,7 @@ Tests para el sistema de proveedores de LLM.
 Tests unitarios para:
 - OllamaProvider
 - MancerProvider
+- OpenAIProvider
 - ProviderFactory
 """
 
@@ -421,9 +422,10 @@ class TestProviderFactory:
             assert model_name == "llama3.2:latest"
 
     def test_list_available_providers_ollama_only(self):
-        """Test listado de proveedores (solo Ollama si no hay key de Mancer)."""
+        """Test listado de proveedores (solo Ollama si no hay keys de Mancer/OpenAI)."""
         with patch("app.providers.factory.settings") as mock_settings:
             mock_settings.mancer_api_key = ""
+            mock_settings.openai_api_key = ""
             providers = ProviderFactory.list_available_providers()
             assert providers == ["ollama"]
 
@@ -431,9 +433,38 @@ class TestProviderFactory:
         """Test listado de proveedores (incluyendo Mancer si hay key)."""
         with patch("app.providers.factory.settings") as mock_settings:
             mock_settings.mancer_api_key = "mcr-test-key"
+            mock_settings.openai_api_key = ""
             providers = ProviderFactory.list_available_providers()
             assert "ollama" in providers
             assert "mancer" in providers
+            assert "openai" not in providers
+
+    def test_list_available_providers_with_openai(self):
+        """Test listado de proveedores (incluyendo OpenAI si hay OPENAI_API_KEY)."""
+        with patch("app.providers.factory.settings") as mock_settings:
+            mock_settings.mancer_api_key = ""
+            mock_settings.openai_api_key = "sk-test-key"
+            providers = ProviderFactory.list_available_providers()
+            assert "ollama" in providers
+            assert "openai" in providers
+            assert "mancer" not in providers
+
+    def test_get_openai_provider(self):
+        """Test obtener proveedor OpenAI."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            provider = ProviderFactory.get_provider("openai")
+            assert provider.provider_name == "openai"
+
+    def test_parse_model_id_openai_prefix(self):
+        """Test parseo de model_id con prefijo openai."""
+        with patch("app.providers.factory.settings") as mock_settings:
+            mock_settings.default_llm_provider = "ollama"
+            provider_type, model_name = ProviderFactory.parse_model_id("openai:gpt-4o-mini")
+            assert provider_type == "openai"
+            assert model_name == "gpt-4o-mini"
 
 
 class TestGetProviderFunction:
@@ -501,4 +532,179 @@ class TestMancerProvider:
 
             from app.providers.mancer import MancerProvider
             provider = MancerProvider()
+            assert isinstance(provider, LLMProvider)
+
+
+class TestOpenAIProvider:
+    """Tests para OpenAIProvider."""
+
+    def test_provider_name(self):
+        """Test que el nombre del proveedor es correcto."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            from app.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
+            assert provider.provider_name == "openai"
+
+    def test_missing_api_key(self):
+        """Test error si no hay OPENAI_API_KEY."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = ""
+            mock_settings.openai_base_url = "https://api.openai.com"
+            from app.providers.openai import OpenAIProvider
+            with pytest.raises(ValueError) as exc_info:
+                OpenAIProvider()
+            assert "OPENAI_API_KEY" in str(exc_info.value)
+
+    def test_list_models_success(self):
+        """Test listado de modelos exitoso (GET /v1/models)."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            from app.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
+        with patch("app.providers.openai.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "data": [
+                    {"id": "gpt-4o-mini", "object": "model", "created": 123, "owned_by": "openai"},
+                    {"id": "gpt-4o", "object": "model", "created": 456, "owned_by": "openai"},
+                ]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            models = provider.list_models()
+        assert len(models) == 2
+        assert models[0].name == "gpt-4o-mini"
+        assert models[0].provider == "openai"
+        assert models[0].context_length is None
+        assert models[1].name == "gpt-4o"
+
+    def test_chat_success(self):
+        """Test chat exitoso (POST /v1/chat/completions)."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            from app.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
+        with patch("app.providers.openai.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "choices": [{"message": {"content": "Hello from OpenAI!"}}]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.post.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            result = provider.chat("gpt-4o-mini", [{"role": "user", "content": "Hi"}])
+        assert result == "Hello from OpenAI!"
+
+    def test_chat_http_error(self):
+        """Chat lanza ConnectionError cuando la API devuelve error."""
+        import httpx as real_httpx
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            from app.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
+        with patch("app.providers.openai.httpx") as mock_httpx:
+            mock_httpx.HTTPStatusError = real_httpx.HTTPStatusError  # para que except httpx.HTTPStatusError funcione
+            mock_resp = MagicMock()
+            mock_resp.status_code = 401
+            mock_resp.json.return_value = {"error": {"message": "Invalid API key"}}
+            mock_resp.raise_for_status.side_effect = real_httpx.HTTPStatusError(
+                "Unauthorized", request=MagicMock(), response=mock_resp
+            )
+            mock_httpx.Client.return_value.__enter__.return_value.post.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            with pytest.raises(ConnectionError) as exc_info:
+                provider.chat("gpt-4o-mini", [{"role": "user", "content": "Hi"}])
+            assert "401" in str(exc_info.value)
+            assert "Invalid API key" in str(exc_info.value)
+
+    def test_chat_stream_content_and_done(self):
+        """chat_stream emite chunks de contenido y done con usage si viene en el chunk."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            from app.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
+        lines = [
+            "data: " + json.dumps({"choices": [{"delta": {"content": "Hi"}}]}),
+            "data: " + json.dumps({"choices": [{"delta": {"content": " there"}}]}),
+            "data: " + json.dumps({
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+            }),
+        ]
+
+        async def fake_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.aiter_lines = lambda: fake_aiter_lines()
+
+        mock_stream_ctx = MagicMock()
+        mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        async def run():
+            with patch("app.providers.openai.httpx") as mock_httpx:
+                mock_async_client = MagicMock()
+                mock_async_client.stream.return_value = mock_stream_ctx
+                mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
+                mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=None)
+                chunks = []
+                async for ch in provider.chat_stream("gpt-4o-mini", [{"role": "user", "content": "Hi"}]):
+                    chunks.append(ch)
+            return chunks
+
+        chunks = asyncio.run(run())
+        content_chunks = [c for c in chunks if c.type == "content"]
+        done_chunks = [c for c in chunks if c.type == "done"]
+        assert len(content_chunks) == 2
+        assert "".join(c.content for c in content_chunks) == "Hi there"
+        assert len(done_chunks) == 1
+        assert done_chunks[0].metadata.get("usage") == {"prompt_tokens": 5, "completion_tokens": 2}
+
+    def test_validate_connection_success(self):
+        """validate_connection True cuando list_models responde OK."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            from app.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
+        with patch.object(provider, "list_models") as mock_list:
+            mock_list.return_value = [ProviderModelInfo(name="gpt-4o-mini", provider="openai")]
+            assert provider.validate_connection() is True
+
+    def test_validate_connection_failure(self):
+        """validate_connection False cuando list_models falla."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            from app.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
+        with patch.object(provider, "list_models") as mock_list:
+            mock_list.side_effect = ConnectionError("API error")
+            assert provider.validate_connection() is False
+
+    def test_implements_protocol(self):
+        """Test que OpenAIProvider implementa LLMProvider protocol."""
+        with patch("app.providers.openai.settings") as mock_settings:
+            mock_settings.openai_api_key = "sk-test"
+            mock_settings.openai_base_url = "https://api.openai.com"
+            mock_settings.verbose = False
+            from app.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
             assert isinstance(provider, LLMProvider)
