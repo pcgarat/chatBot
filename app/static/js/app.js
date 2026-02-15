@@ -13,6 +13,9 @@
   let models = [];
   let currentProvider = "ollama";
   let currentAbortController = null;
+  /** Referencias al mensaje en streaming para poder mostrar/ocultar debug sin re-renderizar. */
+  let currentStreamingMsgEl = null;
+  let currentStreamingDebugEl = null;
   /** Parámetros del proveedor actual: { provider, params: { paramId: { type, default, min, max, api_key } } } */
   let paramsConfig = { provider: "", params: {} };
   /** Origen de los parámetros mostrados: "user" | "preset" | "default" */
@@ -1319,12 +1322,13 @@
     const msgEl = document.createElement("div");
     msgEl.className = "message assistant";
     const showDebug = isShowDebugMode();
-    msgEl.innerHTML = showDebug
-      ? '<div class="role-label">Asistente</div><div class="content"></div><div class="message-debug-stream" style="display:block"></div>'
-      : '<div class="role-label">Asistente</div><div class="content"></div>';
+    msgEl.innerHTML = '<div class="role-label">Asistente</div><div class="content"></div><div class="message-debug-stream"></div>';
     if (el.messagesContainer) el.messagesContainer.appendChild(msgEl);
     const contentEl = msgEl.querySelector(".content");
     const debugStreamEl = msgEl.querySelector(".message-debug-stream");
+    debugStreamEl.style.display = showDebug ? "block" : "none";
+    currentStreamingMsgEl = msgEl;
+    currentStreamingDebugEl = debugStreamEl;
     if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
 
     currentAbortController = new AbortController();
@@ -1370,13 +1374,13 @@
             const isContentChunk = data.content !== undefined && Object.keys(data).length === 1;
             if (!isContentChunk) {
               debugMetaLines.push(line);
-              if (showDebug && debugStreamEl) {
+              if (debugStreamEl) {
                 debugStreamEl.innerHTML = `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${debugRequest ? escapeHtml(debugRequest) : "(cargando...)"}</div><div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(debugMetaLines.join("\n"))}</div>`;
               }
             }
             if (data.debug_request) {
               debugRequest = data.debug_request;
-              if (showDebug && debugStreamEl) {
+              if (debugStreamEl) {
                 debugStreamEl.innerHTML = `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${escapeHtml(debugRequest)}</div><div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(debugMetaLines.join("\n"))}</div>`;
               }
             }
@@ -1400,6 +1404,8 @@
               renderContextUsageBar();
             }
             if (data.done) {
+              currentStreamingMsgEl = null;
+              currentStreamingDebugEl = null;
               msgEl.remove();
               messages.push({
                 role: "assistant",
@@ -1417,9 +1423,13 @@
           }
         }
       }
+      currentStreamingMsgEl = null;
+      currentStreamingDebugEl = null;
       currentAbortController = null;
       setCancelButtonState();
     } catch (e) {
+      currentStreamingMsgEl = null;
+      currentStreamingDebugEl = null;
       const lastUserContent = messages.length > 0 ? (messages[messages.length - 1].content || "") : "";
       if (e.name === "AbortError") {
         msgEl.remove();
@@ -1443,6 +1453,8 @@
         }
         showError("Error al enviar: " + e.message);
       }
+      currentStreamingMsgEl = null;
+      currentStreamingDebugEl = null;
       currentAbortController = null;
       setCancelButtonState();
     }
@@ -1506,7 +1518,13 @@
   if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
   if (el.btnSend) el.btnSend.addEventListener("click", sendMessage);
-  if (el.showDebugModeCheck) el.showDebugModeCheck.addEventListener("change", renderMessages);
+  if (el.showDebugModeCheck) el.showDebugModeCheck.addEventListener("change", function () {
+    if (currentAbortController && currentStreamingDebugEl) {
+      currentStreamingDebugEl.style.display = isShowDebugMode() ? "block" : "none";
+    } else {
+      renderMessages();
+    }
+  });
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
   if (el.btnResetParams) el.btnResetParams.addEventListener("click", async function () {

@@ -435,12 +435,12 @@ def test_send_message_with_instruction_override(mock_get_provider, client):
     )
     assert r.status_code == 200
     call_messages = mock_provider.chat.call_args[0][1]
-    # Primer system: reglas (global); segundo system: instruction_override; luego user
+    # System: reglas (global). Luego user (prompt) y user (instruction_override) en último lugar.
     system_msgs = [m for m in call_messages if m["role"] == "system"]
     assert len(system_msgs) >= 1
     assert any("Global." in m["content"] for m in system_msgs)
-    assert any("Responde en una frase." in m["content"] for m in system_msgs)
-    assert call_messages[-1]["content"] == "Dime algo"
+    assert call_messages[-2]["role"] == "user" and call_messages[-2]["content"] == "Dime algo"
+    assert call_messages[-1]["role"] == "user" and call_messages[-1]["content"] == "Responde en una frase."
 
 
 def test_send_message_404(client):
