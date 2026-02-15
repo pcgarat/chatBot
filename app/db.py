@@ -50,3 +50,33 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # Migración: añadir model_params en conversations (JSON guardado por conversación)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN model_params TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Migración: añadir system_instructions en conversations (JSON lista de reglas) - legado
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN system_instructions TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Migración: añadir instruction_ids (solo referencias a rules; fuente de verdad)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN instruction_ids TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Migración: history_turns en conversations (pares user+assistant a enviar en el prompt; default 5)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN history_turns INTEGER"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Crear tabla rules (biblioteca de reglas unificada)
+    Base.metadata.create_all(bind=engine)

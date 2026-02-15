@@ -5,10 +5,11 @@ from unittest.mock import patch, MagicMock
 from app.routers.api_conversations import _build_llm_messages
 
 
-def _mock_conv(system_instruction_global="Instrucciones"):
-    """Convierte objeto con system_instruction_global."""
+def _mock_conv(system_instruction_global="Instrucciones", history_turns=None):
+    """Convierte objeto con system_instruction_global y opcional history_turns (pares en el prompt)."""
     c = MagicMock()
     c.system_instruction_global = system_instruction_global
+    c.history_turns = history_turns
     return c
 
 
@@ -23,10 +24,10 @@ def _mock_msg(role: str, content: str):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_estructura_basica(mock_settings):
     """Estructura: system, historial (si hay), user con prompt actual."""
-    mock_settings.ollama_history_turns = 10
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=10)
     existing = []
-    msgs, _ = _build_llm_messages(conv, existing, "Hola", None, rag_context=None)
+    db = MagicMock()
+    msgs, _ = _build_llm_messages(conv, existing, "Hola", None, db, rag_context=None)
     assert len(msgs) >= 1
     assert msgs[-1]["role"] == "user"
     assert msgs[-1]["content"] == "Hola"
@@ -37,15 +38,15 @@ def test_build_llm_messages_estructura_basica(mock_settings):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_incluye_historial_orden_cronologico(mock_settings):
     """El historial va de más antiguo a más nuevo antes del prompt actual."""
-    mock_settings.ollama_history_turns = 2
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=2)
     existing = [
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
         _mock_msg("user", "M2"),
         _mock_msg("assistant", "R2"),
     ]
-    msgs, _ = _build_llm_messages(conv, existing, "M3", None, rag_context=None)
+    db = MagicMock()
+    msgs, _ = _build_llm_messages(conv, existing, "M3", None, db, rag_context=None)
     # system, user, assistant, user, assistant, user (actual)
     assert msgs[0]["role"] == "system"
     assert msgs[1]["role"] == "user" and msgs[1]["content"] == "M1"
@@ -58,8 +59,7 @@ def test_build_llm_messages_incluye_historial_orden_cronologico(mock_settings):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_limita_ultimos_n_pares(mock_settings):
     """Solo se envían los últimos N pares (N=2 => 4 mensajes de historial)."""
-    mock_settings.ollama_history_turns = 2
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=2)
     existing = [
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
@@ -68,7 +68,8 @@ def test_build_llm_messages_limita_ultimos_n_pares(mock_settings):
         _mock_msg("user", "M3"),
         _mock_msg("assistant", "R3"),
     ]
-    msgs, _ = _build_llm_messages(conv, existing, "M4", None, rag_context=None)
+    db = MagicMock()
+    msgs, _ = _build_llm_messages(conv, existing, "M4", None, db, rag_context=None)
     # system + 4 historial (M2,R2,M3,R3) + 1 actual = 6 mensajes + system
     hist = [m for m in msgs if m["role"] in ("user", "assistant")]
     assert len(hist) == 5  # 4 historial + 1 actual
@@ -81,14 +82,14 @@ def test_build_llm_messages_limita_ultimos_n_pares(mock_settings):
 
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_sin_historial_cuando_turns_0(mock_settings):
-    """Si ollama_history_turns=0, no se envía historial."""
-    mock_settings.ollama_history_turns = 0
-    conv = _mock_conv("Global.")
+    """Si history_turns=0, no se envía historial."""
+    conv = _mock_conv("Global.", history_turns=0)
     existing = [
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
     ]
-    msgs, _ = _build_llm_messages(conv, existing, "M2", None, rag_context=None)
+    db = MagicMock()
+    msgs, _ = _build_llm_messages(conv, existing, "M2", None, db, rag_context=None)
     assert len(msgs) == 2  # system + user actual
     assert msgs[-1]["content"] == "M2"
 
@@ -96,13 +97,13 @@ def test_build_llm_messages_sin_historial_cuando_turns_0(mock_settings):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_menos_de_n_pares_envia_todos(mock_settings):
     """Si hay menos mensajes que N pares, se envían todos."""
-    mock_settings.ollama_history_turns = 10
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=10)
     existing = [
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
     ]
-    msgs, _ = _build_llm_messages(conv, existing, "M2", None, rag_context=None)
+    db = MagicMock()
+    msgs, _ = _build_llm_messages(conv, existing, "M2", None, db, rag_context=None)
     hist = [m for m in msgs if m["role"] in ("user", "assistant")]
     assert len(hist) == 3  # M1, R1, M2
     assert hist[0]["content"] == "M1"
@@ -167,6 +168,8 @@ def test_get_conversation_ok(client):
     assert r.status_code == 200
     assert r.json()["title"] == "Test"
     assert r.json()["messages"] == []
+    assert "model_params" in r.json()
+    assert r.json()["model_params"] is None
 
 
 def test_update_conversation_ok(client):
@@ -181,6 +184,85 @@ def test_update_conversation_ok(client):
     assert data["title"] == "Después"
     assert data["model_id"] == "m2"
     assert data["system_instruction_global"] == "Sé breve."
+
+
+def test_update_and_get_conversation_model_params(client):
+    create = client.post("/api/conversations", json={"title": "Params", "model_id": "m"})
+    cid = create.json()["id"]
+    params = {"temperature": 0.7, "num_ctx": 4096}
+    r = client.put(f"/api/conversations/{cid}", json={"model_params": params})
+    assert r.status_code == 200
+    assert r.json()["model_params"] == params
+    get_r = client.get(f"/api/conversations/{cid}")
+    assert get_r.status_code == 200
+    assert get_r.json()["model_params"] == params
+
+
+def test_conversation_history_turns(client):
+    """GET incluye history_turns; PUT con history_turns persiste y GET lo devuelve."""
+    create = client.post("/api/conversations", json={"title": "Turns", "model_id": "m"})
+    cid = create.json()["id"]
+    get_r = client.get(f"/api/conversations/{cid}")
+    assert get_r.status_code == 200
+    assert "history_turns" in get_r.json()
+    r = client.put(f"/api/conversations/{cid}", json={"history_turns": 3})
+    assert r.status_code == 200
+    assert r.json().get("history_turns") == 3
+    get_r = client.get(f"/api/conversations/{cid}")
+    assert get_r.json().get("history_turns") == 3
+
+
+def test_conversation_system_instructions(client):
+    """Crear y actualizar conversación con system_instructions (lista de reglas con título y contenido)."""
+    create = client.post(
+        "/api/conversations",
+        json={
+            "title": "Reglas",
+            "model_id": "m",
+            "system_instructions": [
+                {"title": "R1", "content": "Regla A"},
+                {"title": "R2", "content": "Regla B"},
+            ],
+        },
+    )
+    assert create.status_code == 200
+    data = create.json()
+    instructions = data.get("system_instructions") or []
+    assert len(instructions) == 2
+    assert instructions[0]["title"] == "R1" and instructions[0]["content"] == "Regla A"
+    assert instructions[1]["title"] == "R2" and instructions[1]["content"] == "Regla B"
+    cid = data["id"]
+    r = client.put(
+        f"/api/conversations/{cid}",
+        json={"system_instructions": [{"title": "Solo", "content": "Solo una"}]},
+    )
+    assert r.status_code == 200
+    put_instructions = r.json().get("system_instructions") or []
+    assert len(put_instructions) == 1 and put_instructions[0]["title"] == "Solo" and put_instructions[0]["content"] == "Solo una"
+    get_r = client.get(f"/api/conversations/{cid}")
+    get_instructions = get_r.json().get("system_instructions") or []
+    assert len(get_instructions) == 1 and get_instructions[0]["title"] == "Solo" and get_instructions[0]["content"] == "Solo una"
+
+
+def test_conversation_system_instructions_clear(client):
+    """PUT con system_instructions: [] vacía la lista y persiste (GET tras recarga devuelve vacío)."""
+    create = client.post(
+        "/api/conversations",
+        json={
+            "title": "Vaciar reglas",
+            "model_id": "m",
+            "system_instructions": [{"title": "Una", "content": "Contenido"}],
+        },
+    )
+    assert create.status_code == 200
+    cid = create.json()["id"]
+    assert len(create.json().get("system_instructions") or []) == 1
+    r = client.put(f"/api/conversations/{cid}", json={"system_instructions": []})
+    assert r.status_code == 200
+    assert (r.json().get("system_instructions") or []) == []
+    get_r = client.get(f"/api/conversations/{cid}")
+    get_instructions = get_r.json().get("system_instructions") or []
+    assert get_instructions == [], "Al recargar, system_instructions debe seguir vacío"
 
 
 def test_update_conversation_404(client):
@@ -297,10 +379,10 @@ def test_delete_message_by_id_404(client):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_incluye_rag_context(mock_settings):
     """Si hay rag_context se incluye en el system message."""
-    mock_settings.ollama_history_turns = 10
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=10)
+    db = MagicMock()
     msgs, _ = _build_llm_messages(
-        conv, [], "Hola", None, system_instruction_global=None, rag_context="Contexto RAG aquí."
+        conv, [], "Hola", None, db, system_instruction_global=None, rag_context="Contexto RAG aquí."
     )
     assert msgs[0]["role"] == "system"
     assert "Contexto relevante del historial" in msgs[0]["content"]
@@ -353,11 +435,11 @@ def test_send_message_with_instruction_override(mock_get_provider, client):
     )
     assert r.status_code == 200
     call_messages = mock_provider.chat.call_args[0][1]
-    # Debe haber un mensaje system con global + override
-    assert call_messages[0]["role"] == "system"
-    assert "Global." in call_messages[0]["content"]
-    assert "Responde en una frase." in call_messages[0]["content"]
-    # El mensaje del usuario no debe contener la instrucción visible
+    # Primer system: reglas (global); segundo system: instruction_override; luego user
+    system_msgs = [m for m in call_messages if m["role"] == "system"]
+    assert len(system_msgs) >= 1
+    assert any("Global." in m["content"] for m in system_msgs)
+    assert any("Responde en una frase." in m["content"] for m in system_msgs)
     assert call_messages[-1]["content"] == "Dime algo"
 
 

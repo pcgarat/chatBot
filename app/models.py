@@ -17,8 +17,12 @@ class Conversation(Base):
     title = Column(String(512), nullable=False, default="Nueva conversación")
     model_id = Column(String(128), nullable=False, default="llama3.2")
     provider = Column(String(64), nullable=False, default="ollama")  # ollama | mancer
-    system_instruction_global = Column(Text, nullable=True)
+    system_instruction_global = Column(Text, nullable=True)  # Legado: una sola instrucción
+    instruction_ids = Column(Text, nullable=True)  # JSON: lista de rule_id (referencias a rules). Fuente de verdad.
+    system_instructions = Column(Text, nullable=True)  # Deprecado: antes se guardaba JSON con title+content; se mantiene para migración/legado
     inject_instruction_every = Column(Integer, nullable=True)  # Deprecado: se ignora. Las instrucciones se envían siempre.
+    model_params = Column(Text, nullable=True)  # JSON: param_id -> value (parámetros guardados por el usuario en esta conversación)
+    history_turns = Column(Integer, nullable=True)  # Número de pares user+assistant a enviar en el prompt; null/0 = usar default 5
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -28,6 +32,17 @@ class Conversation(Base):
         order_by="Message.created_at",
         cascade="all, delete-orphan",
     )
+
+
+class Rule(Base):
+    """Regla reutilizable de la biblioteca (misma entidad para conversaciones y ficha de modelo)."""
+    __tablename__ = "rules"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    title = Column(String(512), nullable=False, default="")
+    content = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Message(Base):

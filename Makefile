@@ -30,7 +30,7 @@ help:
 	@echo "  make stop    Detener el servidor"
 	@echo "  make reload  make down + make up (reinicio completo)"
 	@echo "  make reload-dev  make down + setup + tests + start-verbose (dev con tests antes de levantar)"
-	@echo "  make restart-dev  make stop + tests + start-verbose (rápido: sin recrear venv)"
+	@echo "  make restart-dev  make stop + tests + start-verbose con hot reload (cambios en código se ven al guardar)"
 	@echo "  make test    Ejecutar los tests sin e2e (con cobertura sobre app); e2e solo con make test-e2e"
 	@echo "  make test-e2e  Ejecutar solo tests e2e (requieren Ollama levantado)"
 	@echo "  make test-no-e2e  Alias de make test (tests sin e2e)"
@@ -162,8 +162,8 @@ start-verbose: $(VENV)/bin/uvicorn
 		fi; \
 		rm -f $(PIDFILE); \
 	fi
-	@echo "Iniciando servidor con -v en http://0.0.0.0:$(PORT) ..."
-	@VERBOSE=1 $(PYTHON_RUN) run.py -v --host 0.0.0.0 --port $(PORT) & echo $$! > $(PIDFILE)
+	@echo "Iniciando servidor con -v y --reload en http://0.0.0.0:$(PORT) ..."
+	@VERBOSE=1 $(PYTHON_RUN) run.py -v --reload --host 0.0.0.0 --port $(PORT) & echo $$! > $(PIDFILE)
 	@sleep 1
 	@echo "Servidor iniciado con modo verbose (PID $$(cat $(PIDFILE))). Usa 'make stop' para detenerlo."
 

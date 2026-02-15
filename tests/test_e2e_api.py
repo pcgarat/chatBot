@@ -101,6 +101,41 @@ def test_e2e_conversation_create_and_send_message(client, ollama_available):
     assert "assistant" in roles
 
 
+def test_e2e_conversation_history_turns(client, ollama_available):
+    """
+    GET conversación incluye history_turns; PUT con history_turns persiste;
+    enviar mensaje con history_turns definido funciona (el backend limita pares en el prompt).
+    """
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={"title": "E2E history_turns", "model_id": model_name, "provider": "ollama"},
+    )
+    assert r_create.status_code == 200
+    cid = r_create.json()["id"]
+
+    r_get = client.get(f"/api/conversations/{cid}")
+    assert r_get.status_code == 200
+    assert "history_turns" in r_get.json()
+
+    r_put = client.put(f"/api/conversations/{cid}", json={"history_turns": 3})
+    assert r_put.status_code == 200
+    assert r_put.json().get("history_turns") == 3
+
+    r_get2 = client.get(f"/api/conversations/{cid}")
+    assert r_get2.status_code == 200
+    assert r_get2.json().get("history_turns") == 3
+
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Responde con una sola palabra: OK"},
+    )
+    assert r_msg.status_code == 200
+    assert r_msg.json().get("role") == "assistant"
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert len(conv["messages"]) >= 2
+
+
 def test_e2e_ollama_clear_memory(client, ollama_available):
     """POST /api/ollama/clear-memory devuelve 200 y un objeto con 'unloaded' (lista)."""
     r = client.post("/api/ollama/clear-memory")
@@ -174,6 +209,9 @@ def test_e2e_get_model_info(client, ollama_available):
     assert "user_info" in data
     assert "uncensored" in data["user_info"]
     assert "instructions" in data["user_info"]
+    assert "instruction_ids" in data["user_info"]
+    assert isinstance(data["user_info"]["instructions"], list)
+    assert isinstance(data["user_info"]["instruction_ids"], list)
     assert "tags" in data["user_info"]
 
 
@@ -225,6 +263,162 @@ def test_e2e_get_context_length(client, ollama_available):
         assert data["context_length"] > 0
 
 
+# ----- API Rules (biblioteca) -----
+
+
+def test_e2e_rules_crud(client, ollama_available):
+    """E2E: CRUD de reglas (GET list, POST create, GET one, PUT update, DELETE)."""
+    r_list = client.get("/api/rules")
+    assert r_list.status_code == 200
+    initial = r_list.json()
+    assert isinstance(initial, list)
+
+    r_post = client.post("/api/rules", json={"title": "E2E regla", "content": "Contenido E2E"})
+    assert r_post.status_code == 201
+    rule = r_post.json()
+    assert "id" in rule
+    assert rule["title"] == "E2E regla"
+    assert rule["content"] == "Contenido E2E"
+    rule_id = rule["id"]
+
+    r_get = client.get(f"/api/rules/{rule_id}")
+    assert r_get.status_code == 200
+    assert r_get.json()["id"] == rule_id
+    assert r_get.json()["title"] == "E2E regla"
+
+    r_put = client.put(f"/api/rules/{rule_id}", json={"title": "E2E regla actualizada", "content": "Nuevo contenido"})
+    assert r_put.status_code == 200
+    assert r_put.json()["title"] == "E2E regla actualizada"
+    assert r_put.json()["content"] == "Nuevo contenido"
+
+    r_del = client.delete(f"/api/rules/{rule_id}")
+    assert r_del.status_code == 204
+    r_get_404 = client.get(f"/api/rules/{rule_id}")
+    assert r_get_404.status_code == 404, "La regla debe desaparecer de la BD al eliminarla"
+
+
+def test_e2e_rule_delete_removes_from_db_and_from_all_conversations(client, ollama_available):
+    """
+    Al eliminar una regla de la biblioteca (DELETE /api/rules/{id}):
+    - La regla ya no existe en la BD (GET regla -> 404).
+    - Las conversaciones que la tenían dejan de mostrarla en system_instructions.
+    Si la eliminación solo quitara la regla de la conversación actual pero no de la BD, este test fallaría.
+    """
+    model_name = _get_first_ollama_model(client)
+    r_rule = client.post("/api/rules", json={"title": "Regla a borrar", "content": "Contenido"})
+    assert r_rule.status_code == 201
+    rule_id = r_rule.json()["id"]
+
+    r_c1 = client.post(
+        "/api/conversations",
+        json={
+            "title": "Conv con regla",
+            "model_id": model_name,
+            "provider": "ollama",
+            "system_instructions": [{"rule_id": rule_id, "title": "Regla a borrar", "content": "Contenido"}],
+        },
+    )
+    assert r_c1.status_code == 200
+    cid1 = r_c1.json()["id"]
+    r_c2 = client.post(
+        "/api/conversations",
+        json={
+            "title": "Otra conv con misma regla",
+            "model_id": model_name,
+            "provider": "ollama",
+            "system_instructions": [{"rule_id": rule_id, "title": "Regla a borrar", "content": "Contenido"}],
+        },
+    )
+    assert r_c2.status_code == 200
+    cid2 = r_c2.json()["id"]
+
+    r_del = client.delete(f"/api/rules/{rule_id}")
+    assert r_del.status_code == 204
+
+    r_get_rule = client.get(f"/api/rules/{rule_id}")
+    assert r_get_rule.status_code == 404, "La regla debe estar eliminada de la BD"
+
+    for cid in (cid1, cid2):
+        r_conv = client.get(f"/api/conversations/{cid}")
+        assert r_conv.status_code == 200
+        instr = r_conv.json().get("system_instructions") or []
+        rule_titles = [i.get("title") for i in instr]
+        assert "Regla a borrar" not in rule_titles, f"La conversación {cid} no debe mostrar la regla eliminada"
+
+
+def test_e2e_conversation_with_rule_id(client, ollama_available):
+    """
+    E2E: crear regla en biblioteca, crear conversación con system_instructions referenciando rule_id,
+    enviar mensaje y comprobar que se usa el contenido de la regla.
+    """
+    model_name = _get_first_ollama_model(client)
+    r_rule = client.post("/api/rules", json={"title": "E2E ref", "content": "Responde en una palabra."})
+    assert r_rule.status_code == 201
+    rule_id = r_rule.json()["id"]
+
+    r_create = client.post(
+        "/api/conversations",
+        json={
+            "title": "E2E con rule_id",
+            "model_id": model_name,
+            "provider": "ollama",
+            "system_instructions": [{"rule_id": rule_id, "title": "E2E ref", "content": "Responde en una palabra."}],
+        },
+    )
+    assert r_create.status_code == 200
+    data = r_create.json()
+    cid = data["id"]
+    instr = data.get("system_instructions") or []
+    assert len(instr) == 1
+    assert instr[0].get("title") == "E2E ref"
+    assert instr[0].get("content") == "Responde en una palabra."
+
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages/stream",
+        json={"content": "Di: listo"},
+    )
+    assert r_msg.status_code == 200
+    lines = [line for line in r_msg.text.strip().split("\n") if line]
+    assert len(lines) >= 1
+    last = json.loads(lines[-1])
+    assert last.get("done") is True
+
+    # Limpieza: borrar regla
+    client.delete(f"/api/rules/{rule_id}")
+
+
+def test_e2e_model_info_instruction_ids(client, ollama_available):
+    """E2E: PUT model info con instruction_ids (reglas de biblioteca), GET devuelve instructions resueltas."""
+    model_id = _get_first_ollama_model(client)
+    path_id = _encode_model_id(model_id)
+
+    r1 = client.post("/api/rules", json={"title": "Para modelo", "content": "Instrucción asociada al modelo."})
+    assert r1.status_code == 201
+    rule_id = r1.json()["id"]
+
+    r_put = client.put(
+        f"/api/providers/ollama/models/{path_id}/info",
+        json={"instruction_ids": [rule_id]},
+    )
+    assert r_put.status_code == 200
+    ui = r_put.json()["user_info"]
+    assert ui.get("instruction_ids") == [rule_id]
+    assert len(ui.get("instructions") or []) == 1
+    assert ui["instructions"][0]["title"] == "Para modelo"
+    assert ui["instructions"][0]["content"] == "Instrucción asociada al modelo."
+
+    r_get = client.get(f"/api/providers/ollama/models/{path_id}/info")
+    assert r_get.status_code == 200
+    ui2 = r_get.json()["user_info"]
+    assert ui2.get("instruction_ids") == [rule_id]
+    assert len(ui2.get("instructions") or []) == 1
+    assert ui2["instructions"][0]["content"] == "Instrucción asociada al modelo."
+
+    # Limpieza: quitar instruction_ids de la ficha y opcionalmente borrar regla
+    client.put(f"/api/providers/ollama/models/{path_id}/info", json={"instruction_ids": []})
+    client.delete(f"/api/rules/{rule_id}")
+
+
 # ----- API Conversations -----
 
 
@@ -251,10 +445,14 @@ def test_e2e_create_conversation(client, ollama_available):
     assert data["provider"] == "ollama"
     assert "created_at" in data
     assert data.get("messages", []) == []
+    assert "model_params" in data
+    assert data["model_params"] is None
+    assert "system_instructions" in data
+    assert data["system_instructions"] is None or data["system_instructions"] == []
 
 
 def test_e2e_get_conversation(client, ollama_available):
-    """GET /api/conversations/{id} devuelve la conversación con mensajes."""
+    """GET /api/conversations/{id} devuelve la conversación con mensajes y model_params."""
     model_name = _get_first_ollama_model(client)
     r_create = client.post(
         "/api/conversations",
@@ -268,10 +466,13 @@ def test_e2e_get_conversation(client, ollama_available):
     assert data["id"] == cid
     assert "messages" in data
     assert isinstance(data["messages"], list)
+    assert "model_params" in data
+    assert data["model_params"] is None
+    assert "system_instructions" in data
 
 
 def test_e2e_update_conversation(client, ollama_available):
-    """PUT /api/conversations/{id} actualiza título/model_id/provider."""
+    """PUT /api/conversations/{id} actualiza título/model_id/provider/model_params."""
     model_name = _get_first_ollama_model(client)
     r_create = client.post(
         "/api/conversations",
@@ -285,6 +486,87 @@ def test_e2e_update_conversation(client, ollama_available):
     )
     assert r.status_code == 200
     assert r.json()["title"] == "Updated title"
+    assert "model_params" in r.json()
+    assert r.json()["model_params"] is None
+
+
+def test_e2e_conversation_model_params_persist(client, ollama_available):
+    """
+    E2E: guardar model_params en una conversación y comprobar que se persisten y devuelven.
+    Crear conversación → PUT model_params → GET comprueba model_params → enviar mensaje con model_params.
+    """
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={"title": "E2E params", "model_id": model_name, "provider": "ollama"},
+    )
+    assert r_create.status_code == 200
+    cid = r_create.json()["id"]
+    params = {"temperature": 0.3, "num_ctx": 2048}
+    r_put = client.put(f"/api/conversations/{cid}", json={"model_params": params})
+    assert r_put.status_code == 200
+    assert r_put.json()["model_params"] == params
+    r_get = client.get(f"/api/conversations/{cid}")
+    assert r_get.status_code == 200
+    assert r_get.json()["model_params"] == params
+    # Enviar mensaje usando esos params (el backend usa model_params del body o de la conv)
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages/stream",
+        json={"content": "Di: listo", "model_params": params},
+    )
+    assert r_msg.status_code == 200
+    lines = [line for line in r_msg.text.strip().split("\n") if line]
+    assert len(lines) >= 1
+    last = json.loads(lines[-1])
+    assert last.get("done") is True
+
+
+def test_e2e_conversation_system_instructions(client, ollama_available):
+    """
+    E2E: guardar system_instructions (lista de reglas) en una conversación, persistir y usar en mensaje.
+    Crear con system_instructions → PUT actualizar lista → GET comprueba → enviar mensaje con system (concatenado).
+    """
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={
+            "title": "E2E reglas",
+            "model_id": model_name,
+            "provider": "ollama",
+            "system_instructions": [
+                {"title": "Brevedad", "content": "Responde breve."},
+                {"title": "Idioma", "content": "Siempre en español."},
+            ],
+        },
+    )
+    assert r_create.status_code == 200
+    data = r_create.json()
+    instr = data.get("system_instructions") or []
+    assert len(instr) == 2
+    assert instr[0]["title"] == "Brevedad" and instr[0]["content"] == "Responde breve."
+    assert instr[1]["title"] == "Idioma" and instr[1]["content"] == "Siempre en español."
+    cid = data["id"]
+    r_put = client.put(
+        f"/api/conversations/{cid}",
+        json={"system_instructions": [{"title": "Una", "content": "Solo una regla"}]},
+    )
+    assert r_put.status_code == 200
+    put_instr = r_put.json().get("system_instructions") or []
+    assert len(put_instr) == 1 and put_instr[0]["title"] == "Una" and put_instr[0]["content"] == "Solo una regla"
+    r_get = client.get(f"/api/conversations/{cid}")
+    assert r_get.status_code == 200
+    get_instr = r_get.json().get("system_instructions") or []
+    assert len(get_instr) == 1 and get_instr[0]["title"] == "Una" and get_instr[0]["content"] == "Solo una regla"
+    # Enviar mensaje; el backend usa system_instructions de la conv (concatenados) si no se envía system_instruction_global
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages/stream",
+        json={"content": "Di: ok"},
+    )
+    assert r_msg.status_code == 200
+    lines = [line for line in r_msg.text.strip().split("\n") if line]
+    assert len(lines) >= 1
+    last = json.loads(lines[-1])
+    assert last.get("done") is True
 
 
 def test_e2e_send_message_stream(client, ollama_available):
@@ -320,7 +602,10 @@ def test_e2e_delete_last_message(client, ollama_available):
     )
     assert r_create.status_code == 200
     cid = r_create.json()["id"]
-    client.post(f"/api/conversations/{cid}/messages", json={"content": "Mensaje único"})
+    client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Responde con una sola palabra: OK"},
+    )
     r = client.delete(f"/api/conversations/{cid}/messages/last")
     assert r.status_code == 204
     conv = client.get(f"/api/conversations/{cid}").json()
@@ -337,7 +622,10 @@ def test_e2e_clear_conversation_messages(client, ollama_available):
     )
     assert r_create.status_code == 200
     cid = r_create.json()["id"]
-    client.post(f"/api/conversations/{cid}/messages", json={"content": "Uno"})
+    client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Responde con una sola palabra: OK"},
+    )
     r = client.delete(f"/api/conversations/{cid}/messages")
     assert r.status_code == 204
     conv = client.get(f"/api/conversations/{cid}").json()
@@ -353,7 +641,11 @@ def test_e2e_delete_message(client, ollama_available):
     )
     assert r_create.status_code == 200
     cid = r_create.json()["id"]
-    r_msg = client.post(f"/api/conversations/{cid}/messages", json={"content": "Para borrar"})
+    # Prompt corto para que el LLM responda rápido y el test no se quede colgado.
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Responde con una sola palabra: OK"},
+    )
     assert r_msg.status_code == 200
     # La respuesta es el mensaje del asistente; borramos ese
     msg_id = r_msg.json().get("id")
@@ -371,7 +663,10 @@ def test_e2e_save_message_to_chromadb(client, ollama_available):
     )
     assert r_create.status_code == 200
     cid = r_create.json()["id"]
-    r_msg = client.post(f"/api/conversations/{cid}/messages", json={"content": "Para Chroma"})
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Responde con una sola palabra: OK"},
+    )
     assert r_msg.status_code == 200
     msg_id = r_msg.json().get("id")
     assert msg_id

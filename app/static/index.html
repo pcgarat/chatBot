@@ -15,48 +15,41 @@
           <button type="button" id="btn-new-chat" class="btn btn-primary sidebar-header-btn" title="Nueva conversación" aria-label="Nueva conversación">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
-          <button type="button" id="btn-clear-memory" class="btn btn-secondary sidebar-header-btn" title="Limpiar memoria (descargar modelos de VRAM/RAM)" aria-label="Limpiar memoria">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-          </button>
-          <button type="button" id="btn-load-preset" class="btn btn-secondary sidebar-header-btn" title="Cargar preset de modelo" aria-label="Cargar preset">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-          </button>
-          <button type="button" id="btn-reset-params" class="btn btn-secondary sidebar-header-btn" title="Restaurar parámetros por defecto" aria-label="Limpiar parámetros">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-          </button>
         </div>
       </div>
-      <div class="sidebar-accordion">
-        <div class="accordion-section is-open" data-accordion-section="conversaciones">
-          <button type="button" class="accordion-header" aria-expanded="true" aria-controls="accordion-conversaciones" id="accordion-conversaciones-btn">
-            <span class="accordion-title">Conversaciones</span>
-            <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="accordion-content" id="accordion-conversaciones" role="region" aria-labelledby="accordion-conversaciones-btn">
-            <div class="conversations-list" id="conversations-list"></div>
-          </div>
+      <div class="sidebar-tabs" role="tablist" aria-label="Panel lateral">
+        <button type="button" role="tab" id="tab-btn-conversaciones" aria-selected="true" aria-controls="tab-conversaciones" data-tab="conversaciones">Conversaciones</button>
+        <button type="button" role="tab" id="tab-btn-reglas" aria-selected="false" aria-controls="tab-reglas" data-tab="reglas">Reglas</button>
+        <button type="button" role="tab" id="tab-btn-parametros" aria-selected="false" aria-controls="tab-parametros" data-tab="parametros">Parámetros</button>
+      </div>
+      <div class="sidebar-tabpanels">
+        <div role="tabpanel" id="tab-conversaciones" class="sidebar-tabpanel is-active" aria-labelledby="tab-btn-conversaciones">
+          <div class="conversations-list" id="conversations-list"></div>
         </div>
-        <div class="accordion-section is-open" data-accordion-section="reglas">
-          <button type="button" class="accordion-header" aria-expanded="true" aria-controls="accordion-reglas" id="accordion-reglas-btn">
-            <span class="accordion-title">Reglas</span>
-            <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="accordion-content" id="accordion-reglas" role="region" aria-labelledby="accordion-reglas-btn">
-            <div class="sidebar-option instructions-panel">
-              <label class="instructions-label">Instrucciones para todos los mensajes (no se muestran en el chat):</label>
-              <textarea id="system-instruction-global" rows="2" placeholder="Ej: Responde siempre en tono formal y breve."></textarea>
-            </div>
-            <div class="sidebar-option chromadb-save-option">
-              <label class="chromadb-label">Guardar en ChromaDB (RAG):</label>
-              <select id="save-to-chromadb-select">
-                <option value="none" selected>Nada</option>
-                <option value="user">Mensajes introducidos</option>
-                <option value="assistant">Respuestas</option>
-                <option value="both">Ambas</option>
-              </select>
+        <div role="tabpanel" id="tab-reglas" class="sidebar-tabpanel" aria-labelledby="tab-btn-reglas" hidden>
+          <div class="rules-tab-scroll">
+            <div class="sidebar-option rules-panel">
+              <label class="instructions-label">Reglas (se envían como un solo mensaje system, concatenadas con espacio):</label>
+              <div id="rules-list" class="rules-list" role="list"></div>
+              <div class="rules-actions">
+                <div class="rules-add-existing">
+                  <label class="rules-add-existing-label">Añadir regla existente:</label>
+                  <select id="rule-library-select" class="rule-library-select" aria-label="Seleccionar regla de la biblioteca">
+                    <option value="">-- Elegir regla --</option>
+                  </select>
+                  <button type="button" id="btn-add-library-rule" class="btn btn-secondary btn-small">Añadir</button>
+                </div>
+              </div>
             </div>
           </div>
+          <div id="rules-add-block" class="rules-create-block">
+            <input type="text" id="rule-new-title" class="rule-new-title" placeholder="Título" aria-label="Título" />
+            <textarea id="rule-new-input" rows="2" placeholder="Contenido..." aria-label="Contenido"></textarea>
+            <button type="button" id="btn-add-rule" class="btn btn-secondary btn-small">Crear y añadir</button>
+          </div>
         </div>
+        <div role="tabpanel" id="tab-parametros" class="sidebar-tabpanel" aria-labelledby="tab-btn-parametros" hidden>
+          <div class="sidebar-accordion sidebar-accordion-params">
         <div class="accordion-section param-group" data-accordion-section="params-modelo">
           <button type="button" class="accordion-header" aria-expanded="false" aria-controls="accordion-params-modelo" id="accordion-params-modelo-btn">
             <span class="accordion-title">Selección de modelo y contexto</span>
@@ -168,6 +161,14 @@
             </div>
           </div>
         </div>
+          </div>
+        <div class="params-source-row">
+          <span id="params-source-label" class="params-source-label" aria-live="polite"></span>
+          <button type="button" id="btn-reset-params" class="btn-icon btn-reset-params-inline" title="Restaurar parámetros por defecto" aria-label="Restaurar parámetros">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          </button>
+        </div>
+        </div>
       </div>
       <div class="sidebar-footer">
         <div class="sidebar-option sidebar-debug-option">
@@ -192,6 +193,9 @@
             <button type="button" id="btn-refresh-models" class="btn-icon" title="Recargar lista de modelos">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
             </button>
+            <button type="button" id="btn-clear-memory" class="btn-icon" title="Limpiar memoria (descargar modelos de VRAM/RAM)" aria-label="Limpiar memoria">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </button>
             <button type="button" id="btn-model-info" class="btn-icon" title="Ficha e información del modelo" aria-label="Info del modelo">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             </button>
@@ -207,6 +211,30 @@
             </div>
           </div>
           <span id="context-usage-text" class="context-usage-text"></span>
+          <div class="context-usage-right-controls">
+            <div class="font-size-controls" role="group" aria-label="Tamaño del texto de la conversación">
+              <button type="button" id="btn-font-size-decrease" class="btn-icon font-size-btn" title="Reducir tamaño del texto" aria-label="Reducir tamaño del texto">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <button type="button" id="btn-font-size-increase" class="btn-icon font-size-btn" title="Aumentar tamaño del texto" aria-label="Aumentar tamaño del texto">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            </div>
+            <span class="context-usage-separator" aria-hidden="true"></span>
+            <div class="history-turns-inline" role="group" aria-label="History messages in prompt">
+              <label for="history-turns-input" class="history-turns-label">history messages:</label>
+              <input type="number" id="history-turns-input" class="history-turns-input" min="0" max="100" value="5" aria-label="History messages (user+assistant pairs) in prompt; 0 = only current message" />
+            </div>
+            <div class="chromadb-inline" role="group" aria-label="Guardar en ChromaDB">
+            <label for="save-to-chromadb-select" class="chromadb-inline-label">Chroma:</label>
+            <select id="save-to-chromadb-select" class="chromadb-inline-select" aria-label="Guardar en ChromaDB (RAG)">
+              <option value="none" selected>Nada</option>
+              <option value="user">Usuario</option>
+              <option value="assistant">Asist.</option>
+              <option value="both">Ambas</option>
+            </select>
+            </div>
+          </div>
         </div>
       </div>
       <div class="messages-container" id="messages-container"></div>
@@ -226,14 +254,6 @@
         </div>
       </div>
     </main>
-  </div>
-  <div id="preset-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="preset-modal-title" hidden>
-    <div class="modal-content preset-modal-content">
-      <h2 id="preset-modal-title" class="modal-title">Cargar preset</h2>
-      <p class="preset-modal-hint">Elige un modelo para cargar sus parámetros en los controles.</p>
-      <div id="preset-list" class="preset-list"></div>
-      <button type="button" id="preset-modal-close" class="btn btn-secondary">Cerrar</button>
-    </div>
   </div>
   <div id="model-info-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="model-info-modal-title" hidden>
     <div class="modal-content model-info-modal-content">
@@ -274,6 +294,22 @@
       <div class="model-info-modal-actions">
         <button type="button" id="btn-model-info-save" class="btn btn-primary">Guardar</button>
         <button type="button" id="model-info-modal-close" class="btn btn-secondary">Cerrar</button>
+      </div>
+    </div>
+  </div>
+  <div id="rule-edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="rule-edit-modal-title" hidden>
+    <div class="modal-content rule-edit-modal-content">
+      <h2 id="rule-edit-modal-title" class="modal-title">Editar regla</h2>
+      <div class="rule-edit-form">
+        <label class="rule-edit-label" for="rule-edit-title">Título</label>
+        <input type="text" id="rule-edit-title" class="rule-edit-input" placeholder="Título" />
+        <label class="rule-edit-label" for="rule-edit-content">Contenido</label>
+        <textarea id="rule-edit-content" class="rule-edit-textarea" rows="4" placeholder="Contenido de la regla"></textarea>
+      </div>
+      <div class="rule-edit-actions">
+        <button type="button" id="rule-edit-btn-delete" class="btn rule-edit-btn-delete">Eliminar regla</button>
+        <button type="button" id="rule-edit-btn-save" class="btn btn-primary">Guardar</button>
+        <button type="button" id="rule-edit-btn-save-new" class="btn btn-secondary">Guardar nuevo</button>
       </div>
     </div>
   </div>

@@ -1,6 +1,12 @@
 (function () {
   function init() {
   const API = "/api";
+  const appRoot = document.getElementById("app");
+  const chatArea = document.querySelector(".chat-area");
+  if (!appRoot || !chatArea || !appRoot.contains(chatArea)) {
+    console.error("DOM roto: #app o .chat-area no encontrados o fuera de #app.");
+    return;
+  }
   let currentConversationId = null;
   let messages = [];
   let providers = [];
@@ -9,10 +15,14 @@
   let currentAbortController = null;
   /** Parámetros del proveedor actual: { provider, params: { paramId: { type, default, min, max, api_key } } } */
   let paramsConfig = { provider: "", params: {} };
+  /** Origen de los parámetros mostrados: "user" | "preset" | "default" */
+  let paramsSource = "default";
   /** Uso de contexto (último turno): prompt_tokens, completion_tokens. null si no hay datos. */
   let lastUsage = null;
   /** Contexto máximo del modelo actual (tokens). null si no se conoce. */
   let contextLength = null;
+  /** Lista de reglas (system instructions) de la conversación actual. Se concatenan con espacio al enviar. */
+  let rules = [];
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
@@ -20,8 +30,21 @@
     providerSelect: document.getElementById("provider-select"),
     modelSelect: document.getElementById("model-select"),
     btnRefreshModels: document.getElementById("btn-refresh-models"),
-    systemInstructionGlobal: document.getElementById("system-instruction-global"),
+    rulesList: document.getElementById("rules-list"),
+    rulesAddBlock: document.getElementById("rules-add-block"),
+    ruleNewTitle: document.getElementById("rule-new-title"),
+    ruleNewInput: document.getElementById("rule-new-input"),
+    btnAddRule: document.getElementById("btn-add-rule"),
+    ruleLibrarySelect: document.getElementById("rule-library-select"),
+    btnAddLibraryRule: document.getElementById("btn-add-library-rule"),
+    ruleEditModal: document.getElementById("rule-edit-modal"),
+    ruleEditTitle: document.getElementById("rule-edit-title"),
+    ruleEditContent: document.getElementById("rule-edit-content"),
+    ruleEditBtnDelete: document.getElementById("rule-edit-btn-delete"),
+    ruleEditBtnSave: document.getElementById("rule-edit-btn-save"),
+    ruleEditBtnSaveNew: document.getElementById("rule-edit-btn-save-new"),
     saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
+    historyTurnsInput: document.getElementById("history-turns-input"),
     showDebugModeCheck: document.getElementById("show-debug-mode"),
     messagesContainer: document.getElementById("messages-container"),
     instructionOverride: document.getElementById("instruction-override"),
@@ -31,11 +54,7 @@
     btnSend: document.getElementById("btn-send"),
     btnCancelMessage: document.getElementById("btn-cancel-message"),
     btnClearMemory: document.getElementById("btn-clear-memory"),
-    btnLoadPreset: document.getElementById("btn-load-preset"),
     btnResetParams: document.getElementById("btn-reset-params"),
-    presetModal: document.getElementById("preset-modal"),
-    presetList: document.getElementById("preset-list"),
-    presetModalClose: document.getElementById("preset-modal-close"),
     btnModelInfo: document.getElementById("btn-model-info"),
     modelInfoModal: document.getElementById("model-info-modal"),
     modelInfoModalTitle: document.getElementById("model-info-modal-title"),
@@ -58,6 +77,9 @@
     contextUsageSegmentPrompt: document.getElementById("context-usage-segment-prompt"),
     contextUsageSegmentCompletion: document.getElementById("context-usage-segment-completion"),
     contextUsageText: document.getElementById("context-usage-text"),
+    btnFontSizeDecrease: document.getElementById("btn-font-size-decrease"),
+    btnFontSizeIncrease: document.getElementById("btn-font-size-increase"),
+    paramsSourceLabel: document.getElementById("params-source-label"),
   };
 
   const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
@@ -210,6 +232,31 @@
   }
 
   /**
+   * Aplica valores guardados por el usuario (objeto param_id -> value) a los controles.
+   * Solo afecta a controles que existan en paramsConfig.params.
+   */
+  function applyUserParamsToControls(modelParamsObj) {
+    if (!modelParamsObj || typeof modelParamsObj !== "object") return;
+    Object.keys(modelParamsObj).forEach((paramId) => {
+      const spec = paramsConfig.params[paramId];
+      const control = document.querySelector(`[data-control-id="${paramId}"]`);
+      if (!spec || !control || control.disabled) return;
+      const val = modelParamsObj[paramId];
+      if (control.tagName === "INPUT") {
+        if (control.type === "number") {
+          control.value = val !== null && val !== undefined && val !== "" ? String(val) : "";
+        } else {
+          control.value = val !== null && val !== undefined ? String(val) : "";
+        }
+      } else if (control.tagName === "TEXTAREA") {
+        control.value = Array.isArray(val) ? val.join("\n") : (val !== null && val !== undefined ? String(val) : "");
+      } else if (control.tagName === "SELECT") {
+        control.value = val !== null && val !== undefined ? String(val) : "";
+      }
+    });
+  }
+
+  /**
    * Aplica los valores de un preset (objeto param_id -> { default, type, ... }) a los controles.
    * Solo afecta a controles que existan y estén en paramsConfig.params (habilitados).
    */
@@ -233,49 +280,6 @@
         control.value = def !== undefined && def !== null ? String(def) : "";
       }
     });
-  }
-
-  let currentPresets = {};
-
-  async function openPresetModal() {
-    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
-    try {
-      const data = await fetchJson(`${API}/providers/${provider}/presets`);
-      currentPresets = data.presets || {};
-      const names = Object.keys(currentPresets);
-      if (names.length === 0) {
-        showNotice("No hay presets para este proveedor.");
-        return;
-      }
-      if (el.presetList) {
-        el.presetList.innerHTML = names
-          .map((name) => `<button type="button" class="preset-list-item" data-preset-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`)
-          .join("");
-        el.presetList.querySelectorAll(".preset-list-item").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const presetName = btn.getAttribute("data-preset-name");
-            const presetData = currentPresets[presetName];
-            if (presetData) {
-              applyPresetToControls(presetData);
-              if (el.modelSelect && models.includes(presetName)) {
-                el.modelSelect.value = presetName;
-              }
-              showNotice("Preset \"" + presetName + "\" aplicado.");
-            }
-            closePresetModal();
-          });
-        });
-      }
-      if (el.presetModal) {
-        el.presetModal.hidden = false;
-      }
-    } catch (e) {
-      showError("No se pudieron cargar los presets: " + e.message);
-    }
-  }
-
-  function closePresetModal() {
-    if (el.presetModal) el.presetModal.hidden = true;
   }
 
   // ----- Ficha del modelo (model info modal) -----
@@ -566,6 +570,28 @@
     }
   }
 
+  let saveParamsDebounceTimer = null;
+  const SAVE_PARAMS_DEBOUNCE_MS = 800;
+
+  function saveParamsToConversation() {
+    if (!currentConversationId) return;
+    const modelParams = buildModelParams();
+    fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ model_params: modelParams }),
+    }).catch(() => {});
+  }
+
+  function debouncedSaveParams() {
+    paramsSource = "user";
+    renderParamsSourceLabel();
+    if (saveParamsDebounceTimer) clearTimeout(saveParamsDebounceTimer);
+    saveParamsDebounceTimer = setTimeout(function () {
+      saveParamsDebounceTimer = null;
+      saveParamsToConversation();
+    }, SAVE_PARAMS_DEBOUNCE_MS);
+  }
+
   function buildModelParams() {
     const out = {};
     for (const paramId of Object.keys(paramsConfig.params)) {
@@ -608,6 +634,7 @@
         body: JSON.stringify({
           provider: currentProvider,
           model_id: (el.modelSelect && el.modelSelect.value) || (models[0] || ""),
+          model_params: buildModelParams(),
         }),
       }).catch(() => {});
     }
@@ -723,18 +750,46 @@
     return div.innerHTML;
   }
 
+  function saveLastConversationId(id) {
+    try {
+      if (id) localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, id);
+      else localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+    } catch (_) {}
+  }
+
+  function renderParamsSourceLabel() {
+    if (el.paramsSourceLabel) el.paramsSourceLabel.textContent = paramsSource;
+  }
+
   async function setCurrentConversation(conv) {
     currentConversationId = conv ? conv.id : null;
+    saveLastConversationId(currentConversationId);
     if (conv) {
       if (el.conversationTitle) el.conversationTitle.value = conv.title;
-      // Establecer el proveedor primero
       currentProvider = conv.provider || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
-      // Cargar modelos del proveedor y luego establecer el modelo
       await loadModels(false);
       if (el.modelSelect) el.modelSelect.value = conv.model_id;
-      if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = conv.system_instruction_global || "";
+      rules = normalizeRulesFromApi(conv.system_instructions, conv.system_instruction_global);
       await loadParamsForProvider(currentProvider);
+      if (conv.model_params && typeof conv.model_params === "object" && Object.keys(conv.model_params).length > 0) {
+        applyUserParamsToControls(conv.model_params);
+        paramsSource = "user";
+      } else {
+        try {
+          const data = await fetchJson(`${API}/providers/${currentProvider}/presets`);
+          const presets = data.presets || {};
+          const preset = presets[conv.model_id];
+          if (preset) {
+            applyPresetToControls(preset);
+            paramsSource = "preset";
+          } else {
+            paramsSource = "default";
+          }
+        } catch (_) {
+          paramsSource = "default";
+        }
+      }
       messages = (conv.messages || []).map((m) => ({
         role: m.role,
         content: m.content,
@@ -742,19 +797,164 @@
         debug_request: m.debug_request || null,
         debug_response: m.debug_response || null,
       }));
+      const turns = conv.history_turns != null && conv.history_turns >= 0 ? conv.history_turns : 5;
+      if (el.historyTurnsInput) el.historyTurnsInput.value = String(Math.min(100, Math.max(0, turns)));
     } else {
       if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
       currentProvider = providers[0] || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
       if (el.modelSelect) el.modelSelect.value = models[0] || "";
-      if (el.systemInstructionGlobal) el.systemInstructionGlobal.value = "";
+      rules = [];
       await loadParamsForProvider(currentProvider);
+      paramsSource = "default";
       messages = [];
+      if (el.historyTurnsInput) el.historyTurnsInput.value = "5";
     }
+    renderRules();
+    renderParamsSourceLabel();
     renderMessages();
     loadConversations();
     lastUsage = null;
     await loadContextLength();
+    // Si el panel Reglas está visible, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
+    const reglasPanel = document.getElementById("tab-reglas");
+    if (reglasPanel && !reglasPanel.hidden) loadLibraryRules();
+  }
+
+  let saveRulesDebounceTimer = null;
+  const SAVE_RULES_DEBOUNCE_MS = 600;
+
+  function saveRulesToConversation() {
+    if (!currentConversationId) return;
+    fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ system_instructions: rules }),
+    }).catch(() => {});
+  }
+
+  function debouncedSaveRules() {
+    if (saveRulesDebounceTimer) clearTimeout(saveRulesDebounceTimer);
+    saveRulesDebounceTimer = setTimeout(function () {
+      saveRulesDebounceTimer = null;
+      saveRulesToConversation();
+    }, SAVE_RULES_DEBOUNCE_MS);
+  }
+
+  let saveHistoryTurnsDebounceTimer = null;
+  function saveHistoryTurnsToConversation() {
+    if (!currentConversationId || !el.historyTurnsInput) return;
+    const v = parseInt(el.historyTurnsInput.value, 10);
+    const turns = (Number.isFinite(v) && v >= 0 && v <= 100) ? v : 5;
+    fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ history_turns: turns }),
+    }).catch(() => {});
+  }
+  function debouncedSaveHistoryTurns() {
+    if (saveHistoryTurnsDebounceTimer) clearTimeout(saveHistoryTurnsDebounceTimer);
+    saveHistoryTurnsDebounceTimer = setTimeout(function () {
+      saveHistoryTurnsDebounceTimer = null;
+      saveHistoryTurnsToConversation();
+    }, 400);
+  }
+
+  /** Convierte system_instructions de la API a lista de reglas para la UI. Solo reglas reales (biblioteca o inline); no se mezcla system_instruction_global como regla. */
+  function normalizeRulesFromApi(apiRules, _legacyGlobalUnused) {
+    if (Array.isArray(apiRules) && apiRules.length > 0) {
+      return apiRules.map(function (r, i) {
+        if (typeof r === "string") return { title: "Regla " + (i + 1), content: r };
+        const item = {
+          title: (r && r.title != null ? String(r.title) : "") || "Regla " + (i + 1),
+          content: (r && r.content != null ? String(r.content) : "") || "",
+        };
+        if (r && r.rule_id) item.rule_id = String(r.rule_id);
+        return item;
+      });
+    }
+    return [];
+  }
+
+  function getRulesTextForSystem() {
+    return rules
+      .map(function (r) { return (r && r.content) ? r.content.trim() : ""; })
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  let ruleEditIndex = -1;
+
+  function openRuleEditModal(index) {
+    if (index < 0 || index >= rules.length) return;
+    ruleEditIndex = index;
+    const r = rules[index];
+    if (el.ruleEditTitle) el.ruleEditTitle.value = (r && r.title != null ? r.title : "") || "";
+    if (el.ruleEditContent) el.ruleEditContent.value = (r && r.content != null ? r.content : "") || "";
+    if (el.ruleEditModal) {
+      el.ruleEditModal.hidden = false;
+      el.ruleEditTitle && el.ruleEditTitle.focus();
+    }
+  }
+
+  function closeRuleEditModal() {
+    ruleEditIndex = -1;
+    if (el.ruleEditModal) el.ruleEditModal.hidden = true;
+  }
+
+  function renderRules() {
+    if (!el.rulesList) return;
+    el.rulesList.innerHTML = rules
+      .map((rule, index) => {
+        const title = (rule && rule.title != null ? rule.title : "") || "";
+        const displayTitle = title.trim() || "Sin título";
+        return `<span class="rule-tag" role="listitem" data-rule-index="${index}">
+          <span class="rule-tag-label" tabindex="0" role="button" title="Editar regla" data-rule-index="${index}">${escapeHtml(displayTitle)}</span>
+          <button type="button" class="rule-tag-remove" title="Eliminar regla" aria-label="Eliminar regla" data-rule-index="${index}">×</button>
+        </span>`;
+      })
+      .join("");
+  }
+
+  /** Delegación en la lista de reglas: eliminar por la cruz o abrir edición por el título. Así el botón × se detecta bien aunque solo quede una regla. */
+  if (el.rulesList) {
+    el.rulesList.addEventListener("click", function (e) {
+      const removeBtn = e.target.closest(".rule-tag-remove");
+      const tag = e.target.closest(".rule-tag");
+      if (removeBtn && tag) {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) {
+          rules.splice(idx, 1);
+          renderRules();
+          if (rules.length === 0) {
+            if (saveRulesDebounceTimer) {
+              clearTimeout(saveRulesDebounceTimer);
+              saveRulesDebounceTimer = null;
+            }
+            saveRulesToConversation();
+          } else {
+            debouncedSaveRules();
+          }
+        }
+        return;
+      }
+      const label = e.target.closest(".rule-tag-label");
+      if (label && tag) {
+        e.preventDefault();
+        const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) openRuleEditModal(idx);
+      }
+    });
+    el.rulesList.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const label = e.target.closest(".rule-tag-label");
+      const tag = e.target.closest(".rule-tag");
+      if (label && tag) {
+        e.preventDefault();
+        const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) openRuleEditModal(idx);
+      }
+    });
   }
 
   async function openConversation(id) {
@@ -776,7 +976,7 @@
           title: getDefaultConversationTitle(),
           model_id: model,
           provider: provider,
-          system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
+          system_instructions: rules.length ? rules : null,
         }),
       });
       await setCurrentConversation(conv);
@@ -797,7 +997,12 @@
           title: (el.conversationTitle && el.conversationTitle.value.trim()) || getDefaultConversationTitle(),
           model_id: (el.modelSelect && el.modelSelect.value) || "",
           provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
-          system_instruction_global: (el.systemInstructionGlobal && el.systemInstructionGlobal.value.trim()) || null,
+          system_instructions: rules,
+          model_params: buildModelParams(),
+          history_turns: (function () {
+            const v = el.historyTurnsInput ? parseInt(el.historyTurnsInput.value, 10) : 5;
+            return (Number.isFinite(v) && v >= 0 && v <= 100) ? v : 5;
+          })(),
         }),
       });
       await setCurrentConversation(conv);
@@ -932,7 +1137,7 @@
     currentAbortController = new AbortController();
     setCancelButtonState();
     try {
-      const systemInstructionGlobal = (el.systemInstructionGlobal && el.systemInstructionGlobal.value) ? el.systemInstructionGlobal.value.trim() : "";
+      const systemInstructionGlobal = getRulesTextForSystem();
       const saveToChromadb = (el.saveToChromadbSelect && el.saveToChromadbSelect.value) ? el.saveToChromadbSelect.value : "user";
       const modelParams = buildModelParams();
       const bodyPayload = {
@@ -1088,7 +1293,10 @@
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
-        body: JSON.stringify({ model_id: (el.modelSelect && el.modelSelect.value) || "" }),
+        body: JSON.stringify({
+          model_id: (el.modelSelect && el.modelSelect.value) || "",
+          model_params: buildModelParams(),
+        }),
       }).catch(() => {});
     }
     lastUsage = null;
@@ -1107,12 +1315,165 @@
   if (el.showDebugModeCheck) el.showDebugModeCheck.addEventListener("change", renderMessages);
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
-  if (el.btnLoadPreset) el.btnLoadPreset.addEventListener("click", openPresetModal);
-  if (el.btnResetParams) el.btnResetParams.addEventListener("click", resetParamsToDefaults);
-  if (el.presetModalClose) el.presetModalClose.addEventListener("click", closePresetModal);
-  if (el.presetModal) {
-    el.presetModal.addEventListener("click", (e) => {
-      if (e.target === el.presetModal) closePresetModal();
+  if (el.btnResetParams) el.btnResetParams.addEventListener("click", function () {
+    resetParamsToDefaults();
+    paramsSource = "default";
+    renderParamsSourceLabel();
+    debouncedSaveParams();
+  });
+  document.querySelectorAll("[data-control-id]").forEach(function (control) {
+    control.addEventListener("change", debouncedSaveParams);
+    control.addEventListener("input", debouncedSaveParams);
+  });
+  let libraryRules = [];
+
+  /** Carga TODAS las reglas de la biblioteca (GET /api/rules) para el selector. No depende de la conversación actual. */
+  async function loadLibraryRules() {
+    try {
+      libraryRules = await fetchJson(`${API}/rules`);
+      if (!Array.isArray(libraryRules)) libraryRules = [];
+    } catch (_) {
+      libraryRules = [];
+    }
+    if (el.ruleLibrarySelect) {
+      const selected = el.ruleLibrarySelect.value;
+      el.ruleLibrarySelect.innerHTML = "<option value=\"\">-- Elegir regla --</option>" +
+        libraryRules.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml((r.title || "").trim() || "Sin título")}</option>`).join("");
+      // Solo restaurar la selección si esa regla sigue existiendo en la biblioteca (evita opciones fantasma).
+      if (selected && libraryRules.some((r) => r.id === selected)) {
+        el.ruleLibrarySelect.value = selected;
+      } else {
+        el.ruleLibrarySelect.value = "";
+      }
+    }
+  }
+
+  /** Al abrir el selector, refrescar lista para no mostrar reglas ya eliminadas de la biblioteca. */
+  if (el.ruleLibrarySelect) {
+    el.ruleLibrarySelect.addEventListener("focus", function () {
+      loadLibraryRules();
+    });
+  }
+
+  if (el.btnAddRule && el.ruleNewInput) {
+    el.btnAddRule.addEventListener("click", async function () {
+      const content = (el.ruleNewInput.value || "").trim();
+      const title = (el.ruleNewTitle && el.ruleNewTitle.value ? el.ruleNewTitle.value.trim() : "") || "Regla " + (rules.length + 1);
+      if (!content) return;
+      try {
+        const newRule = await fetchJson(`${API}/rules`, { method: "POST", body: JSON.stringify({ title: title || "Regla " + (rules.length + 1), content: content }) });
+        rules.push({ rule_id: newRule.id, title: newRule.title || "", content: newRule.content || "" });
+        libraryRules.unshift(newRule);
+        if (el.ruleLibrarySelect) {
+          const opt = document.createElement("option");
+          opt.value = newRule.id;
+          opt.textContent = (newRule.title || "").trim() || "Sin título";
+          el.ruleLibrarySelect.insertBefore(opt, el.ruleLibrarySelect.options[1] || null);
+        }
+      } catch (_) {
+        showError("Error al crear la regla en la biblioteca");
+        return;
+      }
+      if (el.ruleNewTitle) el.ruleNewTitle.value = "";
+      el.ruleNewInput.value = "";
+      renderRules();
+      debouncedSaveRules();
+    });
+  }
+  if (el.btnAddLibraryRule && el.ruleLibrarySelect) {
+    el.btnAddLibraryRule.addEventListener("click", async function () {
+      const id = (el.ruleLibrarySelect.value || "").trim();
+      if (!id) return;
+      let rule = libraryRules.find((r) => r.id === id);
+      if (!rule) {
+        try {
+          rule = await fetchJson(`${API}/rules/${id}`);
+        } catch (_) {
+          showError("Regla no encontrada");
+          return;
+        }
+      }
+      rules.push({ rule_id: rule.id, title: rule.title || "", content: rule.content || "" });
+      renderRules();
+      debouncedSaveRules();
+    });
+  }
+  if (el.ruleEditBtnDelete) {
+    el.ruleEditBtnDelete.addEventListener("click", async function () {
+      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      const r = rules[ruleEditIndex];
+      const ruleId = r && r.rule_id;
+      if (ruleId) {
+        try {
+          await fetchJson(`${API}/rules/${ruleId}`, { method: "DELETE" });
+        } catch (e) {
+          showError("Error al eliminar la regla de la biblioteca: " + e.message);
+          return;
+        }
+      }
+      rules.splice(ruleEditIndex, 1);
+      renderRules();
+      if (rules.length === 0) {
+        if (saveRulesDebounceTimer) {
+          clearTimeout(saveRulesDebounceTimer);
+          saveRulesDebounceTimer = null;
+        }
+        saveRulesToConversation();
+      } else {
+        debouncedSaveRules();
+      }
+      closeRuleEditModal();
+    });
+  }
+  if (el.ruleEditBtnSave) {
+    el.ruleEditBtnSave.addEventListener("click", async function () {
+      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      const title = (el.ruleEditTitle && el.ruleEditTitle.value ? el.ruleEditTitle.value.trim() : "") || "";
+      const content = (el.ruleEditContent && el.ruleEditContent.value ? el.ruleEditContent.value : "") || "";
+      const r = rules[ruleEditIndex];
+      if (r.rule_id) {
+        try {
+          await fetchJson(`${API}/rules/${r.rule_id}`, { method: "PUT", body: JSON.stringify({ title: title || r.title, content: content || r.content }) });
+        } catch (_) {
+          showError("Error al actualizar la regla");
+          return;
+        }
+      }
+      rules[ruleEditIndex] = Object.assign({}, r, { title: title || r.title, content: content || r.content });
+      if (r.rule_id) rules[ruleEditIndex].rule_id = r.rule_id;
+      renderRules();
+      debouncedSaveRules();
+      closeRuleEditModal();
+    });
+  }
+  if (el.ruleEditBtnSaveNew) {
+    el.ruleEditBtnSaveNew.addEventListener("click", async function () {
+      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      const title = (el.ruleEditTitle && el.ruleEditTitle.value ? el.ruleEditTitle.value.trim() : "") || "";
+      const content = (el.ruleEditContent && el.ruleEditContent.value ? el.ruleEditContent.value : "") || "";
+      try {
+        const newRule = await fetchJson(`${API}/rules`, { method: "POST", body: JSON.stringify({ title: title || "Nueva regla", content: content || "" }) });
+        rules.splice(ruleEditIndex, 1);
+        rules.splice(ruleEditIndex, 0, { rule_id: newRule.id, title: newRule.title || "", content: newRule.content || "" });
+        renderRules();
+        debouncedSaveRules();
+        libraryRules.unshift(newRule);
+        if (el.ruleLibrarySelect) {
+          const opt = document.createElement("option");
+          opt.value = newRule.id;
+          opt.textContent = (newRule.title || "").trim() || "Sin título";
+          el.ruleLibrarySelect.insertBefore(opt, el.ruleLibrarySelect.options[1] || null);
+        }
+      } catch (_) {
+        showError("Error al crear la regla");
+        return;
+      }
+      closeRuleEditModal();
+    });
+  }
+  if (el.ruleEditModal) {
+    el.ruleEditModal.addEventListener("click", function (e) {
+      if (e.target === el.ruleEditModal) closeRuleEditModal();
     });
   }
   if (el.btnModelInfo) el.btnModelInfo.addEventListener("click", openModelInfoModal);
@@ -1150,6 +1511,10 @@
   if (el.btnRefreshModels) el.btnRefreshModels.addEventListener("click", refreshModels);
   if (el.providerSelect) el.providerSelect.addEventListener("change", onProviderChange);
   if (el.modelSelect) el.modelSelect.addEventListener("change", onModelChange);
+  if (el.historyTurnsInput) {
+    el.historyTurnsInput.addEventListener("change", debouncedSaveHistoryTurns);
+    el.historyTurnsInput.addEventListener("input", debouncedSaveHistoryTurns);
+  }
   if (el.messageInput) {
     el.messageInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -1257,6 +1622,56 @@
   }
 
   const ACCORDION_STORAGE_KEY = "chatbot_sidebar_accordion";
+  const SIDEBAR_TAB_STORAGE_KEY = "chatbot_sidebar_tab";
+  const LAST_CONVERSATION_STORAGE_KEY = "chatbot_last_conversation_id";
+  const FONT_SIZE_STORAGE_KEY = "chatbot_conversation_font_size_rem";
+  const FONT_SIZE_DEFAULT = 0.95;
+  const FONT_SIZE_MIN = 0.75;
+  const FONT_SIZE_MAX = 1.4;
+  const FONT_SIZE_STEP = 0.05;
+
+  function getStoredFontSize() {
+    try {
+      const raw = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+      if (raw == null) return FONT_SIZE_DEFAULT;
+      const n = parseFloat(raw, 10);
+      if (Number.isFinite(n)) return Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, n));
+    } catch (_) {}
+    return FONT_SIZE_DEFAULT;
+  }
+
+  function setStoredFontSize(rem) {
+    try {
+      localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(rem));
+    } catch (_) {}
+  }
+
+  function applyConversationFontSize(rem) {
+    if (!el.messagesContainer) return;
+    el.messagesContainer.style.setProperty("--chat-font-size", rem + "rem");
+  }
+
+  function initConversationFontSize() {
+    const rem = getStoredFontSize();
+    applyConversationFontSize(rem);
+    if (el.btnFontSizeDecrease) {
+      el.btnFontSizeDecrease.disabled = rem <= FONT_SIZE_MIN;
+    }
+    if (el.btnFontSizeIncrease) {
+      el.btnFontSizeIncrease.disabled = rem >= FONT_SIZE_MAX;
+    }
+  }
+
+  function setConversationFontSize(delta) {
+    const current = getStoredFontSize();
+    let next = Math.round((current + delta) / FONT_SIZE_STEP) * FONT_SIZE_STEP;
+    next = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, next));
+    next = Math.round(next * 100) / 100;
+    setStoredFontSize(next);
+    applyConversationFontSize(next);
+    if (el.btnFontSizeDecrease) el.btnFontSizeDecrease.disabled = next <= FONT_SIZE_MIN;
+    if (el.btnFontSizeIncrease) el.btnFontSizeIncrease.disabled = next >= FONT_SIZE_MAX;
+  }
 
   function getAccordionState() {
     try {
@@ -1299,7 +1714,73 @@
     });
   }
 
+  const SIDEBAR_TAB_IDS = ["conversaciones", "reglas", "parametros"];
+
+  function getStoredSidebarTab() {
+    try {
+      const t = localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY);
+      if (t && SIDEBAR_TAB_IDS.includes(t)) return t;
+    } catch (_) {}
+    return "conversaciones";
+  }
+
+  function switchSidebarTab(tabId) {
+    if (!SIDEBAR_TAB_IDS.includes(tabId)) return;
+    try {
+      localStorage.setItem(SIDEBAR_TAB_STORAGE_KEY, tabId);
+    } catch (_) {}
+    document.querySelectorAll(".sidebar-tabs [role=\"tab\"]").forEach((tab) => {
+      const id = tab.getAttribute("data-tab");
+      const selected = id === tabId;
+      tab.setAttribute("aria-selected", selected);
+    });
+    document.querySelectorAll(".sidebar-tabpanel").forEach((panel) => {
+      const panelId = panel.id;
+      const isConversaciones = panelId === "tab-conversaciones";
+      const isReglas = panelId === "tab-reglas";
+      const isParametros = panelId === "tab-parametros";
+      const active =
+        (tabId === "conversaciones" && isConversaciones) ||
+        (tabId === "reglas" && isReglas) ||
+        (tabId === "parametros" && isParametros);
+      panel.classList.toggle("is-active", active);
+      panel.hidden = !active;
+      if (active && isReglas) loadLibraryRules();
+    });
+  }
+
+  function initSidebarTabs() {
+    switchSidebarTab(getStoredSidebarTab());
+    document.querySelectorAll(".sidebar-tabs [role=\"tab\"]").forEach((tab) => {
+      tab.addEventListener("click", function () {
+        const tabId = tab.getAttribute("data-tab");
+        if (tabId) switchSidebarTab(tabId);
+      });
+      tab.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        const tabs = Array.from(document.querySelectorAll(".sidebar-tabs [role=\"tab\"]"));
+        const idx = tabs.indexOf(tab);
+        if (e.key === "ArrowLeft" && idx > 0) switchSidebarTab(tabs[idx - 1].getAttribute("data-tab"));
+        if (e.key === "ArrowRight" && idx < tabs.length - 1) switchSidebarTab(tabs[idx + 1].getAttribute("data-tab"));
+      });
+    });
+  }
+
   initAccordionState();
+  initSidebarTabs();
+  initConversationFontSize();
+
+  if (el.btnFontSizeDecrease) {
+    el.btnFontSizeDecrease.addEventListener("click", function () {
+      setConversationFontSize(-FONT_SIZE_STEP);
+    });
+  }
+  if (el.btnFontSizeIncrease) {
+    el.btnFontSizeIncrease.addEventListener("click", function () {
+      setConversationFontSize(FONT_SIZE_STEP);
+    });
+  }
 
   document.querySelectorAll(".accordion-header").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1336,8 +1817,23 @@
     }
     await loadParamsForProvider(currentProvider);
     await loadConversations();
+    const storedId = (function () {
+      try {
+        return localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
+      } catch (_) {
+        return null;
+      }
+    })();
+    if (storedId) {
+      try {
+        await openConversation(storedId);
+      } catch (_) {
+        saveLastConversationId(null);
+      }
+    }
     await loadContextLength();
   }
+  renderParamsSourceLabel();
   initLoad();
   loadParamsHelp().then(function () {
     initParamHelpTooltip();

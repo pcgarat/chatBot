@@ -1,11 +1,52 @@
+import json
 from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import Conversation, Message
+from app.models import Conversation, Message, Rule
 
 # Sentinel para "no actualizar inject_instruction_every" en update_conversation
 _INJECT_UNSET = object()
+
+
+# ----- Rules (biblioteca) -----
+def create_rule(db: Session, title: str = "", content: str = "") -> Rule:
+    rule = Rule(title=title, content=content)
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+def get_rule(db: Session, rule_id: str) -> Rule | None:
+    return db.query(Rule).filter(Rule.id == rule_id).first()
+
+
+def list_rules(db: Session) -> list[Rule]:
+    return db.query(Rule).order_by(Rule.updated_at.desc()).all()
+
+
+def update_rule(db: Session, rule_id: str, title: str | None = None, content: str | None = None) -> Rule | None:
+    rule = get_rule(db, rule_id)
+    if not rule:
+        return None
+    if title is not None:
+        rule.title = title
+    if content is not None:
+        rule.content = content
+    rule.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+def delete_rule(db: Session, rule_id: str) -> bool:
+    rule = get_rule(db, rule_id)
+    if not rule:
+        return False
+    db.delete(rule)
+    db.commit()
+    return True
 
 
 def create_conversation(
@@ -14,14 +55,18 @@ def create_conversation(
     model_id: str = "llama3.2",
     provider: str = "ollama",
     system_instruction_global: str | None = None,
+    instruction_ids: list | None = None,
     inject_instruction_every: int | None = None,
+    history_turns: int | None = 5,
 ) -> Conversation:
     conv = Conversation(
         title=title,
         model_id=model_id,
         provider=provider,
         system_instruction_global=system_instruction_global,
+        instruction_ids=json.dumps(instruction_ids) if instruction_ids is not None else None,
         inject_instruction_every=inject_instruction_every if inject_instruction_every and inject_instruction_every > 0 else None,
+        history_turns=history_turns if history_turns and history_turns > 0 else 5,
     )
     db.add(conv)
     db.commit()
@@ -44,7 +89,10 @@ def update_conversation(
     model_id: str | None = None,
     provider: str | None = None,
     system_instruction_global: str | None = None,
+    instruction_ids: list | None = None,
     inject_instruction_every: int | None = _INJECT_UNSET,
+    model_params: dict | None = None,
+    history_turns: int | None = None,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
@@ -57,8 +105,14 @@ def update_conversation(
         conv.provider = provider
     if system_instruction_global is not None:
         conv.system_instruction_global = system_instruction_global
+    if instruction_ids is not None:
+        conv.instruction_ids = json.dumps(instruction_ids) if instruction_ids else None
     if inject_instruction_every is not _INJECT_UNSET:
         conv.inject_instruction_every = inject_instruction_every if (inject_instruction_every and inject_instruction_every > 0) else None
+    if model_params is not None:
+        conv.model_params = json.dumps(model_params) if model_params else None
+    if history_turns is not None:
+        conv.history_turns = history_turns if history_turns >= 0 else None
     conv.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(conv)
