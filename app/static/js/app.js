@@ -31,6 +31,8 @@
     conversationTitle: document.getElementById("conversation-title"),
     providerSelect: document.getElementById("provider-select"),
     modelSelect: document.getElementById("model-select"),
+    modelSelectInput: document.getElementById("model-select-input"),
+    modelSelectList: document.getElementById("model-select-list"),
     btnRefreshModels: document.getElementById("btn-refresh-models"),
     rulesList: document.getElementById("rules-list"),
     rulesAddBlock: document.getElementById("rules-add-block"),
@@ -150,6 +152,7 @@
       if (el.providerSelect) el.providerSelect.value = providerName;
       if (el.modelSelect) {
         el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+        refreshModelSelectUI();
       }
       return true;
     } catch (_) {
@@ -168,13 +171,57 @@
         if (previousModel && models.includes(previousModel)) {
           el.modelSelect.value = previousModel;
         }
+        refreshModelSelectUI();
       }
       return models;
     } catch (e) {
       showError(`No se pudieron cargar los modelos de ${provider}: ` + e.message);
       models = [];
       if (el.modelSelect) el.modelSelect.innerHTML = "";
+      refreshModelSelectUI();
       return [];
+    }
+  }
+
+  /** Sincroniza el input y la lista del selector de modelo con el &lt;select&gt; (opciones y valor seleccionado). */
+  function refreshModelSelectUI() {
+    if (!el.modelSelect || !el.modelSelectInput || !el.modelSelectList) return;
+    const opt = el.modelSelect.selectedOptions[0];
+    el.modelSelectInput.value = opt ? opt.text : "";
+    el.modelSelectList.setAttribute("aria-hidden", "true");
+    el.modelSelectInput.setAttribute("aria-expanded", "false");
+  }
+
+  /** Filtra y muestra la lista de modelos según el texto del input; al hacer clic en uno se asigna y se cierra. */
+  function filterAndShowModelSelectList(query) {
+    if (!el.modelSelect || !el.modelSelectInput || !el.modelSelectList) return;
+    const q = (query || "").trim().toLowerCase();
+    const options = Array.from(el.modelSelect.options);
+    const filtered = q ? options.filter((o) => o.value.toLowerCase().includes(q) || o.text.toLowerCase().includes(q)) : options;
+    el.modelSelectList.innerHTML = filtered
+      .map(
+        (o) =>
+          `<li role="option" data-value="${escapeHtml(o.value)}" aria-selected="false">${escapeHtml(o.text)}</li>`
+      )
+      .join("");
+    if (filtered.length > 0) {
+      el.modelSelectList.setAttribute("aria-hidden", "false");
+      el.modelSelectInput.setAttribute("aria-expanded", "true");
+      el.modelSelectList.querySelectorAll("li").forEach((li) => {
+        li.addEventListener("click", function () {
+          const val = li.getAttribute("data-value");
+          if (val != null && models.includes(val)) {
+            el.modelSelect.value = val;
+            el.modelSelectInput.value = li.textContent || val;
+            el.modelSelectList.setAttribute("aria-hidden", "true");
+            el.modelSelectInput.setAttribute("aria-expanded", "false");
+            el.modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        });
+      });
+    } else {
+      el.modelSelectList.setAttribute("aria-hidden", "true");
+      el.modelSelectInput.setAttribute("aria-expanded", "false");
     }
   }
 
@@ -834,14 +881,28 @@
   }
 
   async function setCurrentConversation(conv) {
+    const previousConvId = currentConversationId;
+    if (previousConvId && conv && conv.id !== previousConvId && el.instructionOverride) {
+      const instructionOverride = (el.instructionOverride.value || "").trim() || null;
+      fetchJson(`${API}/conversations/${previousConvId}`, {
+        method: "PUT",
+        body: JSON.stringify({ instruction_override: instructionOverride }),
+      }).catch(() => {});
+    }
     currentConversationId = conv ? conv.id : null;
     saveLastConversationId(currentConversationId);
+    if (el.instructionOverride) {
+      el.instructionOverride.value = (conv && conv.instruction_override != null) ? conv.instruction_override : "";
+    }
     if (conv) {
       if (el.conversationTitle) el.conversationTitle.value = conv.title;
       currentProvider = conv.provider || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
       await loadModels(false);
-      if (el.modelSelect) el.modelSelect.value = conv.model_id;
+      if (el.modelSelect) {
+        el.modelSelect.value = conv.model_id;
+        refreshModelSelectUI();
+      }
       rules = normalizeRulesFromApi(conv.system_instructions, conv.system_instruction_global);
       await loadParamsForProvider(currentProvider);
       if (conv.model_params && typeof conv.model_params === "object" && Object.keys(conv.model_params).length > 0) {
@@ -877,7 +938,10 @@
       if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
       currentProvider = providers[0] || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
-      if (el.modelSelect) el.modelSelect.value = models[0] || "";
+      if (el.modelSelect) {
+        el.modelSelect.value = models[0] || "";
+        refreshModelSelectUI();
+      }
       rules = [];
       await loadParamsForProvider(currentProvider);
       await ensureParamsBaselineForCurrentModel();
@@ -982,11 +1046,64 @@
         const title = (rule && rule.title != null ? rule.title : "") || "";
         const displayTitle = title.trim() || "Sin título";
         return `<span class="rule-tag" role="listitem" data-rule-index="${index}">
+          <span class="rule-tag-drag" draggable="true" role="button" title="Arrastrar para reordenar" aria-label="Arrastrar para reordenar" data-rule-index="${index}"></span>
           <span class="rule-tag-label" tabindex="0" role="button" title="Editar regla" data-rule-index="${index}">${escapeHtml(displayTitle)}</span>
           <button type="button" class="rule-tag-remove" title="Eliminar regla" aria-label="Eliminar regla" data-rule-index="${index}">×</button>
         </span>`;
       })
       .join("");
+  }
+
+  /** Reordenar reglas por arrastre: dragstart en el asa, dragover/drop en la lista. */
+  if (el.rulesList) {
+    let ruleDragSourceIndex = -1;
+    el.rulesList.addEventListener("dragstart", function (e) {
+      const handle = e.target.closest(".rule-tag-drag");
+      if (!handle) return;
+      const tag = handle.closest(".rule-tag");
+      if (!tag) return;
+      const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
+      if (Number.isNaN(idx) || idx < 0 || idx >= rules.length) return;
+      ruleDragSourceIndex = idx;
+      e.dataTransfer.setData("text/plain", String(idx));
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setDragImage(tag, 0, 0);
+      tag.classList.add("rule-tag-dragging");
+    });
+    el.rulesList.addEventListener("dragend", function (e) {
+      ruleDragSourceIndex = -1;
+      e.target.closest(".rule-tag")?.classList.remove("rule-tag-dragging");
+      el.rulesList.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
+    });
+    el.rulesList.addEventListener("dragover", function (e) {
+      const tag = e.target.closest(".rule-tag");
+      if (!tag) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      el.rulesList.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
+      tag.classList.add("rule-tag-drag-over");
+    });
+    el.rulesList.addEventListener("dragleave", function (e) {
+      if (!el.rulesList.contains(e.relatedTarget)) {
+        el.rulesList.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
+      }
+    });
+    el.rulesList.addEventListener("drop", function (e) {
+      const tag = e.target.closest(".rule-tag");
+      if (!tag) return;
+      e.preventDefault();
+      tag.classList.remove("rule-tag-drag-over");
+      const from = ruleDragSourceIndex >= 0 ? ruleDragSourceIndex : parseInt(e.dataTransfer.getData("text/plain"), 10);
+      const to = parseInt(tag.getAttribute("data-rule-index"), 10);
+      if (Number.isNaN(from) || Number.isNaN(to) || from === to || from < 0 || from >= rules.length || to < 0 || to >= rules.length) return;
+      const arr = rules.slice();
+      const [item] = arr.splice(from, 1);
+      const insertAt = Math.min(to, arr.length);
+      arr.splice(insertAt, 0, item);
+      rules = arr;
+      renderRules();
+      debouncedSaveRules();
+    });
   }
 
   /** Delegación en la lista de reglas: eliminar por la cruz o abrir edición por el título. Así el botón × se detecta bien aunque solo quede una regla. */
@@ -1078,6 +1195,7 @@
             const v = el.historyTurnsInput ? parseInt(el.historyTurnsInput.value, 10) : 5;
             return (Number.isFinite(v) && v >= 0 && v <= 100) ? v : 5;
           })(),
+          instruction_override: (el.instructionOverride && el.instructionOverride.value.trim()) || null,
         }),
       });
       await setCurrentConversation(conv);
@@ -1591,6 +1709,40 @@
   if (el.btnRefreshModels) el.btnRefreshModels.addEventListener("click", refreshModels);
   if (el.providerSelect) el.providerSelect.addEventListener("change", onProviderChange);
   if (el.modelSelect) el.modelSelect.addEventListener("change", onModelChange);
+  let modelSelectListHideTimer = null;
+  if (el.modelSelectInput && el.modelSelectList) {
+    el.modelSelectInput.addEventListener("input", function () {
+      if (modelSelectListHideTimer) clearTimeout(modelSelectListHideTimer);
+      filterAndShowModelSelectList(el.modelSelectInput.value);
+    });
+    el.modelSelectInput.addEventListener("focus", function () {
+      if (modelSelectListHideTimer) clearTimeout(modelSelectListHideTimer);
+      filterAndShowModelSelectList(el.modelSelectInput.value);
+    });
+    el.modelSelectInput.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        el.modelSelectInput.blur();
+        if (el.modelSelectList) el.modelSelectList.setAttribute("aria-hidden", "true");
+        if (el.modelSelectInput) el.modelSelectInput.setAttribute("aria-expanded", "false");
+        return;
+      }
+      const selectedText = el.modelSelect.selectedOptions[0] ? el.modelSelect.selectedOptions[0].text : "";
+      const isPrintableKey = !e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1;
+      if (isPrintableKey && el.modelSelectInput.value === selectedText) {
+        el.modelSelectInput.value = "";
+      }
+    });
+    el.modelSelectInput.addEventListener("blur", function () {
+      modelSelectListHideTimer = setTimeout(function () {
+        modelSelectListHideTimer = null;
+        if (el.modelSelectList) {
+          el.modelSelectList.setAttribute("aria-hidden", "true");
+          if (el.modelSelectInput) el.modelSelectInput.setAttribute("aria-expanded", "false");
+        }
+        refreshModelSelectUI();
+      }, 200);
+    });
+  }
   if (el.historyTurnsInput) {
     el.historyTurnsInput.addEventListener("change", debouncedSaveHistoryTurns);
     el.historyTurnsInput.addEventListener("input", debouncedSaveHistoryTurns);
@@ -1893,7 +2045,10 @@
     }
     if (!loaded && providers.length > 0) {
       showError("No se pudo cargar modelos de ningún proveedor. Comprueba Ollama/Mancer.");
-      if (el.modelSelect) el.modelSelect.innerHTML = "";
+      if (el.modelSelect) {
+        el.modelSelect.innerHTML = "";
+        refreshModelSelectUI();
+      }
     }
     await loadParamsForProvider(currentProvider);
     await loadConversations();

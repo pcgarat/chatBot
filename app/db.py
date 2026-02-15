@@ -78,5 +78,12 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # Migración: instruction_override en conversations (último valor por conversación para instrucción por mensaje)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN instruction_override TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
     # Crear tabla rules (biblioteca de reglas unificada)
     Base.metadata.create_all(bind=engine)

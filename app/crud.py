@@ -93,6 +93,7 @@ def update_conversation(
     inject_instruction_every: int | None = _INJECT_UNSET,
     model_params: dict | None = None,
     history_turns: int | None = None,
+    instruction_override: str | None = None,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
@@ -113,6 +114,8 @@ def update_conversation(
         conv.model_params = json.dumps(model_params) if model_params else None
     if history_turns is not None:
         conv.history_turns = history_turns if history_turns >= 0 else None
+    if instruction_override is not None:
+        conv.instruction_override = instruction_override.strip() if instruction_override and instruction_override.strip() else None
     conv.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(conv)

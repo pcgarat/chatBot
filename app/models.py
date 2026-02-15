@@ -23,6 +23,7 @@ class Conversation(Base):
     inject_instruction_every = Column(Integer, nullable=True)  # Deprecado: se ignora. Las instrucciones se envían siempre.
     model_params = Column(Text, nullable=True)  # JSON: param_id -> value (parámetros guardados por el usuario en esta conversación)
     history_turns = Column(Integer, nullable=True)  # Número de pares user+assistant a enviar en el prompt; null/0 = usar default 5
+    instruction_override = Column(Text, nullable=True)  # Instrucción solo para el siguiente mensaje; último valor por conversación
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
