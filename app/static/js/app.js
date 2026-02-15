@@ -44,6 +44,7 @@
     ruleEditBtnSave: document.getElementById("rule-edit-btn-save"),
     ruleEditBtnSaveNew: document.getElementById("rule-edit-btn-save-new"),
     saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
+    historyTurnsInput: document.getElementById("history-turns-input"),
     showDebugModeCheck: document.getElementById("show-debug-mode"),
     messagesContainer: document.getElementById("messages-container"),
     instructionOverride: document.getElementById("instruction-override"),
@@ -796,6 +797,8 @@
         debug_request: m.debug_request || null,
         debug_response: m.debug_response || null,
       }));
+      const turns = conv.history_turns != null && conv.history_turns >= 0 ? conv.history_turns : 5;
+      if (el.historyTurnsInput) el.historyTurnsInput.value = String(Math.min(100, Math.max(0, turns)));
     } else {
       if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
       currentProvider = providers[0] || "ollama";
@@ -805,6 +808,7 @@
       await loadParamsForProvider(currentProvider);
       paramsSource = "default";
       messages = [];
+      if (el.historyTurnsInput) el.historyTurnsInput.value = "5";
     }
     renderRules();
     renderParamsSourceLabel();
@@ -834,6 +838,24 @@
       saveRulesDebounceTimer = null;
       saveRulesToConversation();
     }, SAVE_RULES_DEBOUNCE_MS);
+  }
+
+  let saveHistoryTurnsDebounceTimer = null;
+  function saveHistoryTurnsToConversation() {
+    if (!currentConversationId || !el.historyTurnsInput) return;
+    const v = parseInt(el.historyTurnsInput.value, 10);
+    const turns = (Number.isFinite(v) && v >= 0 && v <= 100) ? v : 5;
+    fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ history_turns: turns }),
+    }).catch(() => {});
+  }
+  function debouncedSaveHistoryTurns() {
+    if (saveHistoryTurnsDebounceTimer) clearTimeout(saveHistoryTurnsDebounceTimer);
+    saveHistoryTurnsDebounceTimer = setTimeout(function () {
+      saveHistoryTurnsDebounceTimer = null;
+      saveHistoryTurnsToConversation();
+    }, 400);
   }
 
   /** Convierte system_instructions de la API a lista de reglas para la UI. Solo reglas reales (biblioteca o inline); no se mezcla system_instruction_global como regla. */
@@ -977,6 +999,10 @@
           provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
           system_instructions: rules,
           model_params: buildModelParams(),
+          history_turns: (function () {
+            const v = el.historyTurnsInput ? parseInt(el.historyTurnsInput.value, 10) : 5;
+            return (Number.isFinite(v) && v >= 0 && v <= 100) ? v : 5;
+          })(),
         }),
       });
       await setCurrentConversation(conv);
@@ -1373,8 +1399,18 @@
     });
   }
   if (el.ruleEditBtnDelete) {
-    el.ruleEditBtnDelete.addEventListener("click", function () {
+    el.ruleEditBtnDelete.addEventListener("click", async function () {
       if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      const r = rules[ruleEditIndex];
+      const ruleId = r && r.rule_id;
+      if (ruleId) {
+        try {
+          await fetchJson(`${API}/rules/${ruleId}`, { method: "DELETE" });
+        } catch (e) {
+          showError("Error al eliminar la regla de la biblioteca: " + e.message);
+          return;
+        }
+      }
       rules.splice(ruleEditIndex, 1);
       renderRules();
       if (rules.length === 0) {
@@ -1475,6 +1511,10 @@
   if (el.btnRefreshModels) el.btnRefreshModels.addEventListener("click", refreshModels);
   if (el.providerSelect) el.providerSelect.addEventListener("change", onProviderChange);
   if (el.modelSelect) el.modelSelect.addEventListener("change", onModelChange);
+  if (el.historyTurnsInput) {
+    el.historyTurnsInput.addEventListener("change", debouncedSaveHistoryTurns);
+    el.historyTurnsInput.addEventListener("input", debouncedSaveHistoryTurns);
+  }
   if (el.messageInput) {
     el.messageInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && !e.shiftKey) {

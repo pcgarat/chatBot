@@ -5,10 +5,11 @@ from unittest.mock import patch, MagicMock
 from app.routers.api_conversations import _build_llm_messages
 
 
-def _mock_conv(system_instruction_global="Instrucciones"):
-    """Convierte objeto con system_instruction_global."""
+def _mock_conv(system_instruction_global="Instrucciones", history_turns=None):
+    """Convierte objeto con system_instruction_global y opcional history_turns (pares en el prompt)."""
     c = MagicMock()
     c.system_instruction_global = system_instruction_global
+    c.history_turns = history_turns
     return c
 
 
@@ -23,8 +24,7 @@ def _mock_msg(role: str, content: str):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_estructura_basica(mock_settings):
     """Estructura: system, historial (si hay), user con prompt actual."""
-    mock_settings.ollama_history_turns = 10
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=10)
     existing = []
     db = MagicMock()
     msgs, _ = _build_llm_messages(conv, existing, "Hola", None, db, rag_context=None)
@@ -38,8 +38,7 @@ def test_build_llm_messages_estructura_basica(mock_settings):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_incluye_historial_orden_cronologico(mock_settings):
     """El historial va de más antiguo a más nuevo antes del prompt actual."""
-    mock_settings.ollama_history_turns = 2
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=2)
     existing = [
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
@@ -60,8 +59,7 @@ def test_build_llm_messages_incluye_historial_orden_cronologico(mock_settings):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_limita_ultimos_n_pares(mock_settings):
     """Solo se envían los últimos N pares (N=2 => 4 mensajes de historial)."""
-    mock_settings.ollama_history_turns = 2
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=2)
     existing = [
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
@@ -84,9 +82,8 @@ def test_build_llm_messages_limita_ultimos_n_pares(mock_settings):
 
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_sin_historial_cuando_turns_0(mock_settings):
-    """Si ollama_history_turns=0, no se envía historial."""
-    mock_settings.ollama_history_turns = 0
-    conv = _mock_conv("Global.")
+    """Si history_turns=0, no se envía historial."""
+    conv = _mock_conv("Global.", history_turns=0)
     existing = [
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
@@ -100,8 +97,7 @@ def test_build_llm_messages_sin_historial_cuando_turns_0(mock_settings):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_menos_de_n_pares_envia_todos(mock_settings):
     """Si hay menos mensajes que N pares, se envían todos."""
-    mock_settings.ollama_history_turns = 10
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=10)
     existing = [
         _mock_msg("user", "M1"),
         _mock_msg("assistant", "R1"),
@@ -200,6 +196,20 @@ def test_update_and_get_conversation_model_params(client):
     get_r = client.get(f"/api/conversations/{cid}")
     assert get_r.status_code == 200
     assert get_r.json()["model_params"] == params
+
+
+def test_conversation_history_turns(client):
+    """GET incluye history_turns; PUT con history_turns persiste y GET lo devuelve."""
+    create = client.post("/api/conversations", json={"title": "Turns", "model_id": "m"})
+    cid = create.json()["id"]
+    get_r = client.get(f"/api/conversations/{cid}")
+    assert get_r.status_code == 200
+    assert "history_turns" in get_r.json()
+    r = client.put(f"/api/conversations/{cid}", json={"history_turns": 3})
+    assert r.status_code == 200
+    assert r.json().get("history_turns") == 3
+    get_r = client.get(f"/api/conversations/{cid}")
+    assert get_r.json().get("history_turns") == 3
 
 
 def test_conversation_system_instructions(client):
@@ -369,8 +379,7 @@ def test_delete_message_by_id_404(client):
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_incluye_rag_context(mock_settings):
     """Si hay rag_context se incluye en el system message."""
-    mock_settings.ollama_history_turns = 10
-    conv = _mock_conv("Global.")
+    conv = _mock_conv("Global.", history_turns=10)
     db = MagicMock()
     msgs, _ = _build_llm_messages(
         conv, [], "Hola", None, db, system_instruction_global=None, rag_context="Contexto RAG aquí."
@@ -426,11 +435,11 @@ def test_send_message_with_instruction_override(mock_get_provider, client):
     )
     assert r.status_code == 200
     call_messages = mock_provider.chat.call_args[0][1]
-    # Debe haber un mensaje system con global + override
-    assert call_messages[0]["role"] == "system"
-    assert "Global." in call_messages[0]["content"]
-    assert "Responde en una frase." in call_messages[0]["content"]
-    # El mensaje del usuario no debe contener la instrucción visible
+    # Primer system: reglas (global); segundo system: instruction_override; luego user
+    system_msgs = [m for m in call_messages if m["role"] == "system"]
+    assert len(system_msgs) >= 1
+    assert any("Global." in m["content"] for m in system_msgs)
+    assert any("Responde en una frase." in m["content"] for m in system_msgs)
     assert call_messages[-1]["content"] == "Dime algo"
 
 

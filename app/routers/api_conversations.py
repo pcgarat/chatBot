@@ -108,14 +108,12 @@ def _parse_instruction_ids(raw: str | None) -> list[str] | None:
 
 
 def _resolve_instruction_ids(ids: list[str], db) -> list[dict]:
-    """Resuelve lista de rule_id contra la biblioteca; devuelve list de { rule_id, title, content }."""
+    """Resuelve lista de rule_id contra la biblioteca; devuelve list de { rule_id, title, content }. Las reglas eliminadas no se incluyen."""
     out = []
     for rule_id in ids:
         rule = crud_get_rule(db, rule_id)
         if rule:
             out.append({"rule_id": rule.id, "title": rule.title, "content": rule.content})
-        else:
-            out.append({"rule_id": rule_id, "title": "Regla eliminada", "content": ""})
     return out
 
 
@@ -265,6 +263,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         system_instructions=resolved,
         inject_instruction_every=conv.inject_instruction_every,
         model_params=_parse_model_params(getattr(conv, "model_params", None)),
+        history_turns=getattr(conv, "history_turns", None),
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=messages,
@@ -286,6 +285,7 @@ def update_conversation(
         instruction_ids=instruction_ids,
         inject_instruction_every=body.inject_instruction_every,
         model_params=body.model_params,
+        history_turns=body.history_turns,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
@@ -309,6 +309,7 @@ def update_conversation(
         system_instructions=resolved,
         inject_instruction_every=conv.inject_instruction_every,
         model_params=_parse_model_params(getattr(conv, "model_params", None)),
+        history_turns=getattr(conv, "history_turns", None),
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=messages,
@@ -376,12 +377,11 @@ def _build_llm_messages(
     """Construye la lista de mensajes para el LLM (Ollama, Mancer, etc.).
 
     Orden:
-    1. Rol system: instrucciones globales + contexto RAG (siempre)
-    2. Últimos N pares (user + assistant) del historial, de más antiguo a más nuevo
-    3. Rol user: prompt actual
+    1. Rol system: contexto RAG (si hay) + reglas del panel (instrucciones globales)
+    2. Rol system (opcional): instrucción solo para este mensaje (instruction_override), por separado
+    3. Últimos N pares (user + assistant) del historial, de más antiguo a más nuevo
+    4. Rol user: prompt actual
 
-    N = settings.ollama_history_turns (default 10). Si no hay suficientes mensajes,
-    se envían los que haya.
     Devuelve (messages, injecting_instruction).
     """
     parts = []
@@ -397,15 +397,21 @@ def _build_llm_messages(
         ).strip() if instructions else ""
     if global_text:
         parts.append(global_text)
-    if instruction_override and instruction_override.strip():
-        parts.append(instruction_override.strip())
 
     messages = []
     if parts:
         messages.append({"role": "system", "content": "\n\n".join(parts)})
+    if instruction_override and instruction_override.strip():
+        messages.append({"role": "system", "content": instruction_override.strip()})
 
-    # Historial: últimos N pares (user + assistant), de más antiguo a más nuevo
-    max_turns = settings.ollama_history_turns
+    # Historial: últimos N pares (user + assistant), de más antiguo a más nuevo. Por defecto 5; 0 = sin historial.
+    raw_turns = getattr(conv, "history_turns", None)
+    try:
+        max_turns = int(raw_turns) if raw_turns is not None else 5
+    except (TypeError, ValueError):
+        max_turns = 5
+    if max_turns < 0:
+        max_turns = 5
     if max_turns > 0 and existing_messages:
         max_messages = max_turns * 2  # cada turno = 1 user + 1 assistant
         history = existing_messages[-max_messages:]

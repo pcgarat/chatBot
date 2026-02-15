@@ -221,6 +221,10 @@
               </button>
             </div>
             <span class="context-usage-separator" aria-hidden="true"></span>
+            <div class="history-turns-inline" role="group" aria-label="History messages in prompt">
+              <label for="history-turns-input" class="history-turns-label">history messages:</label>
+              <input type="number" id="history-turns-input" class="history-turns-input" min="0" max="100" value="5" aria-label="History messages (user+assistant pairs) in prompt; 0 = only current message" />
+            </div>
             <div class="chromadb-inline" role="group" aria-label="Guardar en ChromaDB">
             <label for="save-to-chromadb-select" class="chromadb-inline-label">Chroma:</label>
             <select id="save-to-chromadb-select" class="chromadb-inline-select" aria-label="Guardar en ChromaDB (RAG)">
