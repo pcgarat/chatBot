@@ -57,6 +57,7 @@ def create_conversation(
     system_instruction_global: str | None = None,
     instruction_ids: list | None = None,
     inject_instruction_every: int | None = None,
+    history_turns: int | None = 5,
 ) -> Conversation:
     conv = Conversation(
         title=title,
@@ -65,6 +66,7 @@ def create_conversation(
         system_instruction_global=system_instruction_global,
         instruction_ids=json.dumps(instruction_ids) if instruction_ids is not None else None,
         inject_instruction_every=inject_instruction_every if inject_instruction_every and inject_instruction_every > 0 else None,
+        history_turns=history_turns if history_turns and history_turns > 0 else 5,
     )
     db.add(conv)
     db.commit()
@@ -90,6 +92,7 @@ def update_conversation(
     instruction_ids: list | None = None,
     inject_instruction_every: int | None = _INJECT_UNSET,
     model_params: dict | None = None,
+    history_turns: int | None = None,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
@@ -108,6 +111,8 @@ def update_conversation(
         conv.inject_instruction_every = inject_instruction_every if (inject_instruction_every and inject_instruction_every > 0) else None
     if model_params is not None:
         conv.model_params = json.dumps(model_params) if model_params else None
+    if history_turns is not None:
+        conv.history_turns = history_turns if history_turns >= 0 else None
     conv.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(conv)

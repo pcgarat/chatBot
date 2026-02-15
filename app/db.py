@@ -71,5 +71,12 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # Migración: history_turns en conversations (pares user+assistant a enviar en el prompt; default 5)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN history_turns INTEGER"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
     # Crear tabla rules (biblioteca de reglas unificada)
     Base.metadata.create_all(bind=engine)

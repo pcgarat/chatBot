@@ -712,6 +712,41 @@ body {
   margin: 0 0.5rem;
 }
 
+.history-turns-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.history-turns-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.history-turns-input {
+  font-size: 0.7rem;
+  width: 2.5rem;
+  padding: 0.15rem 0.35rem;
+  min-height: 1.5rem;
+  line-height: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  box-sizing: border-box;
+  -moz-appearance: textfield;
+}
+
+/* Sin flechas arriba/abajo: solo introducción manual */
+.history-turns-input::-webkit-outer-spin-button,
+.history-turns-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .chromadb-inline {
   display: inline-flex;
   align-items: center;

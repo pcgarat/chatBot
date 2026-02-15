@@ -101,6 +101,41 @@ def test_e2e_conversation_create_and_send_message(client, ollama_available):
     assert "assistant" in roles
 
 
+def test_e2e_conversation_history_turns(client, ollama_available):
+    """
+    GET conversación incluye history_turns; PUT con history_turns persiste;
+    enviar mensaje con history_turns definido funciona (el backend limita pares en el prompt).
+    """
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={"title": "E2E history_turns", "model_id": model_name, "provider": "ollama"},
+    )
+    assert r_create.status_code == 200
+    cid = r_create.json()["id"]
+
+    r_get = client.get(f"/api/conversations/{cid}")
+    assert r_get.status_code == 200
+    assert "history_turns" in r_get.json()
+
+    r_put = client.put(f"/api/conversations/{cid}", json={"history_turns": 3})
+    assert r_put.status_code == 200
+    assert r_put.json().get("history_turns") == 3
+
+    r_get2 = client.get(f"/api/conversations/{cid}")
+    assert r_get2.status_code == 200
+    assert r_get2.json().get("history_turns") == 3
+
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Responde con una sola palabra: OK"},
+    )
+    assert r_msg.status_code == 200
+    assert r_msg.json().get("role") == "assistant"
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert len(conv["messages"]) >= 2
+
+
 def test_e2e_ollama_clear_memory(client, ollama_available):
     """POST /api/ollama/clear-memory devuelve 200 y un objeto con 'unloaded' (lista)."""
     r = client.post("/api/ollama/clear-memory")
@@ -259,7 +294,56 @@ def test_e2e_rules_crud(client, ollama_available):
     r_del = client.delete(f"/api/rules/{rule_id}")
     assert r_del.status_code == 204
     r_get_404 = client.get(f"/api/rules/{rule_id}")
-    assert r_get_404.status_code == 404
+    assert r_get_404.status_code == 404, "La regla debe desaparecer de la BD al eliminarla"
+
+
+def test_e2e_rule_delete_removes_from_db_and_from_all_conversations(client, ollama_available):
+    """
+    Al eliminar una regla de la biblioteca (DELETE /api/rules/{id}):
+    - La regla ya no existe en la BD (GET regla -> 404).
+    - Las conversaciones que la tenían dejan de mostrarla en system_instructions.
+    Si la eliminación solo quitara la regla de la conversación actual pero no de la BD, este test fallaría.
+    """
+    model_name = _get_first_ollama_model(client)
+    r_rule = client.post("/api/rules", json={"title": "Regla a borrar", "content": "Contenido"})
+    assert r_rule.status_code == 201
+    rule_id = r_rule.json()["id"]
+
+    r_c1 = client.post(
+        "/api/conversations",
+        json={
+            "title": "Conv con regla",
+            "model_id": model_name,
+            "provider": "ollama",
+            "system_instructions": [{"rule_id": rule_id, "title": "Regla a borrar", "content": "Contenido"}],
+        },
+    )
+    assert r_c1.status_code == 200
+    cid1 = r_c1.json()["id"]
+    r_c2 = client.post(
+        "/api/conversations",
+        json={
+            "title": "Otra conv con misma regla",
+            "model_id": model_name,
+            "provider": "ollama",
+            "system_instructions": [{"rule_id": rule_id, "title": "Regla a borrar", "content": "Contenido"}],
+        },
+    )
+    assert r_c2.status_code == 200
+    cid2 = r_c2.json()["id"]
+
+    r_del = client.delete(f"/api/rules/{rule_id}")
+    assert r_del.status_code == 204
+
+    r_get_rule = client.get(f"/api/rules/{rule_id}")
+    assert r_get_rule.status_code == 404, "La regla debe estar eliminada de la BD"
+
+    for cid in (cid1, cid2):
+        r_conv = client.get(f"/api/conversations/{cid}")
+        assert r_conv.status_code == 200
+        instr = r_conv.json().get("system_instructions") or []
+        rule_titles = [i.get("title") for i in instr]
+        assert "Regla a borrar" not in rule_titles, f"La conversación {cid} no debe mostrar la regla eliminada"
 
 
 def test_e2e_conversation_with_rule_id(client, ollama_available):
