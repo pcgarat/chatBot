@@ -101,16 +101,19 @@ def list_provider_models(provider_name: str):
     try:
         provider = get_provider(provider_name)
         models = provider.list_models()
-        return [
-            ProviderModelInfo(
-                name=m.name,
-                provider=m.provider,
-                display_name=m.display_name,
-                context_length=m.context_length,
-                pricing=m.pricing,
+        # Construir lista explícita (evita problemas de serialización con generadores/iteradores)
+        result = []
+        for m in models:
+            result.append(
+                ProviderModelInfo(
+                    name=m.name,
+                    provider=m.provider,
+                    display_name=m.display_name,
+                    context_length=m.context_length,
+                    pricing=m.pricing,
+                )
             )
-            for m in models
-        ]
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except ConnectionError as e:

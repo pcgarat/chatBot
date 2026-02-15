@@ -29,6 +29,16 @@ def _encode_model_id(model_id: str) -> str:
     return quote(model_id, safe="")
 
 
+def _get_first_mancer_model(client):
+    """Obtiene el nombre del primer modelo Mancer disponible; hace skip si no hay ninguno."""
+    r = client.get("/api/providers/mancer/models")
+    assert r.status_code == 200
+    models = r.json()
+    if not models:
+        pytest.skip("Mancer no devolvió ningún modelo. Comprueba MANCER_API_KEY y la API.")
+    return models[0]["name"]
+
+
 # ----- API Ollama -----
 
 
@@ -315,6 +325,101 @@ def test_e2e_openai_context_length(client, openai_available):
     data = r.json()
     assert "context_length" in data
     assert data["context_length"] is None or isinstance(data["context_length"], int)
+
+
+# ----- API Mancer (e2e cuando MANCER_API_KEY está configurada) -----
+
+
+def test_e2e_list_providers_includes_mancer_when_key_set(client, mancer_available):
+    """GET /api/providers incluye mancer cuando MANCER_API_KEY está configurada."""
+    r = client.get("/api/providers")
+    assert r.status_code == 200
+    names = [p["name"] for p in r.json()]
+    assert "mancer" in names
+
+
+def test_e2e_mancer_models(client, mancer_available):
+    """GET /api/providers/mancer/models devuelve lista de modelos (API real)."""
+    r = client.get("/api/providers/mancer/models")
+    assert r.status_code == 200
+    models = r.json()
+    assert isinstance(models, list)
+    for m in models:
+        assert "name" in m
+        assert m.get("provider") == "mancer"
+
+
+def test_e2e_mancer_validate(client, mancer_available):
+    """GET /api/providers/mancer/validate devuelve 200 y ok cuando la API responde."""
+    r = client.get("/api/providers/mancer/validate")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("ok") is True
+
+
+def test_e2e_mancer_params(client, mancer_available):
+    """GET /api/providers/mancer/params devuelve provider y params (mapeo de campos)."""
+    r = client.get("/api/providers/mancer/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("provider") == "mancer"
+    assert "params" in data
+    assert isinstance(data["params"], dict)
+    # Debe incluir al menos temperature y max_tokens (config provider_params.json)
+    assert "temperature" in data["params"]
+    assert "max_tokens" in data["params"]
+
+
+def test_e2e_mancer_capabilities(client, mancer_available):
+    """GET /api/providers/mancer/capabilities devuelve show_model (ficha de modelo)."""
+    r = client.get("/api/providers/mancer/capabilities")
+    assert r.status_code == 200
+    data = r.json()
+    assert "capabilities" in data
+    assert isinstance(data["capabilities"], list)
+    assert "show_model" in data["capabilities"]
+
+
+def test_e2e_mancer_get_model_info(client, mancer_available):
+    """GET /api/providers/mancer/models/{model_id}/info devuelve provider_info y user_info."""
+    model_id = _get_first_mancer_model(client)
+    path_id = _encode_model_id(model_id)
+    r = client.get(f"/api/providers/mancer/models/{path_id}/info")
+    assert r.status_code == 200
+    data = r.json()
+    assert "provider_info" in data
+    assert "user_info" in data
+    assert "uncensored" in data["user_info"]
+    assert "instructions" in data["user_info"]
+    assert "instruction_ids" in data["user_info"]
+    assert "tags" in data["user_info"]
+
+
+def test_e2e_mancer_refresh_model_info(client, mancer_available):
+    """POST /api/providers/mancer/models/{model_id}/info/refresh refresca provider_info desde la API."""
+    model_id = _get_first_mancer_model(client)
+    path_id = _encode_model_id(model_id)
+    r = client.post(f"/api/providers/mancer/models/{path_id}/info/refresh")
+    assert r.status_code == 200
+    data = r.json()
+    assert "provider_info" in data
+    assert "user_info" in data
+    # Tras refresh, provider_info debería tener datos de GET /oai/v1/models/{id}
+    pi = data.get("provider_info") or {}
+    assert "fetched_at" in pi or "context_length" in pi or "id" in pi or "pricing" in pi
+
+
+def test_e2e_mancer_context_length(client, mancer_available):
+    """GET /api/providers/mancer/models/{model_id}/context-length devuelve context_length (número o null)."""
+    model_id = _get_first_mancer_model(client)
+    path_id = _encode_model_id(model_id)
+    r = client.get(f"/api/providers/mancer/models/{path_id}/context-length")
+    assert r.status_code == 200
+    data = r.json()
+    assert "context_length" in data
+    assert data["context_length"] is None or isinstance(data["context_length"], int)
+    if data["context_length"] is not None:
+        assert data["context_length"] > 0
 
 
 # ----- API Rules (biblioteca) -----

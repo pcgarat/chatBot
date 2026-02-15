@@ -9,6 +9,7 @@ import json
 import sys
 from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -17,6 +18,20 @@ from app.providers.base import LLMProvider, ProviderModelInfo, StreamChunk
 
 # URL base de Mancer (constante, igual para todos los usuarios)
 MANCER_BASE_URL = "https://neuro.mancer.tech"
+
+# IDs de modelos conocidos (catálogo público mancer.tech/models). Se usan como fallback
+# si GET /oai/v1/models devuelve 0 o 1 modelo (p. ej. cuando la API responde con formato distinto).
+MANCER_KNOWN_MODEL_IDS = [
+    "mythomax",
+    "mytholite",
+    "weaver",
+    "remm-slerp",
+    "goliath-120b",
+    "magnum-72b-v4",
+    "glm-4.7",
+    "danspe-v1-3-0-12b",
+    "danspe-v1-3-0-24b",
+]
 
 
 class MancerProvider:
@@ -85,6 +100,9 @@ class MancerProvider:
         """
         Lista los modelos disponibles en Mancer.
 
+        Acepta varios formatos de respuesta (OpenAI usa "data" como array;
+        algunas implementaciones usan "models" o devuelven un dict por id).
+
         Returns:
             Lista de ProviderModelInfo con info de cada modelo.
 
@@ -98,30 +116,69 @@ class MancerProvider:
                 response.raise_for_status()
                 data = response.json()
 
-            result = []
-            models = data.get("data", [])
-            for m in models:
-                model_id = m.get("id", "")
-                if not model_id:
-                    continue
+            # Normalizar a lista de dicts: soportar "data" (array), "models" (array),
+            # "data" como dict id -> info, o respuesta en raíz como array
+            if isinstance(data, list):
+                raw = data
+            elif isinstance(data, dict):
+                raw = data.get("data") or data.get("models")
+                if raw is None:
+                    raw = []
+            else:
+                raw = []
 
-                # Extraer pricing si está disponible
+            if isinstance(raw, dict):
+                # Un solo modelo: {"id": "x", "object": "model", ...}
+                if raw.get("id") and raw.get("object") == "model":
+                    models = [raw]
+                else:
+                    # Mapa id -> { ... info ... }
+                    models = [
+                        {"id": mid, **(m if isinstance(m, dict) else {})}
+                        for mid, m in raw.items()
+                    ]
+            else:
+                models = raw if isinstance(raw, list) else []
+
+            result = []
+            seen_ids = set()
+            for m in models:
+                model_id = m.get("id", "") if isinstance(m, dict) else ""
+                if not model_id or model_id in seen_ids:
+                    continue
+                seen_ids.add(model_id)
+
                 pricing = None
-                if "pricing" in m:
+                if isinstance(m, dict) and "pricing" in m:
                     p = m["pricing"]
-                    pricing = {
-                        "prompt_per_1k": p.get("prompt", 0),
-                        "completion_per_1k": p.get("completion", 0),
-                    }
+                    if isinstance(p, dict):
+                        pricing = {
+                            "prompt_per_1k": p.get("prompt", 0),
+                            "completion_per_1k": p.get("completion", 0),
+                        }
 
                 result.append(
                     ProviderModelInfo(
                         name=model_id,
                         provider=self.provider_name,
-                        context_length=m.get("context_length"),
+                        context_length=m.get("context_length") if isinstance(m, dict) else None,
                         pricing=pricing,
                     )
                 )
+
+            # Si la API devolvió 0 o 1 modelo, completar con el catálogo conocido (mancer.tech/models)
+            if len(result) < 2 and MANCER_KNOWN_MODEL_IDS:
+                for mid in MANCER_KNOWN_MODEL_IDS:
+                    if mid not in seen_ids:
+                        seen_ids.add(mid)
+                        result.append(
+                            ProviderModelInfo(
+                                name=mid,
+                                provider=self.provider_name,
+                                context_length=None,
+                                pricing=None,
+                            )
+                        )
             return result
         except httpx.HTTPStatusError as e:
             raise ConnectionError(
@@ -308,6 +365,47 @@ class MancerProvider:
                     str(e),
                     exception_type=type(e).__name__,
                 )
+
+    def show_model(self, model_name: str) -> dict[str, Any] | None:
+        """
+        Capacidad opcional: detalles del modelo vía GET /oai/v1/models/{model_id}.
+        Devuelve un dict normalizado para almacenar en provider_info (con fetched_at).
+        None si el modelo no existe o hay error de conexión.
+        """
+        from datetime import datetime, timezone
+
+        model_id_encoded = quote(str(model_name), safe="")
+        url = f"{self._base_url}/oai/v1/models/{model_id_encoded}"
+        try:
+            with httpx.Client(timeout=30) as client:
+                response = client.get(url, headers=self._get_headers())
+                if response.status_code != 200:
+                    return None
+                raw = response.json()
+                # Algunas APIs devuelven el modelo en {"data": {...}}
+                data = raw.get("data", raw) if isinstance(raw, dict) else {}
+        except Exception:
+            return None
+        if not data or not isinstance(data, dict):
+            return None
+        # Normalizar a formato provider_info (compatible con la UI de ficha)
+        fetched_at = datetime.now(tz=timezone.utc).isoformat()
+        context_length = data.get("context_length")
+        pricing = data.get("pricing")
+        out = {
+            "fetched_at": fetched_at,
+            "context_length": context_length,
+            "id": data.get("id"),
+            "pricing": pricing,
+        }
+        # Campos extra que Mancer pueda devolver (ej. arquitectura, límites)
+        if "architecture" in data:
+            out.setdefault("model_info", {})["architecture"] = data["architecture"]
+        if context_length is not None and "model_info" not in out:
+            out["model_info"] = {"context_length": context_length}
+        elif context_length is not None:
+            out["model_info"]["context_length"] = context_length
+        return {k: v for k, v in out.items() if v is not None}
 
     def validate_connection(self) -> bool:
         """

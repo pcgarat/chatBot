@@ -22,6 +22,8 @@
   let paramsSource = "default";
   /** Valores de referencia para no enviar un param si coincide (preset del modelo o default del provider). */
   let paramsBaseline = {};
+  /** Parámetros que el usuario ha marcado como "no enviar" (por conversación). Clave: conversationId o "_new". */
+  let paramsExcludedFromSendByConv = {};
   /** Uso de contexto (último turno): prompt_tokens, completion_tokens. null si no hay datos. */
   let lastUsage = null;
   /** Contexto máximo del modelo actual (tokens). null si no se conoce. */
@@ -53,6 +55,7 @@
     saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
     historyTurnsInput: document.getElementById("history-turns-input"),
     showDebugModeCheck: document.getElementById("show-debug-mode"),
+    autoScrollDuringGenerationCheck: document.getElementById("auto-scroll-during-generation"),
     messagesContainer: document.getElementById("messages-container"),
     instructionOverride: document.getElementById("instruction-override"),
     messageInput: document.getElementById("message-input"),
@@ -87,6 +90,7 @@
     btnFontSizeDecrease: document.getElementById("btn-font-size-decrease"),
     btnFontSizeIncrease: document.getElementById("btn-font-size-increase"),
     paramsSourceLabel: document.getElementById("params-source-label"),
+    paramsToSendContainer: document.getElementById("params-to-send-container"),
   };
 
   const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
@@ -150,7 +154,7 @@
   async function tryLoadModelsForProvider(providerName) {
     try {
       const data = await fetchJson(`${API}/providers/${providerName}/models`);
-      models = data.map((m) => m.name);
+      models = normalizeModelsResponse(data);
       currentProvider = providerName;
       if (el.providerSelect) el.providerSelect.value = providerName;
       if (el.modelSelect) {
@@ -163,12 +167,29 @@
     }
   }
 
+  /** Normaliza la respuesta de GET /api/providers/{provider}/models a array de nombres. */
+  function normalizeModelsResponse(data) {
+    function toNames(arr) {
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((m) => (m && typeof m === "object" && m.name != null ? String(m.name).trim() : null))
+        .filter((name) => name !== null && name !== "");
+    }
+    if (Array.isArray(data)) return toNames(data);
+    if (data && typeof data === "object") {
+      const arr = data.data || data.models;
+      if (Array.isArray(arr)) return toNames(arr);
+      if (typeof arr === "object" && arr !== null && !Array.isArray(arr)) return toNames(Object.values(arr));
+    }
+    return [];
+  }
+
   async function loadModels(preserveSelection = false) {
     const previousModel = preserveSelection && el.modelSelect ? el.modelSelect.value : null;
     const provider = (el.providerSelect && el.providerSelect.value) ? el.providerSelect.value : currentProvider || "ollama";
     try {
       const data = await fetchJson(`${API}/providers/${provider}/models`);
-      models = data.map((m) => m.name);
+      models = normalizeModelsResponse(data);
       if (el.modelSelect) {
         el.modelSelect.innerHTML = models.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
         if (previousModel && models.includes(previousModel)) {
@@ -247,6 +268,7 @@
       paramsConfig = { provider: providerName, params: {} };
       applyParamsConfig();
     }
+    renderParamsToSend();
   }
 
   function applyParamsConfig() {
@@ -497,9 +519,47 @@
     return lines.join("\n");
   }
 
+  /** Serializa a JSON de forma segura (referencias circulares → "[Circular]"). */
+  function safeStringify(obj, indent) {
+    const seen = new WeakSet();
+    return JSON.stringify(
+      obj,
+      function (key, value) {
+        if (typeof value === "object" && value !== null) {
+          if (seen.has(value)) return "[Circular]";
+          seen.add(value);
+        }
+        return value;
+      },
+      indent
+    );
+  }
+
   function renderProviderInfoBlock(providerInfo) {
     if (!el.modelInfoProviderContent) return;
-    el.modelInfoProviderContent.textContent = formatProviderInfoForDisplay(providerInfo || {});
+    let raw = providerInfo;
+    if (raw == null) raw = {};
+    if (typeof raw === "string") {
+      try {
+        raw = JSON.parse(raw);
+      } catch (_) {
+        el.modelInfoProviderContent.textContent = raw;
+        return;
+      }
+    }
+    if (typeof raw !== "object" || Array.isArray(raw)) {
+      el.modelInfoProviderContent.textContent = String(raw);
+      return;
+    }
+    if (Object.keys(raw).length === 0) {
+      el.modelInfoProviderContent.textContent = "";
+      return;
+    }
+    try {
+      el.modelInfoProviderContent.textContent = safeStringify(raw, 2);
+    } catch (_) {
+      el.modelInfoProviderContent.textContent = formatProviderInfoForDisplay(raw);
+    }
   }
 
   function fillUserInfoInModal(userInfo) {
@@ -706,6 +766,7 @@
   function debouncedSaveParams() {
     paramsSource = "user";
     renderParamsSourceLabel();
+    renderParamsToSend();
     if (saveParamsDebounceTimer) clearTimeout(saveParamsDebounceTimer);
     saveParamsDebounceTimer = setTimeout(function () {
       saveParamsDebounceTimer = null;
@@ -713,7 +774,17 @@
     }, SAVE_PARAMS_DEBOUNCE_MS);
   }
 
-  function buildModelParams() {
+  function getParamsExcludedFromSendSet() {
+    const key = currentConversationId || "_new";
+    if (!paramsExcludedFromSendByConv[key]) paramsExcludedFromSendByConv[key] = new Set();
+    return paramsExcludedFromSendByConv[key];
+  }
+
+  /**
+   * Parámetros que se enviarían (valor distinto al baseline). No aplica exclusiones del usuario.
+   * Usado para la UI "parámetros que se enviarán" y como base para el payload.
+   */
+  function buildModelParamsRaw() {
     const out = {};
     for (const paramId of Object.keys(paramsConfig.params)) {
       const spec = paramsConfig.params[paramId];
@@ -740,6 +811,18 @@
         same = (typeof def === "number" && Number(current) === def) || (current === def) || (String(current) === String(def));
       }
       if (!same) out[paramId] = current;
+    }
+    return out;
+  }
+
+  /** Parámetros que se enviarán al backend: raw menos los que el usuario ha excluido. */
+  function buildModelParams() {
+    const raw = buildModelParamsRaw();
+    const excluded = getParamsExcludedFromSendSet();
+    if (excluded.size === 0) return raw;
+    const out = {};
+    for (const k of Object.keys(raw)) {
+      if (!excluded.has(k)) out[k] = raw[k];
     }
     return out;
   }
@@ -883,6 +966,56 @@
     if (el.paramsSourceLabel) el.paramsSourceLabel.textContent = paramsSource;
   }
 
+  /** Icono para "no enviar este parámetro". */
+  const paramExcludeIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"/><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"/></svg>";
+  /** Icono para "incluir de nuevo en el envío". */
+  const paramIncludeIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>";
+
+  function renderParamsToSend() {
+    if (!el.paramsToSendContainer) return;
+    const raw = buildModelParamsRaw();
+    const excluded = getParamsExcludedFromSendSet();
+    const toSend = Object.keys(raw).filter((id) => !excluded.has(id));
+    const excludedList = Array.from(excluded);
+    const specLabel = (paramId) => (paramsConfig.params[paramId] && paramsConfig.params[paramId].label) || paramId;
+    let html = "";
+    if (toSend.length > 0 || excludedList.length > 0) {
+      html += "<div class=\"params-to-send-section\">";
+      if (toSend.length > 0) {
+        html += "<div class=\"params-to-send-row\"><span class=\"params-to-send-title\">Se enviarán:</span>";
+        toSend.forEach((paramId) => {
+          html += `<span class="params-to-send-chip">${escapeHtml(specLabel(paramId))}<button type="button" class="params-to-send-btn params-to-send-exclude" data-param-id="${escapeHtml(paramId)}" title="No enviar este parámetro" aria-label="No enviar ${escapeHtml(paramId)}">${paramExcludeIconSvg}</button></span>`;
+        });
+        html += "</div>";
+      }
+      if (excludedList.length > 0) {
+        html += "<div class=\"params-to-send-row params-to-send-excluded-row\"><span class=\"params-to-send-title\">Excluidos (no se envían):</span>";
+        excludedList.forEach((paramId) => {
+          html += `<span class="params-to-send-chip params-to-send-chip-excluded">${escapeHtml(specLabel(paramId))}<button type="button" class="params-to-send-btn params-to-send-include" data-param-id="${escapeHtml(paramId)}" title="Incluir en el envío" aria-label="Incluir ${escapeHtml(paramId)}">${paramIncludeIconSvg}</button></span>`;
+        });
+        html += "</div>";
+      }
+      html += "</div>";
+    }
+    el.paramsToSendContainer.innerHTML = html;
+    el.paramsToSendContainer.querySelectorAll(".params-to-send-exclude").forEach((btn) => {
+      btn.addEventListener("click", function () {
+        const id = btn.getAttribute("data-param-id");
+        if (id) getParamsExcludedFromSendSet().add(id);
+        renderParamsToSend();
+        debouncedSaveParams();
+      });
+    });
+    el.paramsToSendContainer.querySelectorAll(".params-to-send-include").forEach((btn) => {
+      btn.addEventListener("click", function () {
+        const id = btn.getAttribute("data-param-id");
+        if (id) getParamsExcludedFromSendSet().delete(id);
+        renderParamsToSend();
+        debouncedSaveParams();
+      });
+    });
+  }
+
   async function setCurrentConversation(conv) {
     const previousConvId = currentConversationId;
     if (previousConvId && conv && conv.id !== previousConvId && el.instructionOverride) {
@@ -954,6 +1087,7 @@
     }
     renderRules();
     renderParamsSourceLabel();
+    renderParamsToSend();
     renderMessages();
     loadConversations();
     lastUsage = null;
@@ -1234,6 +1368,18 @@
     return el.showDebugModeCheck && el.showDebugModeCheck.checked;
   }
 
+  /** Devuelve si el usuario quiere scroll automático al final mientras se genera la respuesta. Por defecto true. */
+  function isAutoScrollDuringGeneration() {
+    return !el.autoScrollDuringGenerationCheck || el.autoScrollDuringGenerationCheck.checked;
+  }
+
+  /** Hace scroll al final del panel de mensajes solo si la opción "Auto-scroll al generar" está activa. */
+  function scrollToBottomIfEnabled() {
+    if (isAutoScrollDuringGeneration() && el.messagesContainer) {
+      el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+    }
+  }
+
   function renderMessages() {
     if (!el.messagesContainer) return;
     if (messages.length === 0) {
@@ -1301,7 +1447,7 @@
         if (msg && msg.content) copyMessageToClipboard(msg.content);
       });
     });
-    if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+    scrollToBottomIfEnabled();
   }
 
   async function sendMessage() {
@@ -1329,7 +1475,7 @@
     debugStreamEl.style.display = showDebug ? "block" : "none";
     currentStreamingMsgEl = msgEl;
     currentStreamingDebugEl = debugStreamEl;
-    if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+    scrollToBottomIfEnabled();
 
     currentAbortController = new AbortController();
     setCancelButtonState();
@@ -1394,7 +1540,7 @@
             if (data.content !== undefined) {
               fullContent += data.content;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
-              if (el.messagesContainer) el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+              scrollToBottomIfEnabled();
             }
             if (data.stream_metadata && data.stream_metadata.usage) {
               lastUsage = {
@@ -1507,6 +1653,7 @@
     lastUsage = null;
     await loadContextLength();
     await ensureParamsBaselineForCurrentModel();
+    renderParamsToSend();
   }
 
   if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
@@ -1524,6 +1671,22 @@
     } else {
       renderMessages();
     }
+  });
+  const AUTO_SCROLL_STORAGE_KEY = "autoScrollDuringGeneration";
+  function initAutoScrollDuringGeneration() {
+    if (!el.autoScrollDuringGenerationCheck) return;
+    try {
+      const stored = localStorage.getItem(AUTO_SCROLL_STORAGE_KEY);
+      el.autoScrollDuringGenerationCheck.checked = stored !== "false";
+    } catch (_) {
+      el.autoScrollDuringGenerationCheck.checked = true;
+    }
+  }
+  initAutoScrollDuringGeneration();
+  if (el.autoScrollDuringGenerationCheck) el.autoScrollDuringGenerationCheck.addEventListener("change", function () {
+    try {
+      localStorage.setItem(AUTO_SCROLL_STORAGE_KEY, el.autoScrollDuringGenerationCheck.checked ? "true" : "false");
+    } catch (_) {}
   });
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
@@ -1735,7 +1898,8 @@
     });
     el.modelSelectInput.addEventListener("focus", function () {
       if (modelSelectListHideTimer) clearTimeout(modelSelectListHideTimer);
-      filterAndShowModelSelectList(el.modelSelectInput.value);
+      // Al abrir el desplegable mostrar todas las opciones; si se filtra por el valor actual solo se ve una
+      filterAndShowModelSelectList("");
     });
     el.modelSelectInput.addEventListener("keydown", function (e) {
       if (e.key === "Escape") {
