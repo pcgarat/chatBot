@@ -105,3 +105,17 @@ def openai_available():
             "Configura la variable de entorno para ejecutar tests e2e de OpenAI."
         )
     return True
+
+
+@pytest.fixture(scope="session")
+def mancer_available():
+    """
+    Comprueba si Mancer está configurado (MANCER_API_KEY) para tests e2e de Mancer.
+    Si no hay key, hace skip de los tests que dependan de esta fixture.
+    """
+    if not getattr(settings, "mancer_api_key", ""):
+        pytest.skip(
+            "MANCER_API_KEY no configurada. "
+            "Configura la variable de entorno para ejecutar tests e2e de Mancer."
+        )
+    return True

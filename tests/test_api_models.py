@@ -172,6 +172,25 @@ def test_get_provider_params_ollama(client):
     assert params["max_tokens"].get("api_key") == "options.num_predict"
 
 
+def test_get_provider_params_mancer(client):
+    """GET /api/providers/mancer/params devuelve los parámetros (API compatible OpenAI)."""
+    r = client.get("/api/providers/mancer/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider"] == "mancer"
+    assert "params" in data
+    params = data["params"]
+    assert "temperature" in params
+    assert params["temperature"].get("api_key") == "temperature"
+    assert params["temperature"].get("default") == 0.8
+    assert "max_tokens" in params
+    assert params["max_tokens"].get("api_key") == "max_tokens"
+    assert "stop_sequences" in params
+    assert params["stop_sequences"].get("api_key") == "stop"
+    assert "presence_penalty" in params
+    assert "frequency_penalty" in params
+
+
 def test_get_provider_params_unknown(client):
     """GET /api/providers/unknown/params devuelve params vacío."""
     r = client.get("/api/providers/unknown_provider_xyz/params")

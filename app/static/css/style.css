@@ -395,6 +395,75 @@ body {
   padding: 0.5rem;
 }
 
+/* Bloque "Parámetros que se enviarán" (arriba de la pestaña Parámetros) */
+.params-to-send-container {
+  flex-shrink: 0;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.params-to-send-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.params-to-send-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.params-to-send-title {
+  color: var(--text-muted);
+  margin-right: 0.25rem;
+  flex-shrink: 0;
+}
+
+.params-to-send-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.params-to-send-chip-excluded {
+  opacity: 0.85;
+  border-style: dashed;
+}
+
+.params-to-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.params-to-send-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.params-to-send-exclude:hover {
+  color: var(--error, #c00);
+}
+
+.params-to-send-include:hover {
+  color: var(--success, #0a0);
+}
+
 .params-source-row {
   flex-shrink: 0;
   display: flex;
@@ -423,7 +492,8 @@ body {
   background: var(--bg-sidebar);
 }
 
-.sidebar-option.sidebar-debug-option {
+.sidebar-option.sidebar-debug-option,
+.sidebar-option.sidebar-autoscroll-option {
   padding: 0.75rem 1rem;
   flex-shrink: 0;
 }
@@ -1419,8 +1489,13 @@ body {
 
 /* Modal ficha del modelo */
 .model-info-modal-content {
-  width: 520px;
+  width: min(90vw, 800px);
   max-width: 95vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .model-info-subtitle {
@@ -1447,8 +1522,9 @@ body {
   padding: 0.75rem 1rem;
   font-size: 0.85rem;
   color: var(--text-muted);
-  max-height: 180px;
+  max-height: min(50vh, 400px);
   overflow-y: auto;
+  overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }

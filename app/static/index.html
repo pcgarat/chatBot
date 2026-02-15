@@ -49,6 +49,7 @@
           </div>
         </div>
         <div role="tabpanel" id="tab-parametros" class="sidebar-tabpanel" aria-labelledby="tab-btn-parametros" hidden>
+          <div id="params-to-send-container" class="params-to-send-container" aria-live="polite"></div>
           <div class="sidebar-accordion sidebar-accordion-params">
         <div class="accordion-section param-group" data-accordion-section="params-modelo">
           <button type="button" class="accordion-header" aria-expanded="false" aria-controls="accordion-params-modelo" id="accordion-params-modelo-btn">
@@ -175,6 +176,12 @@
           <label class="debug-label">
             <input type="checkbox" id="show-debug-mode" title="Mostrar request/response completo enviado al LLM" />
             <span>Mostrar debug LLM</span>
+          </label>
+        </div>
+        <div class="sidebar-option sidebar-autoscroll-option">
+          <label class="debug-label">
+            <input type="checkbox" id="auto-scroll-during-generation" title="Durante la generación, hacer scroll al último contenido. Si lo desactivas, puedes leer el historial mientras se genera." />
+            <span>Auto-scroll al generar</span>
           </label>
         </div>
       </div>
