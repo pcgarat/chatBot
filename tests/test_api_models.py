@@ -363,6 +363,30 @@ def test_get_model_info_invalid_provider(client, model_info_use_tmp_path):
     assert r.status_code == 400
 
 
+@patch("app.routers.api_models.get_presets")
+@patch("app.routers.api_models.get_model_info")
+@patch("app.routers.api_models.get_provider")
+def test_get_model_info_openai_merges_preset_tags(
+    mock_get_provider, mock_get_model_info, mock_get_presets, client, model_info_use_tmp_path
+):
+    """Para openai, la ficha devuelve tags del usuario + tags del preset (features/modalities)."""
+    mock_get_model_info.return_value = {
+        "provider_info": {},
+        "user_info": {"tags": ["user-tag"], "uncensored": False, "instruction_ids": []},
+    }
+    mock_get_presets.return_value = {
+        "gpt-4o-mini": {"tags": ["Chat Completions", "Image", "Realtime"], "context_length": {"max": 128000}},
+    }
+    r = client.get("/api/providers/openai/models/gpt-4o-mini/info")
+    assert r.status_code == 200
+    tags = r.json()["user_info"]["tags"]
+    assert "user-tag" in tags
+    assert "Chat Completions" in tags
+    assert "Image" in tags
+    assert "Realtime" in tags
+    assert tags == sorted(tags)
+
+
 @patch("app.routers.api_models.get_model_details")
 def test_post_info_refresh_updates_provider_info(mock_get_model_details, client, model_info_use_tmp_path):
     """POST .../info/refresh llama a show_model y persiste provider_info."""

@@ -263,6 +263,60 @@ def test_e2e_get_context_length(client, ollama_available):
         assert data["context_length"] > 0
 
 
+# ----- API OpenAI (e2e cuando OPENAI_API_KEY está configurada) -----
+
+
+def test_e2e_list_providers_includes_openai_when_key_set(client, openai_available):
+    """GET /api/providers incluye openai cuando OPENAI_API_KEY está configurada."""
+    r = client.get("/api/providers")
+    assert r.status_code == 200
+    names = [p["name"] for p in r.json()]
+    assert "openai" in names
+
+
+def test_e2e_openai_models(client, openai_available):
+    """GET /api/providers/openai/models devuelve lista de modelos (API real)."""
+    r = client.get("/api/providers/openai/models")
+    assert r.status_code == 200
+    models = r.json()
+    assert isinstance(models, list)
+    for m in models:
+        assert "name" in m
+        assert m.get("provider") == "openai"
+
+
+def test_e2e_openai_validate(client, openai_available):
+    """GET /api/providers/openai/validate devuelve 200 y ok cuando la API responde."""
+    r = client.get("/api/providers/openai/validate")
+    assert r.status_code == 200
+    data = r.json()
+    assert "ok" in data
+
+
+def test_e2e_openai_params(client, openai_available):
+    """GET /api/providers/openai/params devuelve provider y params."""
+    r = client.get("/api/providers/openai/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("provider") == "openai"
+    assert "params" in data
+
+
+def test_e2e_openai_context_length(client, openai_available):
+    """GET /api/providers/openai/models/{model_id}/context-length devuelve 200 (context_length puede ser null)."""
+    # Usar un modelo conocido; si no hay modelos listados, usar gpt-4o-mini como path
+    r_models = client.get("/api/providers/openai/models")
+    assert r_models.status_code == 200
+    models = r_models.json()
+    model_id = models[0]["name"] if models else "gpt-4o-mini"
+    path_id = _encode_model_id(model_id)
+    r = client.get(f"/api/providers/openai/models/{path_id}/context-length")
+    assert r.status_code == 200
+    data = r.json()
+    assert "context_length" in data
+    assert data["context_length"] is None or isinstance(data["context_length"], int)
+
+
 # ----- API Rules (biblioteca) -----
 
 
