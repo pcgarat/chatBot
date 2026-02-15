@@ -24,6 +24,56 @@ from app.schemas import (
 router = APIRouter(prefix="/api", tags=["conversations"])
 
 
+def _parse_model_params(raw: str | None) -> dict | None:
+    """Convierte model_params de la BD (JSON string) a dict para la API."""
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_system_instructions(raw: str | None) -> list[dict] | None:
+    """
+    Convierte system_instructions de la BD (JSON) a list de dicts { title, content } para la API.
+    Formato antiguo (lista de strings) se normaliza a reglas con título "Regla 1", "Regla 2", etc.
+    """
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            return None
+        out = []
+        for i, item in enumerate(data):
+            if isinstance(item, str):
+                out.append({"title": f"Regla {i + 1}", "content": item})
+            elif isinstance(item, dict) and ("title" in item or "content" in item):
+                out.append({
+                    "title": str(item.get("title", "")) if item.get("title") else f"Regla {i + 1}",
+                    "content": str(item.get("content", "")),
+                })
+            else:
+                continue
+        return out if out else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _effective_system_instructions(conv) -> list[dict]:
+    """
+    Devuelve la lista de reglas de la conversación como list de { title, content }.
+    Fallback a system_instruction_global como una sola regla con título "Instrucción global".
+    """
+    parsed = _parse_system_instructions(getattr(conv, "system_instructions", None))
+    if parsed:
+        return parsed
+    global_text = (conv.system_instruction_global or "").strip()
+    return [{"title": "Instrucción global", "content": global_text}] if global_text else []
+
+
 def _normalize_stream_metadata_usage(metadata: dict | None) -> dict:
     """
     Asegura que stream_metadata incluya "usage" normalizado para el frontend.
@@ -51,6 +101,13 @@ def list_conversations(db: Session = Depends(get_db)):
     return convs
 
 
+def _rules_to_store(rules: list | None):
+    """Convierte list[RuleItem] a list[dict] para guardar en BD."""
+    if not rules:
+        return None
+    return [r.model_dump() if hasattr(r, "model_dump") else r for r in rules]
+
+
 @router.post("/conversations", response_model=ConversationOut)
 def create_conversation(body: ConversationCreate, db: Session = Depends(get_db)):
     conv = crud.create_conversation(
@@ -59,15 +116,21 @@ def create_conversation(body: ConversationCreate, db: Session = Depends(get_db))
         model_id=body.model_id,
         provider=body.provider,
         system_instruction_global=body.system_instruction_global,
+        system_instructions=_rules_to_store(body.system_instructions),
         inject_instruction_every=body.inject_instruction_every,
     )
+    out_instructions = _parse_system_instructions(getattr(conv, "system_instructions", None))
+    if out_instructions is None and conv.system_instruction_global:
+        out_instructions = [{"title": "Instrucción global", "content": conv.system_instruction_global}]
     return ConversationOut(
         id=conv.id,
         title=conv.title,
         model_id=conv.model_id,
         provider=conv.provider,
         system_instruction_global=conv.system_instruction_global,
+        system_instructions=out_instructions,
         inject_instruction_every=conv.inject_instruction_every,
+        model_params=None,
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=[],
@@ -89,13 +152,18 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         )
         for m in conv.messages
     ]
+    out_instructions = _parse_system_instructions(getattr(conv, "system_instructions", None))
+    if out_instructions is None and conv.system_instruction_global:
+        out_instructions = [{"title": "Instrucción global", "content": conv.system_instruction_global}]
     return ConversationOut(
         id=conv.id,
         title=conv.title,
         model_id=conv.model_id,
         provider=conv.provider,
         system_instruction_global=conv.system_instruction_global,
+        system_instructions=out_instructions,
         inject_instruction_every=conv.inject_instruction_every,
+        model_params=_parse_model_params(getattr(conv, "model_params", None)),
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=messages,
@@ -113,7 +181,9 @@ def update_conversation(
         model_id=body.model_id,
         provider=body.provider,
         system_instruction_global=body.system_instruction_global,
+        system_instructions=_rules_to_store(body.system_instructions) if body.system_instructions is not None else None,
         inject_instruction_every=body.inject_instruction_every,
+        model_params=body.model_params,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
@@ -127,13 +197,18 @@ def update_conversation(
         )
         for m in conv.messages
     ]
+    out_instructions = _parse_system_instructions(getattr(conv, "system_instructions", None))
+    if out_instructions is None and conv.system_instruction_global:
+        out_instructions = [{"title": "Instrucción global", "content": conv.system_instruction_global}]
     return ConversationOut(
         id=conv.id,
         title=conv.title,
         model_id=conv.model_id,
         provider=conv.provider,
         system_instruction_global=conv.system_instruction_global,
+        system_instructions=out_instructions,
         inject_instruction_every=conv.inject_instruction_every,
+        model_params=_parse_model_params(getattr(conv, "model_params", None)),
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=messages,
@@ -214,7 +289,11 @@ def _build_llm_messages(
     if system_instruction_global is not None:
         global_text = (system_instruction_global or "").strip()
     else:
-        global_text = (conv.system_instruction_global or "").strip()
+        instructions = _effective_system_instructions(conv)
+        global_text = " ".join(
+            (c or "").strip() for c in (r.get("content", "") for r in instructions)
+            if (c or "").strip()
+        ).strip() if instructions else ""
     if global_text:
         parts.append(global_text)
     if instruction_override and instruction_override.strip():

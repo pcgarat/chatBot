@@ -17,8 +17,10 @@ class Conversation(Base):
     title = Column(String(512), nullable=False, default="Nueva conversación")
     model_id = Column(String(128), nullable=False, default="llama3.2")
     provider = Column(String(64), nullable=False, default="ollama")  # ollama | mancer
-    system_instruction_global = Column(Text, nullable=True)
+    system_instruction_global = Column(Text, nullable=True)  # Legado: una sola instrucción; si system_instructions está poblado se usa ese
+    system_instructions = Column(Text, nullable=True)  # JSON: lista de reglas que se concatenan con espacio para el mensaje system
     inject_instruction_every = Column(Integer, nullable=True)  # Deprecado: se ignora. Las instrucciones se envían siempre.
+    model_params = Column(Text, nullable=True)  # JSON: param_id -> value (parámetros guardados por el usuario en esta conversación)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

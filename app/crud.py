@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ def create_conversation(
     model_id: str = "llama3.2",
     provider: str = "ollama",
     system_instruction_global: str | None = None,
+    system_instructions: list | None = None,
     inject_instruction_every: int | None = None,
 ) -> Conversation:
     conv = Conversation(
@@ -21,6 +23,7 @@ def create_conversation(
         model_id=model_id,
         provider=provider,
         system_instruction_global=system_instruction_global,
+        system_instructions=json.dumps(system_instructions) if system_instructions else None,
         inject_instruction_every=inject_instruction_every if inject_instruction_every and inject_instruction_every > 0 else None,
     )
     db.add(conv)
@@ -44,7 +47,9 @@ def update_conversation(
     model_id: str | None = None,
     provider: str | None = None,
     system_instruction_global: str | None = None,
+    system_instructions: list | None = None,
     inject_instruction_every: int | None = _INJECT_UNSET,
+    model_params: dict | None = None,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
@@ -57,8 +62,12 @@ def update_conversation(
         conv.provider = provider
     if system_instruction_global is not None:
         conv.system_instruction_global = system_instruction_global
+    if system_instructions is not None:
+        conv.system_instructions = json.dumps(system_instructions) if system_instructions else None
     if inject_instruction_every is not _INJECT_UNSET:
         conv.inject_instruction_every = inject_instruction_every if (inject_instruction_every and inject_instruction_every > 0) else None
+    if model_params is not None:
+        conv.model_params = json.dumps(model_params) if model_params else None
     conv.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(conv)

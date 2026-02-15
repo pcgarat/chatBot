@@ -53,6 +53,18 @@ def test_update_conversation(db_session):
     assert crud.update_conversation(db_session, "00000000-0000-0000-0000-000000000000", title="X") is None
 
 
+def test_update_conversation_model_params(db_session):
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    assert conv.model_params is None
+    params = {"temperature": 0.7, "num_ctx": 4096}
+    updated = crud.update_conversation(db_session, conv.id, model_params=params)
+    assert updated is not None
+    import json
+    assert json.loads(updated.model_params) == params
+    updated2 = crud.update_conversation(db_session, conv.id, model_params={})
+    assert updated2.model_params is None
+
+
 def test_delete_conversation(db_session):
     conv = crud.create_conversation(db_session, title="Borrar", model_id="m")
     ok = crud.delete_conversation(db_session, conv.id)

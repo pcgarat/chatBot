@@ -26,37 +26,37 @@
           </button>
         </div>
       </div>
-      <div class="sidebar-accordion">
-        <div class="accordion-section is-open" data-accordion-section="conversaciones">
-          <button type="button" class="accordion-header" aria-expanded="true" aria-controls="accordion-conversaciones" id="accordion-conversaciones-btn">
-            <span class="accordion-title">Conversaciones</span>
-            <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="accordion-content" id="accordion-conversaciones" role="region" aria-labelledby="accordion-conversaciones-btn">
-            <div class="conversations-list" id="conversations-list"></div>
-          </div>
+      <div class="sidebar-tabs" role="tablist" aria-label="Panel lateral">
+        <button type="button" role="tab" id="tab-btn-conversaciones" aria-selected="true" aria-controls="tab-conversaciones" data-tab="conversaciones">Conversaciones</button>
+        <button type="button" role="tab" id="tab-btn-reglas" aria-selected="false" aria-controls="tab-reglas" data-tab="reglas">Reglas</button>
+        <button type="button" role="tab" id="tab-btn-parametros" aria-selected="false" aria-controls="tab-parametros" data-tab="parametros">Parámetros</button>
+      </div>
+      <div class="sidebar-tabpanels">
+        <div role="tabpanel" id="tab-conversaciones" class="sidebar-tabpanel is-active" aria-labelledby="tab-btn-conversaciones">
+          <div class="conversations-list" id="conversations-list"></div>
         </div>
-        <div class="accordion-section is-open" data-accordion-section="reglas">
-          <button type="button" class="accordion-header" aria-expanded="true" aria-controls="accordion-reglas" id="accordion-reglas-btn">
-            <span class="accordion-title">Reglas</span>
-            <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="accordion-content" id="accordion-reglas" role="region" aria-labelledby="accordion-reglas-btn">
-            <div class="sidebar-option instructions-panel">
-              <label class="instructions-label">Instrucciones para todos los mensajes (no se muestran en el chat):</label>
-              <textarea id="system-instruction-global" rows="2" placeholder="Ej: Responde siempre en tono formal y breve."></textarea>
-            </div>
-            <div class="sidebar-option chromadb-save-option">
-              <label class="chromadb-label">Guardar en ChromaDB (RAG):</label>
-              <select id="save-to-chromadb-select">
-                <option value="none" selected>Nada</option>
-                <option value="user">Mensajes introducidos</option>
-                <option value="assistant">Respuestas</option>
-                <option value="both">Ambas</option>
-              </select>
+        <div role="tabpanel" id="tab-reglas" class="sidebar-tabpanel" aria-labelledby="tab-btn-reglas" hidden>
+          <div class="sidebar-option rules-panel">
+            <label class="instructions-label">Reglas (se envían como un solo mensaje system, concatenadas con espacio):</label>
+            <div id="rules-list" class="rules-list" role="list"></div>
+            <div class="rules-add">
+              <input type="text" id="rule-new-title" class="rule-new-title" placeholder="Título de la nueva regla" aria-label="Título" />
+              <textarea id="rule-new-input" rows="2" placeholder="Contenido de la regla..." aria-label="Contenido de la nueva regla"></textarea>
+              <button type="button" id="btn-add-rule" class="btn btn-secondary btn-small">Añadir regla</button>
             </div>
           </div>
+          <div class="sidebar-option chromadb-save-option">
+            <label class="chromadb-label">Guardar en ChromaDB (RAG):</label>
+            <select id="save-to-chromadb-select">
+              <option value="none" selected>Nada</option>
+              <option value="user">Mensajes introducidos</option>
+              <option value="assistant">Respuestas</option>
+              <option value="both">Ambas</option>
+            </select>
+          </div>
         </div>
+        <div role="tabpanel" id="tab-parametros" class="sidebar-tabpanel" aria-labelledby="tab-btn-parametros" hidden>
+          <div class="sidebar-accordion sidebar-accordion-params">
         <div class="accordion-section param-group" data-accordion-section="params-modelo">
           <button type="button" class="accordion-header" aria-expanded="false" aria-controls="accordion-params-modelo" id="accordion-params-modelo-btn">
             <span class="accordion-title">Selección de modelo y contexto</span>
@@ -168,6 +168,11 @@
             </div>
           </div>
         </div>
+          </div>
+        </div>
+      </div>
+      <div class="params-source-row">
+        <span id="params-source-label" class="params-source-label" aria-live="polite"></span>
       </div>
       <div class="sidebar-footer">
         <div class="sidebar-option sidebar-debug-option">
@@ -207,6 +212,14 @@
             </div>
           </div>
           <span id="context-usage-text" class="context-usage-text"></span>
+          <div class="font-size-controls" role="group" aria-label="Tamaño del texto de la conversación">
+            <button type="button" id="btn-font-size-decrease" class="btn-icon font-size-btn" title="Reducir tamaño del texto" aria-label="Reducir tamaño del texto">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button type="button" id="btn-font-size-increase" class="btn-icon font-size-btn" title="Aumentar tamaño del texto" aria-label="Aumentar tamaño del texto">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
         </div>
       </div>
       <div class="messages-container" id="messages-container"></div>
