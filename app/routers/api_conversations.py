@@ -381,9 +381,9 @@ def _build_llm_messages(
 
     Orden:
     1. Rol system: contexto RAG (si hay) + reglas del panel (instrucciones globales)
-    2. Rol system (opcional): instrucción solo para este mensaje (instruction_override), por separado
-    3. Últimos N pares (user + assistant) del historial, de más antiguo a más nuevo
-    4. Rol user: prompt actual
+    2. Últimos N pares (user + assistant) del historial, de más antiguo a más nuevo
+    3. Rol user: prompt actual del usuario
+    4. Rol user (opcional): instrucción solo para este mensaje (instruction_override), en último lugar
 
     Devuelve (messages, injecting_instruction).
     """
@@ -404,8 +404,6 @@ def _build_llm_messages(
     messages = []
     if parts:
         messages.append({"role": "system", "content": "\n\n".join(parts)})
-    if instruction_override and instruction_override.strip():
-        messages.append({"role": "system", "content": instruction_override.strip()})
 
     # Historial: últimos N pares (user + assistant), de más antiguo a más nuevo. Por defecto 5; 0 = sin historial.
     raw_turns = getattr(conv, "history_turns", None)
@@ -422,6 +420,8 @@ def _build_llm_messages(
             messages.append({"role": m.role, "content": m.content})
 
     messages.append({"role": "user", "content": new_content})
+    if instruction_override and instruction_override.strip():
+        messages.append({"role": "user", "content": instruction_override.strip()})
     injecting = bool(global_text)
     return messages, injecting
 
