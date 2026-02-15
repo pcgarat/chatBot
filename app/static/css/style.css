@@ -181,6 +181,12 @@ body {
   display: flex;
 }
 
+.rules-tab-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .sidebar-tabpanel .conversations-list {
   min-height: 0;
   flex: 1;
@@ -574,6 +580,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .chat-header {
@@ -800,6 +807,11 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.rule-tag-label:hover {
+  text-decoration: underline;
 }
 
 .rule-tag-remove {
@@ -825,31 +837,130 @@ body {
   color: var(--text);
 }
 
-.rules-add {
+.rules-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.rules-add-block {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
 }
 
-.rules-add .rule-new-title {
+.rules-add-block .rule-new-title,
+.rules-add-block textarea {
   width: 100%;
   padding: 0.4rem 0.6rem;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 6px;
+  color: var(--text);
+  font-size: 0.85rem;
+  box-sizing: border-box;
 }
 
-.rules-add textarea {
+.rules-add-block textarea {
+  min-height: 44px;
+  resize: vertical;
+}
+
+/* Bloque crear regla al pie del panel Reglas, encima del footer (debug) */
+.rules-create-block {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.rules-create-block .rule-new-title,
+.rules-create-block textarea {
   width: 100%;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
   font-size: 0.85rem;
-  resize: vertical;
-  min-height: 44px;
   box-sizing: border-box;
+}
+
+.rules-create-block textarea {
+  min-height: 44px;
+  resize: vertical;
+}
+
+.rules-add-existing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rules-add-existing-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.rule-library-select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.rule-edit-modal-content {
+  max-width: 420px;
+}
+
+.rule-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.rule-edit-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.rule-edit-input,
+.rule-edit-textarea {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.rule-edit-textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.rule-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.rule-edit-btn-delete {
+  margin-right: auto;
+  color: var(--text-muted);
+}
+
+.rule-edit-btn-delete:hover {
+  color: var(--text);
 }
 
 .sidebar-option.chromadb-save-option {

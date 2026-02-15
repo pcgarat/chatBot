@@ -11,6 +11,8 @@ from app.provider_params import build_extra_body
 from app.providers import get_provider
 from app.slash_commands import parse_slash_command
 from app.db import get_db
+from app.crud import create_rule as crud_create_rule
+from app.crud import get_rule as crud_get_rule
 from app.schemas import (
     ConversationCreate,
     ConversationListItem,
@@ -37,8 +39,8 @@ def _parse_model_params(raw: str | None) -> dict | None:
 
 def _parse_system_instructions(raw: str | None) -> list[dict] | None:
     """
-    Convierte system_instructions de la BD (JSON) a list de dicts { title, content } para la API.
-    Formato antiguo (lista de strings) se normaliza a reglas con título "Regla 1", "Regla 2", etc.
+    Convierte system_instructions de la BD (JSON) a list de dicts con rule_id?, title?, content?.
+    Formato antiguo (lista de strings) se normaliza a reglas con título "Regla 1", etc. sin rule_id.
     """
     if not raw:
         return None
@@ -50,11 +52,14 @@ def _parse_system_instructions(raw: str | None) -> list[dict] | None:
         for i, item in enumerate(data):
             if isinstance(item, str):
                 out.append({"title": f"Regla {i + 1}", "content": item})
-            elif isinstance(item, dict) and ("title" in item or "content" in item):
-                out.append({
-                    "title": str(item.get("title", "")) if item.get("title") else f"Regla {i + 1}",
-                    "content": str(item.get("content", "")),
-                })
+            elif isinstance(item, dict):
+                row = {}
+                if item.get("rule_id"):
+                    row["rule_id"] = str(item["rule_id"])
+                row["title"] = str(item.get("title", "")) if item.get("title") else (f"Regla {i + 1}" if "content" not in item else "")
+                row["content"] = str(item.get("content", ""))
+                if "title" in item or "content" in item or row.get("rule_id"):
+                    out.append(row)
             else:
                 continue
         return out if out else None
@@ -62,16 +67,111 @@ def _parse_system_instructions(raw: str | None) -> list[dict] | None:
         return None
 
 
-def _effective_system_instructions(conv) -> list[dict]:
+def _resolve_system_instructions(parsed: list[dict] | None, db) -> list[dict]:
     """
-    Devuelve la lista de reglas de la conversación como list de { title, content }.
-    Fallback a system_instruction_global como una sola regla con título "Instrucción global".
+    Resuelve rule_id contra la biblioteca; devuelve list de { rule_id?, title, content } para la API.
     """
+    if not parsed:
+        return []
+    out = []
+    for item in parsed:
+        rule_id = item.get("rule_id")
+        if rule_id:
+            rule = crud_get_rule(db, rule_id)
+            if rule:
+                out.append({"rule_id": rule_id, "title": rule.title, "content": rule.content})
+            else:
+                out.append({
+                    "rule_id": rule_id,
+                    "title": item.get("title") or "Regla eliminada",
+                    "content": item.get("content", ""),
+                })
+        else:
+            out.append({
+                "title": item.get("title") or "",
+                "content": item.get("content", ""),
+            })
+    return out
+
+
+def _parse_instruction_ids(raw: str | None) -> list[str] | None:
+    """Parsea instruction_ids de la BD (JSON array de strings)."""
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            return None
+        return [str(x) for x in data if x]
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_instruction_ids(ids: list[str], db) -> list[dict]:
+    """Resuelve lista de rule_id contra la biblioteca; devuelve list de { rule_id, title, content }."""
+    out = []
+    for rule_id in ids:
+        rule = crud_get_rule(db, rule_id)
+        if rule:
+            out.append({"rule_id": rule.id, "title": rule.title, "content": rule.content})
+        else:
+            out.append({"rule_id": rule_id, "title": "Regla eliminada", "content": ""})
+    return out
+
+
+def _instructions_to_ids(rules: list | None, db) -> list[str] | None:
+    """
+    Convierte body.system_instructions (list[RuleItem]) en lista de rule_id.
+    Si un ítem no tiene rule_id, crea la regla en la biblioteca y usa su id.
+    Devuelve None si rules is None (no actualizar); [] para vaciar.
+    """
+    if rules is None:
+        return None
+    if not rules:
+        return []
+    ids = []
+    for r in rules:
+        d = r.model_dump() if hasattr(r, "model_dump") else dict(r)
+        rule_id = d.get("rule_id")
+        if rule_id:
+            ids.append(str(rule_id))
+        else:
+            title = (d.get("title") or "").strip() or "Regla"
+            content = d.get("content") or ""
+            rule = crud_create_rule(db, title=title, content=content)
+            ids.append(rule.id)
+    return ids
+
+
+def _effective_system_instructions(conv, db) -> list[dict]:
+    """
+    Devuelve la lista de reglas de la conversación como list de { title, content } para el mensaje system.
+    Usa instruction_ids (resuelto desde rules) o legacy system_instructions. Fallback a system_instruction_global.
+    """
+    ids = _parse_instruction_ids(getattr(conv, "instruction_ids", None))
+    if ids:
+        out = []
+        for rule_id in ids:
+            rule = crud_get_rule(db, rule_id)
+            if rule:
+                out.append({"title": rule.title, "content": rule.content})
+        return out
     parsed = _parse_system_instructions(getattr(conv, "system_instructions", None))
-    if parsed:
-        return parsed
-    global_text = (conv.system_instruction_global or "").strip()
-    return [{"title": "Instrucción global", "content": global_text}] if global_text else []
+    if not parsed:
+        global_text = (conv.system_instruction_global or "").strip()
+        return [{"title": "Instrucción global", "content": global_text}] if global_text else []
+    out = []
+    for item in parsed:
+        rule_id = item.get("rule_id")
+        if rule_id:
+            rule = crud_get_rule(db, rule_id)
+            if rule:
+                out.append({"title": rule.title, "content": rule.content})
+        else:
+            content = (item.get("content") or "").strip()
+            if content:
+                out.append({"title": item.get("title") or "", "content": item["content"]})
+    return out
 
 
 def _normalize_stream_metadata_usage(metadata: dict | None) -> dict:
@@ -101,36 +201,39 @@ def list_conversations(db: Session = Depends(get_db)):
     return convs
 
 
-def _rules_to_store(rules: list | None):
-    """Convierte list[RuleItem] a list[dict] para guardar en BD."""
-    if not rules:
-        return None
-    return [r.model_dump() if hasattr(r, "model_dump") else r for r in rules]
+def _get_resolved_instructions(conv, db) -> list[dict]:
+    """Devuelve system_instructions resueltas: desde instruction_ids (prioridad) o desde system_instructions legado."""
+    ids = _parse_instruction_ids(getattr(conv, "instruction_ids", None))
+    if ids:
+        return _resolve_instruction_ids(ids, db)
+    parsed = _parse_system_instructions(getattr(conv, "system_instructions", None))
+    if parsed is None:
+        return []
+    return _resolve_system_instructions(parsed, db)
 
 
 @router.post("/conversations", response_model=ConversationOut)
 def create_conversation(body: ConversationCreate, db: Session = Depends(get_db)):
+    instruction_ids = _instructions_to_ids(body.system_instructions, db) if body.system_instructions is not None else None
     conv = crud.create_conversation(
         db,
         title=body.title,
         model_id=body.model_id,
         provider=body.provider,
         system_instruction_global=body.system_instruction_global,
-        system_instructions=_rules_to_store(body.system_instructions),
+        instruction_ids=instruction_ids,
         inject_instruction_every=body.inject_instruction_every,
     )
-    out_instructions = _parse_system_instructions(getattr(conv, "system_instructions", None))
-    if out_instructions is None and conv.system_instruction_global:
-        out_instructions = [{"title": "Instrucción global", "content": conv.system_instruction_global}]
+    resolved = _get_resolved_instructions(conv, db)
     return ConversationOut(
         id=conv.id,
         title=conv.title,
         model_id=conv.model_id,
         provider=conv.provider,
         system_instruction_global=conv.system_instruction_global,
-        system_instructions=out_instructions,
+        system_instructions=resolved,
         inject_instruction_every=conv.inject_instruction_every,
-        model_params=None,
+        model_params=_parse_model_params(getattr(conv, "model_params", None)),
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         messages=[],
@@ -152,16 +255,14 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         )
         for m in conv.messages
     ]
-    out_instructions = _parse_system_instructions(getattr(conv, "system_instructions", None))
-    if out_instructions is None and conv.system_instruction_global:
-        out_instructions = [{"title": "Instrucción global", "content": conv.system_instruction_global}]
+    resolved = _get_resolved_instructions(conv, db)
     return ConversationOut(
         id=conv.id,
         title=conv.title,
         model_id=conv.model_id,
         provider=conv.provider,
         system_instruction_global=conv.system_instruction_global,
-        system_instructions=out_instructions,
+        system_instructions=resolved,
         inject_instruction_every=conv.inject_instruction_every,
         model_params=_parse_model_params(getattr(conv, "model_params", None)),
         created_at=conv.created_at,
@@ -174,6 +275,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
 def update_conversation(
     conversation_id: str, body: ConversationUpdate, db: Session = Depends(get_db)
 ):
+    instruction_ids = _instructions_to_ids(body.system_instructions, db) if body.system_instructions is not None else None
     conv = crud.update_conversation(
         db,
         conversation_id,
@@ -181,7 +283,7 @@ def update_conversation(
         model_id=body.model_id,
         provider=body.provider,
         system_instruction_global=body.system_instruction_global,
-        system_instructions=_rules_to_store(body.system_instructions) if body.system_instructions is not None else None,
+        instruction_ids=instruction_ids,
         inject_instruction_every=body.inject_instruction_every,
         model_params=body.model_params,
     )
@@ -197,16 +299,14 @@ def update_conversation(
         )
         for m in conv.messages
     ]
-    out_instructions = _parse_system_instructions(getattr(conv, "system_instructions", None))
-    if out_instructions is None and conv.system_instruction_global:
-        out_instructions = [{"title": "Instrucción global", "content": conv.system_instruction_global}]
+    resolved = _get_resolved_instructions(conv, db)
     return ConversationOut(
         id=conv.id,
         title=conv.title,
         model_id=conv.model_id,
         provider=conv.provider,
         system_instruction_global=conv.system_instruction_global,
-        system_instructions=out_instructions,
+        system_instructions=resolved,
         inject_instruction_every=conv.inject_instruction_every,
         model_params=_parse_model_params(getattr(conv, "model_params", None)),
         created_at=conv.created_at,
@@ -269,6 +369,7 @@ def _build_llm_messages(
     existing_messages,
     new_content: str,
     instruction_override: str | None,
+    db,
     system_instruction_global: str | None = None,
     rag_context: str | None = None,
 ) -> tuple[list, bool]:
@@ -289,7 +390,7 @@ def _build_llm_messages(
     if system_instruction_global is not None:
         global_text = (system_instruction_global or "").strip()
     else:
-        instructions = _effective_system_instructions(conv)
+        instructions = _effective_system_instructions(conv, db)
         global_text = " ".join(
             (c or "").strip() for c in (r.get("content", "") for r in instructions)
             if (c or "").strip()
@@ -514,7 +615,7 @@ async def send_message_stream(
         if mcp_contexts:
             print(f"--- Slash: MCP contexts activados para este turno: {mcp_contexts} ---", file=sys.stderr)
     llm_messages, injecting = _build_llm_messages(
-        conv, existing, user_content, body.instruction_override,
+        conv, existing, user_content, body.instruction_override, db,
         system_instruction_global=body.system_instruction_global,
         rag_context=rag_context,
     )
@@ -588,7 +689,7 @@ def send_message(
         if mcp_contexts:
             print(f"--- Slash: MCP contexts activados: {mcp_contexts} ---", file=sys.stderr)
     llm_messages, _ = _build_llm_messages(
-        conv, existing, user_content, body.instruction_override,
+        conv, existing, user_content, body.instruction_override, db,
         system_instruction_global=body.system_instruction_global,
         rag_context=rag_context,
     )
