@@ -28,9 +28,6 @@ chatbot.db
 # ChromaDB (RAG): datos persistentes en disco
 data/
 
-# Archivo de ingesta (contenido local, no versionar)
-archivo.txt
-
 # Servidor (Makefile)
 .server.pid
 
