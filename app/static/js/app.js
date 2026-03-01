@@ -65,6 +65,7 @@
     btnCancelMessage: document.getElementById("btn-cancel-message"),
     btnClearMemory: document.getElementById("btn-clear-memory"),
     btnResetParams: document.getElementById("btn-reset-params"),
+    btnResetParamsFooter: document.getElementById("btn-reset-params-footer"),
     btnModelInfo: document.getElementById("btn-model-info"),
     modelInfoModal: document.getElementById("model-info-modal"),
     modelInfoModalTitle: document.getElementById("model-info-modal-title"),
@@ -81,12 +82,16 @@
     modelInfoTagsSuggestions: document.getElementById("model-info-tags-suggestions"),
     btnModelInfoSave: document.getElementById("btn-model-info-save"),
     modelInfoModalClose: document.getElementById("model-info-modal-close"),
+    headerProviderName: document.getElementById("header-provider-name"),
+    headerModelName: document.getElementById("header-model-name"),
+    connectionStatusDot: document.getElementById("connection-status-dot"),
     contextUsageRow: document.getElementById("context-usage-row"),
     contextUsageBarWrap: document.getElementById("context-usage-bar-wrap"),
     contextUsageBar: document.getElementById("context-usage-bar"),
     contextUsageSegmentPrompt: document.getElementById("context-usage-segment-prompt"),
     contextUsageSegmentCompletion: document.getElementById("context-usage-segment-completion"),
     contextUsageText: document.getElementById("context-usage-text"),
+    contextUsageBadge: document.getElementById("context-usage-badge"),
     btnFontSizeDecrease: document.getElementById("btn-font-size-decrease"),
     btnFontSizeIncrease: document.getElementById("btn-font-size-increase"),
     paramsSourceLabel: document.getElementById("params-source-label"),
@@ -214,6 +219,7 @@
     el.modelSelectInput.value = opt ? opt.text : "";
     el.modelSelectList.setAttribute("aria-hidden", "true");
     el.modelSelectInput.setAttribute("aria-expanded", "false");
+    syncHeaderProviderModel();
   }
 
   /** Filtra y muestra la lista de modelos según el texto del input; al hacer clic en uno se asigna y se cierra. */
@@ -452,35 +458,49 @@
   }
 
   function renderContextUsageBar() {
-    if (!el.contextUsageRow) return;
+    const row = el.contextUsageRow || document.getElementById("context-usage-row");
+    const textEl = el.contextUsageText || document.getElementById("context-usage-text");
+    const badgeEl = el.contextUsageBadge || document.getElementById("context-usage-badge");
+    const barWrap = el.contextUsageBarWrap || document.getElementById("context-usage-bar-wrap");
+    const bar = el.contextUsageBar || document.getElementById("context-usage-bar");
+    const segPrompt = el.contextUsageSegmentPrompt || document.getElementById("context-usage-segment-prompt");
+    const segCompletion = el.contextUsageSegmentCompletion || document.getElementById("context-usage-segment-completion");
+    if (!row) return;
     const hasUsage = lastUsage && (lastUsage.prompt_tokens > 0 || lastUsage.completion_tokens > 0);
     const pt = (lastUsage && lastUsage.prompt_tokens) || 0;
     const ct = (lastUsage && lastUsage.completion_tokens) || 0;
     if (!hasUsage) {
-      if (el.contextUsageText) el.contextUsageText.textContent = "—";
-      if (el.contextUsageBarWrap) el.contextUsageBarWrap.hidden = true;
-      if (el.contextUsageBar) el.contextUsageBar.setAttribute("aria-valuenow", "0");
+      if (textEl) textEl.textContent = "—";
+      if (badgeEl) badgeEl.textContent = "—";
+      if (barWrap) barWrap.hidden = true;
+      if (bar) bar.setAttribute("aria-valuenow", "0");
       return;
     }
-    if (el.contextUsageText) {
+    const total = pt + ct;
+    const fmt = function (n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n); };
+    if (textEl) {
       if (contextLength != null) {
-        el.contextUsageText.textContent = `Prompt: ${pt} · Respuesta: ${ct} / ${contextLength} tokens`;
+        textEl.textContent = `Prompt: ${pt} · Respuesta: ${ct} / ${contextLength} tokens`;
       } else {
-        el.contextUsageText.textContent = `Prompt: ${pt} · Respuesta: ${ct} tokens`;
+        textEl.textContent = `Prompt: ${pt} · Respuesta: ${ct} tokens`;
       }
     }
-    if (contextLength != null && contextLength > 0 && el.contextUsageBarWrap && el.contextUsageSegmentPrompt && el.contextUsageSegmentCompletion) {
-      el.contextUsageBarWrap.hidden = false;
-      const total = pt + ct;
+    if (badgeEl) {
+      badgeEl.textContent = contextLength != null ? `${fmt(total)}/${fmt(contextLength)}` : `${fmt(pt)}+${fmt(ct)}`;
+    }
+    if (contextLength != null && contextLength > 0 && barWrap && segPrompt && segCompletion) {
+      barWrap.hidden = false;
       const pctTotal = Math.min(100, (total / contextLength) * 100);
       const pctPrompt = total > 0 ? (pt / total) * pctTotal : 0;
       const pctCompletion = total > 0 ? (ct / total) * pctTotal : 0;
-      el.contextUsageSegmentPrompt.style.width = pctPrompt + "%";
-      el.contextUsageSegmentCompletion.style.width = pctCompletion + "%";
-      el.contextUsageBar.setAttribute("aria-valuenow", Math.round(pctTotal));
-      el.contextUsageBar.setAttribute("aria-valuemax", 100);
+      segPrompt.style.width = pctPrompt + "%";
+      segCompletion.style.width = pctCompletion + "%";
+      if (bar) {
+        bar.setAttribute("aria-valuenow", Math.round(pctTotal));
+        bar.setAttribute("aria-valuemax", 100);
+      }
     } else {
-      if (el.contextUsageBarWrap) el.contextUsageBarWrap.hidden = true;
+      if (barWrap) barWrap.hidden = true;
     }
   }
 
@@ -827,11 +847,23 @@
     return out;
   }
 
+  function syncHeaderProviderModel() {
+    if (el.headerProviderName && el.providerSelect) {
+      const opt = el.providerSelect.selectedOptions[0];
+      el.headerProviderName.textContent = opt ? opt.text : "";
+    }
+    if (el.headerModelName && el.modelSelect) {
+      const opt = el.modelSelect.selectedOptions[0];
+      el.headerModelName.textContent = opt ? opt.text : "";
+    }
+  }
+
   async function onProviderChange() {
     currentProvider = el.providerSelect ? el.providerSelect.value : "ollama";
     await loadModels(false);
     await loadParamsForProvider(currentProvider);
     await ensureParamsBaselineForCurrentModel();
+    syncHeaderProviderModel();
     // Actualizar conversación si hay una abierta
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
@@ -856,27 +888,57 @@
     }
   }
 
-  const deleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
-  const clearHistoryIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 6h18\"/><path d=\"M8 6V4h8v2\"/><path d=\"M5 6l1 14h12l1-14\"/><path d=\"M10 10v7\"/><path d=\"M14 10v7\"/></svg>";
+  const convIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/></svg>";
+  const clearHistoryIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 20H7L3 16l10-10 4 4-6 6h9l4-4\"/></svg>";
+
+  const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "La semana pasada", anteriores: "Anteriores" };
+
+  function getConversationGroup(updatedAt) {
+    const d = updatedAt ? new Date(updatedAt) : new Date(0);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    const weekAgoStart = new Date(todayStart);
+    weekAgoStart.setDate(weekAgoStart.getDate() - 7);
+    if (d >= todayStart) return "hoy";
+    if (d >= yesterdayStart) return "ayer";
+    if (d >= weekAgoStart) return "semana";
+    return "anteriores";
+  }
 
   function renderConversationsList(list) {
     if (!el.conversationsList) return;
-    el.conversationsList.innerHTML = list
-      .map(
-        (c) =>
-          `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}">
-            <div class="conv-row">
-              <span class="conv-title">${escapeHtml(c.title)}</span>
-              <button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>
-              <button type="button" class="conv-delete-btn" data-id="${escapeHtml(c.id)}" title="Eliminar conversación" aria-label="Eliminar conversación">${deleteIconSvg}</button>
-            </div>
-            <div class="conv-meta">${escapeHtml(c.provider || "ollama")}/${escapeHtml(c.model_id)} · ${formatDate(c.updated_at)}</div>
-          </div>`
-      )
+    const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
+    list.forEach((c) => {
+      const g = getConversationGroup(c.updated_at);
+      groups[g].push(c);
+    });
+    const order = ["hoy", "ayer", "semana", "anteriores"];
+    const html = order
+      .filter((key) => groups[key].length > 0)
+      .map((key) => {
+        const header = `<div class="conv-group-label" aria-hidden="true">${escapeHtml(CONV_GROUP_LABELS[key])}</div>`;
+        const items = groups[key]
+          .map(
+            (c) =>
+              `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}">
+                <div class="conv-row">
+                  <span class="conv-icon" aria-hidden="true">${convIconSvg}</span>
+                  <span class="conv-title">${escapeHtml(c.title)}</span>
+                  ${c.id === currentConversationId ? `<button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>` : ""}
+                </div>
+                <div class="conv-meta">${escapeHtml(c.provider || "ollama")}/${escapeHtml(c.model_id)} · ${formatDate(c.updated_at)}</div>
+              </div>`
+          )
+          .join("");
+        return header + items;
+      })
       .join("");
+    el.conversationsList.innerHTML = html;
     el.conversationsList.querySelectorAll(".conversation-item").forEach((node) => {
       node.addEventListener("click", (e) => {
-        if (e.target.closest(".conv-delete-btn") || e.target.closest(".conv-clear-btn")) return;
+        if (e.target.closest(".conv-clear-btn")) return;
         openConversation(node.dataset.id);
       });
     });
@@ -885,13 +947,6 @@
         e.preventDefault();
         e.stopPropagation();
         clearConversationHistory(btn.dataset.id);
-      });
-    });
-    el.conversationsList.querySelectorAll(".conv-delete-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        deleteConversation(btn.dataset.id);
       });
     });
   }
@@ -982,7 +1037,7 @@
     if (toSend.length > 0 || excludedList.length > 0) {
       html += "<div class=\"params-to-send-section\">";
       if (toSend.length > 0) {
-        html += "<div class=\"params-to-send-row\"><span class=\"params-to-send-title\">Se enviarán:</span>";
+        html += "<div class=\"params-to-send-row\">";
         toSend.forEach((paramId) => {
           html += `<span class="params-to-send-chip">${escapeHtml(specLabel(paramId))}<button type="button" class="params-to-send-btn params-to-send-exclude" data-param-id="${escapeHtml(paramId)}" title="No enviar este parámetro" aria-label="No enviar ${escapeHtml(paramId)}">${paramExcludeIconSvg}</button></span>`;
         });
@@ -1365,7 +1420,8 @@
   }
 
   function isShowDebugMode() {
-    return el.showDebugModeCheck && el.showDebugModeCheck.checked;
+    const el = document.getElementById("show-debug-mode");
+    return el && el.checked;
   }
 
   /** Devuelve si el usuario quiere scroll automático al final mientras se genera la respuesta. Por defecto true. */
@@ -1383,7 +1439,7 @@
   function renderMessages() {
     if (!el.messagesContainer) return;
     if (messages.length === 0) {
-      el.messagesContainer.innerHTML = '<div class="empty-state">Escribe un mensaje para empezar.</div>';
+      el.messagesContainer.innerHTML = '<div class="empty-state chat-empty-state"><div class="empty-state-inner"><img src="/static/img/logo_256.png" alt="" class="empty-state-logo" /><p class="empty-state-text">Empieza escribiendo una orden. El agente mantendrá el contexto técnico y el tono estable.</p></div></div>';
       return;
     }
     const showDebug = isShowDebugMode();
@@ -1410,11 +1466,15 @@
               debugHtml += `<div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(m.debug_response)}</div>`;
             }
           }
-          return `<div class="message ${m.role}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
-            <div class="role-label">${m.role === "user" ? "Tú" : "Asistente"}</div>
-            <div class="content">${escapeHtml(m.content).replace(/\n/g, "<br>")}</div>
-            ${debugHtml}
-            ${footerBtns}
+          const isUser = m.role === "user";
+          const rowClass = isUser ? "message-row user-row" : "message-row";
+          const bubbleClass = isUser ? "message-bubble user" : "message-bubble assistant";
+          return `<div class="${rowClass}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
+            <div style="max-width: ${isUser ? "70%" : "100%"}; flex: 1; min-width: 0;">
+              <div class="${bubbleClass}"><span>${escapeHtml(m.content || "").replace(/\n/g, "<br>")}</span></div>
+              ${debugHtml}
+              ${footerBtns}
+            </div>
           </div>`;
         }
       )
@@ -1466,9 +1526,9 @@
     renderMessages();
 
     const msgEl = document.createElement("div");
-    msgEl.className = "message assistant";
+    msgEl.className = "message-row";
     const showDebug = isShowDebugMode();
-    msgEl.innerHTML = '<div class="role-label">Asistente</div><div class="content"></div><div class="message-debug-stream"></div>';
+    msgEl.innerHTML = '<div style="max-width: 100%; flex: 1; min-width: 0;"><div class="message-bubble assistant"><span class="content"></span></div><div class="message-debug-stream"></div></div>';
     if (el.messagesContainer) el.messagesContainer.appendChild(msgEl);
     const contentEl = msgEl.querySelector(".content");
     const debugStreamEl = msgEl.querySelector(".message-debug-stream");
@@ -1622,6 +1682,15 @@
     }
   }
 
+  async function clearCurrentConversation() {
+    if (currentAbortController) currentAbortController.abort();
+    if (currentConversationId) {
+      await deleteConversation(currentConversationId);
+    } else {
+      await setCurrentConversation(null);
+    }
+  }
+
   async function onModelChange() {
     const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
     let ollamaActive = false;
@@ -1654,6 +1723,7 @@
     await loadContextLength();
     await ensureParamsBaselineForCurrentModel();
     renderParamsToSend();
+    syncHeaderProviderModel();
   }
 
   if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
@@ -1665,13 +1735,37 @@
   if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
   if (el.btnSend) el.btnSend.addEventListener("click", sendMessage);
-  if (el.showDebugModeCheck) el.showDebugModeCheck.addEventListener("change", function () {
+  function onShowDebugModeChange(checked) {
     if (currentAbortController && currentStreamingDebugEl) {
-      currentStreamingDebugEl.style.display = isShowDebugMode() ? "block" : "none";
-    } else {
-      renderMessages();
+      currentStreamingDebugEl.style.display = checked ? "block" : "none";
+    }
+    renderMessages();
+  }
+  var debugCheckbox = document.getElementById("show-debug-mode");
+  if (debugCheckbox) {
+    debugCheckbox.addEventListener("change", function () {
+      onShowDebugModeChange(this.checked);
+    });
+  }
+  document.addEventListener("change", function (e) {
+    if (e.target && e.target.id === "show-debug-mode") {
+      onShowDebugModeChange(e.target.checked);
     }
   });
+  var fontSizeControls = document.querySelector(".font-size-controls");
+  if (fontSizeControls) {
+    fontSizeControls.addEventListener("click", function (e) {
+      var decrease = e.target.closest("#btn-font-size-decrease");
+      var increase = e.target.closest("#btn-font-size-increase");
+      if (decrease && !decrease.disabled) {
+        setConversationFontSize(-0.05);
+        e.preventDefault();
+      } else if (increase && !increase.disabled) {
+        setConversationFontSize(0.05);
+        e.preventDefault();
+      }
+    });
+  }
   const AUTO_SCROLL_STORAGE_KEY = "autoScrollDuringGeneration";
   function initAutoScrollDuringGeneration() {
     if (!el.autoScrollDuringGenerationCheck) return;
@@ -1689,8 +1783,8 @@
     } catch (_) {}
   });
   if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
-  if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearMemory);
-  if (el.btnResetParams) el.btnResetParams.addEventListener("click", async function () {
+  if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearCurrentConversation);
+  const onResetParams = async function () {
     await resetParamsToDefaults();
     renderParamsSourceLabel();
     if (currentConversationId) {
@@ -1699,7 +1793,9 @@
         body: JSON.stringify({ model_params: buildModelParams() }),
       }).catch(() => {});
     }
-  });
+  };
+  if (el.btnResetParams) el.btnResetParams.addEventListener("click", onResetParams);
+  if (el.btnResetParamsFooter) el.btnResetParamsFooter.addEventListener("click", onResetParams);
   document.querySelectorAll("[data-control-id]").forEach(function (control) {
     control.addEventListener("change", debouncedSaveParams);
     control.addEventListener("input", debouncedSaveParams);
@@ -2061,19 +2157,17 @@
   }
 
   function applyConversationFontSize(rem) {
-    if (!el.messagesContainer) return;
-    el.messagesContainer.style.setProperty("--chat-font-size", rem + "rem");
+    var container = el.messagesContainer || document.getElementById("messages-container");
+    if (container) container.style.setProperty("--chat-font-size", rem + "rem");
   }
 
   function initConversationFontSize() {
     const rem = getStoredFontSize();
     applyConversationFontSize(rem);
-    if (el.btnFontSizeDecrease) {
-      el.btnFontSizeDecrease.disabled = rem <= FONT_SIZE_MIN;
-    }
-    if (el.btnFontSizeIncrease) {
-      el.btnFontSizeIncrease.disabled = rem >= FONT_SIZE_MAX;
-    }
+    const decreaseBtn = document.getElementById("btn-font-size-decrease");
+    const increaseBtn = document.getElementById("btn-font-size-increase");
+    if (decreaseBtn) decreaseBtn.disabled = rem <= FONT_SIZE_MIN;
+    if (increaseBtn) increaseBtn.disabled = rem >= FONT_SIZE_MAX;
   }
 
   function setConversationFontSize(delta) {
@@ -2083,9 +2177,14 @@
     next = Math.round(next * 100) / 100;
     setStoredFontSize(next);
     applyConversationFontSize(next);
-    if (el.btnFontSizeDecrease) el.btnFontSizeDecrease.disabled = next <= FONT_SIZE_MIN;
-    if (el.btnFontSizeIncrease) el.btnFontSizeIncrease.disabled = next >= FONT_SIZE_MAX;
+    const decreaseBtn = document.getElementById("btn-font-size-decrease");
+    const increaseBtn = document.getElementById("btn-font-size-increase");
+    if (decreaseBtn) decreaseBtn.disabled = next <= FONT_SIZE_MIN;
+    if (increaseBtn) increaseBtn.disabled = next >= FONT_SIZE_MAX;
   }
+  window.__chatBotFontSizeDelta = function (delta) {
+    setConversationFontSize(delta);
+  };
 
   function getAccordionState() {
     try {
@@ -2128,14 +2227,15 @@
     });
   }
 
-  const SIDEBAR_TAB_IDS = ["conversaciones", "reglas", "parametros"];
+  const SIDEBAR_TAB_IDS = ["reglas", "parametros"];
 
   function getStoredSidebarTab() {
     try {
       const t = localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY);
       if (t && SIDEBAR_TAB_IDS.includes(t)) return t;
+      if (t === "conversaciones") return "reglas";
     } catch (_) {}
-    return "conversaciones";
+    return "reglas";
   }
 
   function switchSidebarTab(tabId) {
@@ -2147,16 +2247,13 @@
       const id = tab.getAttribute("data-tab");
       const selected = id === tabId;
       tab.setAttribute("aria-selected", selected);
+      tab.classList.toggle("active", selected);
     });
     document.querySelectorAll(".sidebar-tabpanel").forEach((panel) => {
       const panelId = panel.id;
-      const isConversaciones = panelId === "tab-conversaciones";
       const isReglas = panelId === "tab-reglas";
       const isParametros = panelId === "tab-parametros";
-      const active =
-        (tabId === "conversaciones" && isConversaciones) ||
-        (tabId === "reglas" && isReglas) ||
-        (tabId === "parametros" && isParametros);
+      const active = (tabId === "reglas" && isReglas) || (tabId === "parametros" && isParametros);
       panel.classList.toggle("is-active", active);
       panel.hidden = !active;
       if (active && isReglas) loadLibraryRules();
@@ -2185,16 +2282,17 @@
   initSidebarTabs();
   initConversationFontSize();
 
-  if (el.btnFontSizeDecrease) {
-    el.btnFontSizeDecrease.addEventListener("click", function () {
-      setConversationFontSize(-FONT_SIZE_STEP);
+  (function initDarkMode() {
+    var checkbox = document.getElementById("dark-mode-toggle");
+    if (!checkbox) return;
+    checkbox.checked = localStorage.getItem("darkMode") === "true";
+    checkbox.addEventListener("change", function () {
+      var dark = checkbox.checked;
+      localStorage.setItem("darkMode", dark ? "true" : "false");
+      if (dark) document.documentElement.setAttribute("data-theme", "dark");
+      else document.documentElement.removeAttribute("data-theme");
     });
-  }
-  if (el.btnFontSizeIncrease) {
-    el.btnFontSizeIncrease.addEventListener("click", function () {
-      setConversationFontSize(FONT_SIZE_STEP);
-    });
-  }
+  })();
 
   document.querySelectorAll(".accordion-header").forEach((btn) => {
     btn.addEventListener("click", () => {
