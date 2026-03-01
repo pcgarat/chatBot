@@ -1,0 +1,1198 @@
+<div
+  class="export-wrapper"
+  style="
+    width: 1440px;
+    min-height: 812px;
+    position: relative;
+    font-family: var(--font-family-body);
+    background-color: var(--background);
+  "
+>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@100;200;300;400;500;600;700;800;900&family=Geist:wght@100;200;300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@100;200;300;400;500;600;700&family=IBM+Plex+Sans:wght@100;200;300;400;500;600;700&family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Nunito:wght@200;300;400;500;600;700;800;900&family=PT+Serif:wght@400;700&family=Roboto+Slab:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Shantell+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <html>
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Agent Config</title>
+      <style id="theme-vars">
+        :root,
+        :root {
+          --background: #020617;
+          --foreground: #f8fafc;
+          --border: #1e293b;
+          --input: #1e293b;
+          --primary: #6366f1;
+          --primary-foreground: #ffffff;
+          --secondary: #1e293b;
+          --secondary-foreground: #f8fafc;
+          --muted: #1e293b;
+          --muted-foreground: #94a3b8;
+          --success: #10b981;
+          --success-foreground: #ffffff;
+          --accent: #1e293b;
+          --accent-foreground: #f8fafc;
+          --destructive: #ef4444;
+          --destructive-foreground: #ffffff;
+          --warning: #f59e0b;
+          --warning-foreground: #ffffff;
+          --card: #0f172a;
+          --card-foreground: #f8fafc;
+          --sidebar: #020617;
+          --sidebar-foreground: #f8fafc;
+          --sidebar-primary: #6366f1;
+          --sidebar-primary-foreground: #ffffff;
+          --radius-sm: 4px;
+          --radius-md: 6px;
+          --radius-lg: 8px;
+          --radius-xl: 12px;
+        }
+      </style>
+
+      <style id="base-styles">
+        * {
+          box-sizing: border-box;
+        }
+        .export-wrapper {
+          background-color: var(--background);
+          color: var(--foreground);
+          margin: 0;
+        }
+        .app-shell {
+          position: absolute;
+          inset: 0;
+          min-height: 812px;
+          display: flex;
+          background-color: var(--background);
+          color: var(--foreground);
+          font-family: var(
+            --font-family-body,
+            system-ui,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif
+          );
+        }
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--radius-md);
+          font-weight: 500;
+          cursor: pointer;
+          white-space: nowrap;
+          font-size: 14px;
+          border: 1px solid transparent;
+        }
+        .btn-primary {
+          background-color: var(--primary);
+          color: var(--primary-foreground);
+          padding: 8px 20px;
+        }
+        .btn-ghost {
+          background-color: transparent;
+          border-color: var(--border);
+          color: var(--muted-foreground);
+          padding: 6px 14px;
+        }
+        .chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 2px 10px;
+          border-radius: 999px;
+          background-color: var(--muted);
+          color: var(--muted-foreground);
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .mono-label {
+          font-family:
+            ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono",
+            "Courier New", monospace;
+          font-size: 11px;
+          color: var(--muted-foreground);
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+        }
+      </style>
+
+      <style id="sidebar-styles">
+        .sidebar {
+          width: 320px;
+          background-color: var(--sidebar);
+          border-right: 1px solid var(--border);
+          display: flex;
+          flex-direction: column;
+        }
+        .sidebar-header {
+          height: 72px;
+          padding: 0 20px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid var(--border);
+        }
+        .sidebar-logo-block {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .sidebar-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--sidebar-foreground);
+        }
+        .sidebar-subtitle {
+          font-size: 12px;
+          color: var(--muted-foreground);
+        }
+        .sidebar-add-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: var(--radius-md);
+          background-color: var(--sidebar-primary);
+          color: var(--sidebar-primary-foreground);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        .sidebar-tabs-row {
+          padding: 10px 20px 12px 20px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          gap: 8px;
+        }
+        .sidebar-pill-tab {
+          flex: 1;
+          text-align: center;
+          padding: 6px 10px;
+          border-radius: var(--radius-md);
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--muted-foreground);
+          background-color: transparent;
+          cursor: pointer;
+          border: 1px solid transparent;
+        }
+        .sidebar-pill-tab.active {
+          background-color: var(--card);
+          color: var(--sidebar-foreground);
+          border-color: var(--border);
+        }
+        .sidebar-content {
+          flex: 1;
+          padding: 16px 20px 16px 20px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .sidebar-section-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          color: var(--muted-foreground);
+          margin-bottom: 4px;
+        }
+        .badge-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 10px;
+          border-radius: var(--radius-md);
+          background-color: var(--card);
+          border: 1px solid var(--border);
+        }
+        .param-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          background-color: var(--secondary);
+          color: var(--secondary-foreground);
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .accordion-list {
+          border-radius: var(--radius-lg);
+          background-color: var(--card);
+          border: 1px solid var(--border);
+          overflow: hidden;
+        }
+        .accordion-item {
+          padding: 12px 12px;
+          border-bottom: 1px solid var(--border);
+        }
+        .accordion-item:last-child {
+          border-bottom: none;
+        }
+        .accordion-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--sidebar-foreground);
+          cursor: pointer;
+        }
+        .accordion-caption {
+          margin-top: 2px;
+          font-size: 11px;
+          color: var(--muted-foreground);
+        }
+        .accordion-body {
+          margin-top: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .field-label-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 11px;
+          color: var(--muted-foreground);
+          margin-bottom: 4px;
+        }
+        .field-control {
+          border-radius: var(--radius-md);
+          border: 1px solid var(--border);
+          background-color: var(--input);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 6px 10px;
+          font-size: 13px;
+          color: var(--foreground);
+        }
+        .sidebar-footer {
+          padding: 12px 20px 16px 20px;
+          border-top: 1px solid var(--border);
+          background-color: var(--sidebar);
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .footer-preset-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .footer-toggle-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          color: var(--sidebar-foreground);
+        }
+        .checkbox-box {
+          width: 16px;
+          height: 16px;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--border);
+          background-color: var(--input);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .checkbox-box.checked {
+          background-color: var(--primary);
+          border-color: var(--primary);
+          color: var(--primary-foreground);
+        }
+      </style>
+
+      <style id="main-layout-styles">
+        .main-pane {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+        }
+        .primary-header {
+          height: 72px;
+          padding: 0 28px;
+          border-bottom: 1px solid var(--border);
+          background-color: var(--card);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .header-left {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .session-title {
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--card-foreground);
+        }
+        .session-meta-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 12px;
+          color: var(--muted-foreground);
+        }
+        .header-right {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        .selector-group {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 13px;
+        }
+        .selector-label {
+          color: var(--muted-foreground);
+        }
+        .selector-control {
+          min-width: 150px;
+          padding: 6px 12px;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--border);
+          background-color: var(--input);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          color: var(--foreground);
+        }
+        .header-icon-buttons {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding-left: 12px;
+          border-left: 1px solid var(--border);
+        }
+        .icon-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: var(--radius-md);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: var(--muted-foreground);
+        }
+        .secondary-header {
+          height: 44px;
+          padding: 0 28px;
+          border-bottom: 1px solid var(--border);
+          background-color: var(--background);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          color: var(--muted-foreground);
+        }
+        .secondary-left,
+        .secondary-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .divider-vertical {
+          width: 1px;
+          height: 16px;
+          background-color: var(--border);
+          margin: 0 4px;
+        }
+        .context-badge {
+          padding: 2px 8px;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--border);
+          background-color: var(--muted);
+          color: var(--foreground);
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .body-grid {
+          flex: 1;
+          display: flex;
+          padding: 20px 28px 24px 28px;
+          gap: 20px;
+          overflow: hidden;
+        }
+        .context-column {
+          width: 280px;
+          flex-shrink: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .context-card {
+          background-color: var(--card);
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--border);
+          padding: 14px 14px 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .context-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          color: var(--muted-foreground);
+        }
+        .context-card-title {
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--card-foreground);
+        }
+        .context-pill-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 4px;
+        }
+        .context-pill {
+          padding: 4px 8px;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          background-color: var(--secondary);
+          color: var(--secondary-foreground);
+          font-size: 11px;
+          font-weight: 500;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .chat-column {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          border-radius: var(--radius-xl);
+          background-color: var(--card);
+          border: 1px solid var(--border);
+          overflow: hidden;
+        }
+        .chat-stream {
+          flex: 1;
+          padding: 18px 20px 16px 20px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          background:
+            radial-gradient(
+              circle at top left,
+              var(--muted) 0,
+              transparent 55%
+            ),
+            var(--card);
+        }
+        .message-row {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          max-width: 100%;
+        }
+        .message-avatar {
+          width: 26px;
+          height: 26px;
+          border-radius: 999px;
+          background-color: var(--muted);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 13px;
+          color: var(--muted-foreground);
+          flex-shrink: 0;
+        }
+        .message-bubble {
+          max-width: 100%;
+          padding: 10px 12px;
+          border-radius: 14px;
+          font-size: 14px;
+          line-height: 1.5;
+          border: 1px solid var(--border);
+        }
+        .message-bubble.assistant {
+          background-color: var(--muted);
+          color: var(--foreground);
+        }
+        .message-bubble.user {
+          margin-left: auto;
+          background-color: var(--primary);
+          border-color: var(--primary);
+          color: var(--primary-foreground);
+        }
+        .message-meta {
+          margin-top: 4px;
+          font-size: 11px;
+          color: var(--muted-foreground);
+        }
+        .empty-row {
+          padding: 24px 0 12px 0;
+          text-align: center;
+          font-size: 13px;
+          color: var(--muted-foreground);
+        }
+        .composer-panel {
+          border-top: 1px solid var(--border);
+          padding: 10px 12px 12px 12px;
+          background-color: var(--card);
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .composer-top-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          font-size: 12px;
+          color: var(--muted-foreground);
+        }
+        .inline-input {
+          flex: 1;
+          padding: 6px 10px;
+          border-radius: var(--radius-md);
+          border: 1px dashed var(--border);
+          background-color: var(--input);
+          font-size: 12px;
+          color: var(--muted-foreground);
+        }
+        .composer-main-row {
+          display: flex;
+          align-items: flex-end;
+          gap: 10px;
+        }
+        .composer-textarea {
+          flex: 1;
+          min-height: 64px;
+          max-height: 120px;
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--border);
+          background-color: var(--input);
+          padding: 10px 12px;
+          font-size: 14px;
+          color: var(--muted-foreground);
+          display: flex;
+          align-items: flex-start;
+        }
+        .composer-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          align-items: flex-end;
+        }
+        .small-icon-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .small-icon-btn {
+          width: 26px;
+          height: 26px;
+          border-radius: var(--radius-md);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          border: 1px solid var(--border);
+          color: var(--muted-foreground);
+          background-color: var(--card);
+        }
+        .send-button {
+          height: 36px;
+          padding: 0 18px;
+          border-radius: var(--radius-md);
+          background-color: var(--primary);
+          color: var(--primary-foreground);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          border: none;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="app-shell">
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <div class="sidebar-logo-block">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <div
+                  style="
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 8px;
+                    background-color: var(--card);
+                    border: 1px solid var(--border);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                  "
+                >
+                  <iconify-icon
+                    icon="lucide:bot"
+                    style="font-size: 16px; color: var(--sidebar-foreground)"
+                  ></iconify-icon>
+                </div>
+                <span class="sidebar-title">Agente de órdenes</span>
+              </div>
+              <span class="sidebar-subtitle"
+                >Configuración fina del modelo</span
+              >
+            </div>
+            <div class="sidebar-add-btn" data-media-type="banani-button">
+              <iconify-icon
+                icon="lucide:plus"
+                style="font-size: 18px"
+              ></iconify-icon>
+            </div>
+          </div>
+
+          <div class="sidebar-tabs-row">
+            <div class="sidebar-pill-tab" data-media-type="banani-button">
+              Conversaciones
+            </div>
+            <div class="sidebar-pill-tab" data-media-type="banani-button">
+              Reglas
+            </div>
+            <div
+              class="sidebar-pill-tab active"
+              data-media-type="banani-button"
+            >
+              Parámetros
+            </div>
+          </div>
+
+          <div class="sidebar-content">
+            <div>
+              <div class="sidebar-section-header">
+                <span>Se enviarán al modelo</span>
+                <span class="mono-label">payload</span>
+              </div>
+              <div class="badge-row">
+                <span style="font-size: 12px; color: var(--muted-foreground)"
+                  >Campos activos:</span
+                >
+                <div class="param-badge">
+                  <span>stop_sequences</span>
+                  <div
+                    style="
+                      width: 12px;
+                      height: 12px;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      cursor: pointer;
+                    "
+                    data-media-type="banani-button"
+                  >
+                    <iconify-icon
+                      icon="lucide:x"
+                      style="font-size: 12px"
+                    ></iconify-icon>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="accordion-list">
+              <div class="accordion-item" data-media-type="banani-button">
+                <div class="accordion-header">
+                  <div>
+                    <div>Modelo y contexto</div>
+                    <div class="accordion-caption">
+                      Proveedor, modelo y ventana de contexto
+                    </div>
+                  </div>
+                  <iconify-icon
+                    icon="lucide:chevron-down"
+                    style="font-size: 16px; color: var(--muted-foreground)"
+                  ></iconify-icon>
+                </div>
+              </div>
+
+              <div class="accordion-item" data-media-type="banani-button">
+                <div class="accordion-header">
+                  <div>
+                    <div>Instrucción del agente</div>
+                    <div class="accordion-caption">
+                      System prompt y rol del asistente
+                    </div>
+                  </div>
+                  <iconify-icon
+                    icon="lucide:chevron-down"
+                    style="font-size: 16px; color: var(--muted-foreground)"
+                  ></iconify-icon>
+                </div>
+              </div>
+
+              <div class="accordion-item" data-media-type="banani-button">
+                <div class="accordion-header">
+                  <div>
+                    <div>Longitud y paradas</div>
+                    <div class="accordion-caption">
+                      Tokens máximos y secuencias de parada
+                    </div>
+                  </div>
+                  <iconify-icon
+                    icon="lucide:chevron-down"
+                    style="font-size: 16px; color: var(--muted-foreground)"
+                  ></iconify-icon>
+                </div>
+              </div>
+
+              <div class="accordion-item">
+                <div class="accordion-header" data-media-type="banani-button">
+                  <div>
+                    <div>Aleatoriedad y diversidad</div>
+                    <div class="accordion-caption">
+                      Control fino del estilo de respuesta
+                    </div>
+                  </div>
+                  <iconify-icon
+                    icon="lucide:chevron-up"
+                    style="font-size: 16px; color: var(--muted-foreground)"
+                  ></iconify-icon>
+                </div>
+                <div class="accordion-body">
+                  <div>
+                    <div class="field-label-row">
+                      <span>Temperatura</span>
+                      <span class="mono-label">0.8</span>
+                    </div>
+                    <div class="field-control">
+                      <span>0.8</span>
+                      <span
+                        style="font-size: 11px; color: var(--muted-foreground)"
+                        >Creativo</span
+                      >
+                    </div>
+                  </div>
+                  <div>
+                    <div class="field-label-row">
+                      <span>Top-p (nucleus)</span>
+                      <span class="mono-label">0.9</span>
+                    </div>
+                    <div class="field-control">
+                      <span>0.9</span>
+                      <span
+                        style="font-size: 11px; color: var(--muted-foreground)"
+                        >Mayor diversidad</span
+                      >
+                    </div>
+                  </div>
+                  <div>
+                    <div class="field-label-row">
+                      <span>Top-k</span>
+                      <span class="mono-label">40</span>
+                    </div>
+                    <div class="field-control">
+                      <span>40</span>
+                      <span
+                        style="font-size: 11px; color: var(--muted-foreground)"
+                        >Top tokens considerados</span
+                      >
+                    </div>
+                  </div>
+                  <div>
+                    <div class="field-label-row">
+                      <span>Min-p (avanzado)</span>
+                      <span
+                        style="font-size: 11px; color: var(--muted-foreground)"
+                        >Desactivado</span
+                      >
+                    </div>
+                    <div class="field-control" style="opacity: 0.65">
+                      <span style="color: var(--muted-foreground)"
+                        >Configura solo si sabes lo que haces</span
+                      >
+                      <iconify-icon
+                        icon="lucide:lock"
+                        style="font-size: 14px; color: var(--muted-foreground)"
+                      ></iconify-icon>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="accordion-item" data-media-type="banani-button">
+                <div class="accordion-header">
+                  <div>
+                    <div>Seguridad y formato</div>
+                    <div class="accordion-caption">
+                      Filtros, validaciones y formato de salida
+                    </div>
+                  </div>
+                  <iconify-icon
+                    icon="lucide:chevron-down"
+                    style="font-size: 16px; color: var(--muted-foreground)"
+                  ></iconify-icon>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="footer-preset-row">
+              <span style="font-size: 12px; color: var(--muted-foreground)"
+                >Preset activo</span
+              >
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span
+                  style="
+                    font-size: 12px;
+                    color: var(--sidebar-foreground);
+                    font-weight: 500;
+                  "
+                  >Equilibrado · v1</span
+                >
+                <div
+                  class="icon-btn"
+                  style="width: 20px; height: 20px"
+                  data-media-type="banani-button"
+                >
+                  <iconify-icon
+                    icon="lucide:rotate-ccw"
+                    style="font-size: 14px; color: var(--muted-foreground)"
+                  ></iconify-icon>
+                </div>
+              </div>
+            </div>
+            <div class="footer-toggle-row" data-media-type="banani-button">
+              <div class="checkbox-box"></div>
+              <span>Mostrar debug del modelo</span>
+            </div>
+            <div class="footer-toggle-row" data-media-type="banani-button">
+              <div class="checkbox-box checked">
+                <iconify-icon
+                  icon="lucide:check"
+                  style="font-size: 12px"
+                ></iconify-icon>
+              </div>
+              <span>Auto-scroll al generar</span>
+            </div>
+          </div>
+        </aside>
+
+        <main class="main-pane">
+          <header class="primary-header">
+            <div class="header-left">
+              <div class="session-title">Chat de órdenes</div>
+              <div class="session-meta-row">
+                <span>Sesión creada el 28 feb 2026 · 23:00</span>
+                <span>·</span>
+                <span style="display: flex; align-items: center; gap: 4px">
+                  <iconify-icon
+                    icon="lucide:activity"
+                    style="font-size: 14px; color: var(--success)"
+                  ></iconify-icon>
+                  <span>Listo para recibir órdenes</span>
+                </span>
+              </div>
+            </div>
+            <div class="header-right">
+              <div class="selector-group">
+                <span class="selector-label">Proveedor</span>
+                <div class="selector-control" data-media-type="banani-button">
+                  <span>ollama</span>
+                  <iconify-icon
+                    icon="lucide:chevron-down"
+                    style="font-size: 16px; color: var(--muted-foreground)"
+                  ></iconify-icon>
+                </div>
+              </div>
+              <div class="selector-group">
+                <span class="selector-label">Modelo</span>
+                <div class="selector-control" data-media-type="banani-button">
+                  <span>kimi-k2.5:cloud</span>
+                  <iconify-icon
+                    icon="lucide:chevron-down"
+                    style="font-size: 16px; color: var(--muted-foreground)"
+                  ></iconify-icon>
+                </div>
+              </div>
+              <div class="header-icon-buttons">
+                <div class="icon-btn" data-media-type="banani-button">
+                  <iconify-icon
+                    icon="lucide:rotate-ccw"
+                    style="font-size: 18px"
+                  ></iconify-icon>
+                </div>
+                <div class="icon-btn" data-media-type="banani-button">
+                  <iconify-icon
+                    icon="lucide:trash-2"
+                    style="font-size: 18px"
+                  ></iconify-icon>
+                </div>
+                <div class="icon-btn" data-media-type="banani-button">
+                  <iconify-icon
+                    icon="lucide:info"
+                    style="font-size: 18px"
+                  ></iconify-icon>
+                </div>
+                <div class="btn btn-primary" data-media-type="banani-button">
+                  Guardar preset
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <div class="secondary-header">
+            <div class="secondary-left">
+              <span>Uso de contexto</span>
+              <span class="context-badge">—</span>
+            </div>
+            <div class="secondary-right">
+              <div
+                style="display: flex; align-items: center; gap: 6px"
+                data-media-type="banani-button"
+              >
+                <iconify-icon
+                  icon="lucide:minus"
+                  style="font-size: 14px; color: var(--muted-foreground)"
+                ></iconify-icon>
+                <iconify-icon
+                  icon="lucide:plus"
+                  style="font-size: 14px; color: var(--muted-foreground)"
+                ></iconify-icon>
+              </div>
+              <div class="divider-vertical"></div>
+              <span>history messages:</span>
+              <span class="context-badge">5</span>
+              <div class="divider-vertical"></div>
+              <span>Chroma:</span>
+              <div
+                class="selector-control"
+                style="min-width: 120px; padding: 4px 10px; font-size: 12px"
+                data-media-type="banani-button"
+              >
+                <span>Nada</span>
+                <iconify-icon
+                  icon="lucide:chevron-down"
+                  style="font-size: 14px; color: var(--muted-foreground)"
+                ></iconify-icon>
+              </div>
+            </div>
+          </div>
+
+          <div class="body-grid">
+            <section class="context-column">
+              <div class="context-card">
+                <div class="context-card-header">
+                  <span class="context-card-title">Resumen de la orden</span>
+                  <span class="chip">En preparación</span>
+                </div>
+                <div
+                  style="
+                    font-size: 12px;
+                    color: var(--muted-foreground);
+                    margin-top: 2px;
+                  "
+                >
+                  El agente transformará tus mensajes en instrucciones claras y
+                  verificables.
+                </div>
+                <div class="context-pill-row">
+                  <div class="context-pill">Lenguaje: ES</div>
+                  <div class="context-pill">Formato: pasos numerados</div>
+                  <div class="context-pill">Tono: profesional y calmado</div>
+                </div>
+              </div>
+
+              <div class="context-card">
+                <div class="context-card-header">
+                  <span class="context-card-title">Guardrails activos</span>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    margin-top: 4px;
+                    font-size: 12px;
+                    color: var(--muted-foreground);
+                  "
+                >
+                  <div style="display: flex; align-items: center; gap: 6px">
+                    <div
+                      style="
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 999px;
+                        background-color: var(--success);
+                      "
+                    ></div>
+                    <span>Validación de sintaxis de orden</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px">
+                    <div
+                      style="
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 999px;
+                        background-color: var(--success);
+                      "
+                    ></div>
+                    <span
+                      >Confirmación antes de ejecutar acciones sensibles</span
+                    >
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px">
+                    <div
+                      style="
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 999px;
+                        background-color: var(--success);
+                      "
+                    ></div>
+                    <span>Resúmenes breves al final de cada orden</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="chat-column">
+              <div class="chat-stream">
+                <div class="empty-row">
+                  Empieza escribiendo una orden. El agente mantendrá el contexto
+                  técnico y el tono estable.
+                </div>
+
+                <div class="message-row">
+                  <div class="message-avatar">IA</div>
+                  <div style="max-width: 100%">
+                    <div class="message-bubble assistant">
+                      <span>
+                        Estoy listo para ayudarte a definir y afinar órdenes.
+                        Cuéntame qué quieres que haga y te propondré una versión
+                        clara y ejecutable.
+                      </span>
+                    </div>
+                    <div class="message-meta">Agente · hace unos segundos</div>
+                  </div>
+                </div>
+
+                <div class="message-row" style="justify-content: flex-end">
+                  <div style="max-width: 70%">
+                    <div class="message-bubble user">
+                      <span>
+                        Necesito una orden para generar un informe diario de
+                        ventas con un resumen ejecutivo al final.
+                      </span>
+                    </div>
+                    <div class="message-meta" style="text-align: right">
+                      Tú · ejemplo
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="composer-panel">
+                <div class="composer-top-row">
+                  <span>Instrucción solo para este mensaje (opcional)</span>
+                  <div class="inline-input" data-media-type="banani-button">
+                    Ej: «Responde en formato JSON con campos orden, validaciones
+                    y notas»
+                  </div>
+                </div>
+                <div class="composer-main-row">
+                  <div
+                    class="composer-textarea"
+                    data-media-type="banani-button"
+                  >
+                    Escribe aquí la orden que quieres que el agente
+                    interprete...
+                  </div>
+                  <div class="composer-actions">
+                    <div class="small-icon-row">
+                      <div
+                        class="small-icon-btn"
+                        data-media-type="banani-button"
+                      >
+                        <iconify-icon
+                          icon="lucide:paperclip"
+                          style="font-size: 16px"
+                        ></iconify-icon>
+                      </div>
+                      <div
+                        class="small-icon-btn"
+                        data-media-type="banani-button"
+                      >
+                        <iconify-icon
+                          icon="lucide:mic"
+                          style="font-size: 16px"
+                        ></iconify-icon>
+                      </div>
+                    </div>
+                    <div class="send-button" data-media-type="banani-button">
+                      Enviar orden
+                      <iconify-icon
+                        icon="lucide:send"
+                        style="font-size: 16px"
+                      ></iconify-icon>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+      <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    </body>
+  </html>
+  <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+  <style>
+    :root {
+      --background: #020617;
+      --foreground: #e5f0ff;
+      --border: #1f2937;
+      --input: #020617;
+      --primary: #6366f1;
+      --primary-foreground: #ffffff;
+      --secondary: #0f172a;
+      --secondary-foreground: #e5f0ff;
+      --muted: #111827;
+      --muted-foreground: #9ca3af;
+      --success: #10b981;
+      --success-foreground: #ecfdf5;
+      --accent: #0ea5e9;
+      --accent-foreground: #f9fafb;
+      --destructive: #ef4444;
+      --destructive-foreground: #fef2f2;
+      --warning: #f59e0b;
+      --warning-foreground: #111827;
+      --card: #020617;
+      --card-foreground: #e5f0ff;
+      --sidebar: #020617;
+      --sidebar-foreground: #e5f0ff;
+      --sidebar-primary: #4f46e5;
+      --sidebar-primary-foreground: #ffffff;
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+      --radius-xl: 12px;
+      --font-family-body: Inter;
+    }
+  </style>
+</div>
