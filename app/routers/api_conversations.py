@@ -275,7 +275,9 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
 def update_conversation(
     conversation_id: str, body: ConversationUpdate, db: Session = Depends(get_db)
 ):
+    body_set = body.model_dump(exclude_unset=True)
     instruction_ids = _instructions_to_ids(body.system_instructions, db) if body.system_instructions is not None else None
+    instruction_override_arg = body.instruction_override if "instruction_override" in body_set else crud.INSTRUCTION_OVERRIDE_UNSET
     conv = crud.update_conversation(
         db,
         conversation_id,
@@ -287,7 +289,7 @@ def update_conversation(
         inject_instruction_every=body.inject_instruction_every,
         model_params=body.model_params,
         history_turns=body.history_turns,
-        instruction_override=body.instruction_override,
+        instruction_override=instruction_override_arg,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
