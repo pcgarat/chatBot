@@ -87,3 +87,18 @@ def init_db():
             conn.rollback()
     # Crear tabla rules (biblioteca de reglas unificada)
     Base.metadata.create_all(bind=engine)
+    # Migración: last_message_at para ordenar por última escritura, no por último click
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN last_message_at DATETIME"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        else:
+            try:
+                conn.execute(text(
+                    "UPDATE conversations SET last_message_at = (SELECT MAX(created_at) FROM messages WHERE messages.conversation_id = conversations.id)"
+                ))
+                conn.commit()
+            except Exception:
+                conn.rollback()

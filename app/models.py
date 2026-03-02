@@ -26,6 +26,7 @@ class Conversation(Base):
     instruction_override = Column(Text, nullable=True)  # Instrucción solo para el siguiente mensaje; último valor por conversación
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_message_at = Column(DateTime, nullable=True)
 
     messages = relationship(
         "Message",

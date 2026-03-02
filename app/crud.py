@@ -1,12 +1,15 @@
 import json
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, Message, Rule
 
 # Sentinel para "no actualizar inject_instruction_every" en update_conversation
 _INJECT_UNSET = object()
+# Sentinel para "no actualizar instruction_override" (omitido en el body); None = borrar
+INSTRUCTION_OVERRIDE_UNSET = object()
 
 
 # ----- Rules (biblioteca) -----
@@ -79,7 +82,11 @@ def get_conversation(db: Session, conversation_id: str) -> Conversation | None:
 
 
 def list_conversations(db: Session) -> list[Conversation]:
-    return db.query(Conversation).order_by(Conversation.updated_at.desc()).all()
+    return (
+        db.query(Conversation)
+        .order_by(func.coalesce(Conversation.last_message_at, Conversation.updated_at).desc())
+        .all()
+    )
 
 
 def update_conversation(
@@ -93,11 +100,12 @@ def update_conversation(
     inject_instruction_every: int | None = _INJECT_UNSET,
     model_params: dict | None = None,
     history_turns: int | None = None,
-    instruction_override: str | None = None,
+    instruction_override: str | None = INSTRUCTION_OVERRIDE_UNSET,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
         return None
+    updated_at_before = conv.updated_at
     if title is not None:
         conv.title = title
     if model_id is not None:
@@ -114,9 +122,18 @@ def update_conversation(
         conv.model_params = json.dumps(model_params) if model_params else None
     if history_turns is not None:
         conv.history_turns = history_turns if history_turns >= 0 else None
-    if instruction_override is not None:
+    if instruction_override is not INSTRUCTION_OVERRIDE_UNSET:
         conv.instruction_override = instruction_override.strip() if instruction_override and instruction_override.strip() else None
-    conv.updated_at = datetime.utcnow()
+    # No actualizar updated_at si solo cambió instruction_override (al hacer click en otra conversación no debe reordenar la lista)
+    affects_order = any([
+        title is not None, model_id is not None, provider is not None,
+        system_instruction_global is not None, instruction_ids is not None,
+        inject_instruction_every is not _INJECT_UNSET, model_params is not None, history_turns is not None,
+    ])
+    if affects_order:
+        conv.updated_at = datetime.utcnow()
+    else:
+        conv.updated_at = updated_at_before
     db.commit()
     db.refresh(conv)
     return conv
@@ -170,6 +187,10 @@ def add_message(
         debug_response_raw=debug_response_raw,
     )
     db.add(msg)
+    db.flush()
+    conv = get_conversation(db, conversation_id)
+    if conv:
+        conv.last_message_at = datetime.utcnow()
     db.commit()
     db.refresh(msg)
     return msg
