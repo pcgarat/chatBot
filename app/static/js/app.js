@@ -893,8 +893,8 @@
 
   const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "La semana pasada", anteriores: "Anteriores" };
 
-  function getConversationGroup(updatedAt) {
-    const d = updatedAt ? new Date(updatedAt) : new Date(0);
+  function getConversationGroup(lastActivityAt) {
+    const d = lastActivityAt ? new Date(lastActivityAt) : new Date(0);
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterdayStart = new Date(todayStart);
@@ -910,8 +910,9 @@
   function renderConversationsList(list) {
     if (!el.conversationsList) return;
     const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
+    const lastActivity = (c) => c.last_message_at || c.updated_at;
     list.forEach((c) => {
-      const g = getConversationGroup(c.updated_at);
+      const g = getConversationGroup(lastActivity(c));
       groups[g].push(c);
     });
     const order = ["hoy", "ayer", "semana", "anteriores"];
@@ -928,7 +929,7 @@
                   <span class="conv-title">${escapeHtml(c.title)}</span>
                   ${c.id === currentConversationId ? `<button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>` : ""}
                 </div>
-                <div class="conv-meta">${escapeHtml(c.provider || "ollama")}/${escapeHtml(c.model_id)} · ${formatDate(c.updated_at)}</div>
+                <div class="conv-meta">${escapeHtml(c.provider || "ollama")}/${escapeHtml(c.model_id)} · ${formatDate(lastActivity(c))}</div>
               </div>`
           )
           .join("");
@@ -1099,8 +1100,12 @@
       if (conv.model_params && typeof conv.model_params === "object" && Object.keys(conv.model_params).length > 0) {
         await ensureParamsBaselineForCurrentModel();
         applyUserParamsToControls(conv.model_params);
+        const savedParamIds = new Set(Object.keys(conv.model_params));
+        const allParamIds = Object.keys(paramsConfig.params || {});
+        paramsExcludedFromSendByConv[conv.id] = new Set(allParamIds.filter((id) => !savedParamIds.has(id)));
         paramsSource = "user";
       } else {
+        paramsExcludedFromSendByConv[conv.id] = new Set();
         try {
           const data = await fetchJson(`${API}/providers/${currentProvider}/presets`);
           const presets = data.presets || {};
@@ -1172,6 +1177,25 @@
   }
 
   let saveHistoryTurnsDebounceTimer = null;
+  let instructionOverrideDebounceTimer = null;
+
+  function saveInstructionOverrideToConversation() {
+    if (!currentConversationId || !el.instructionOverride) return;
+    const value = (el.instructionOverride.value || "").trim() || null;
+    fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ instruction_override: value }),
+    }).catch(() => {});
+  }
+
+  function debouncedSaveInstructionOverride() {
+    if (instructionOverrideDebounceTimer) clearTimeout(instructionOverrideDebounceTimer);
+    instructionOverrideDebounceTimer = setTimeout(function () {
+      instructionOverrideDebounceTimer = null;
+      saveInstructionOverrideToConversation();
+    }, 400);
+  }
+
   function saveHistoryTurnsToConversation() {
     if (!currentConversationId || !el.historyTurnsInput) return;
     const v = parseInt(el.historyTurnsInput.value, 10);
@@ -1537,6 +1561,21 @@
     currentStreamingDebugEl = debugStreamEl;
     scrollToBottomIfEnabled();
 
+    let analyzingDotsInterval = null;
+    let analyzingDotsCount = 0;
+    contentEl.textContent = "Analizando";
+    analyzingDotsInterval = setInterval(function () {
+      analyzingDotsCount = (analyzingDotsCount + 1) % 4;
+      contentEl.textContent = "Analizando" + ".".repeat(analyzingDotsCount);
+    }, 400);
+
+    function clearAnalyzingDots() {
+      if (analyzingDotsInterval) {
+        clearInterval(analyzingDotsInterval);
+        analyzingDotsInterval = null;
+      }
+    }
+
     currentAbortController = new AbortController();
     setCancelButtonState();
     try {
@@ -1591,6 +1630,7 @@
               }
             }
             if (data.error) {
+              clearAnalyzingDots();
               fullContent += `[Error: ${data.error}]`;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
             }
@@ -1598,6 +1638,7 @@
               messages[messages.length - 1].id = data.user_message_id;
             }
             if (data.content !== undefined) {
+              clearAnalyzingDots();
               fullContent += data.content;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
               scrollToBottomIfEnabled();
@@ -1610,6 +1651,7 @@
               renderContextUsageBar();
             }
             if (data.done) {
+              clearAnalyzingDots();
               currentStreamingMsgEl = null;
               currentStreamingDebugEl = null;
               msgEl.remove();
@@ -1629,38 +1671,27 @@
           }
         }
       }
+      clearAnalyzingDots();
       currentStreamingMsgEl = null;
       currentStreamingDebugEl = null;
       currentAbortController = null;
       setCancelButtonState();
     } catch (e) {
+      clearAnalyzingDots();
       currentStreamingMsgEl = null;
       currentStreamingDebugEl = null;
-      const lastUserContent = messages.length > 0 ? (messages[messages.length - 1].content || "") : "";
       if (e.name === "AbortError") {
-        msgEl.remove();
-        messages.pop();
+        messages.push({ role: "assistant", content: "Cancelado" });
         renderMessages();
-        if (el.messageInput) {
-          el.messageInput.value = lastUserContent;
-          el.messageInput.focus();
-        }
         if (currentConversationId) {
           fetch(`${API}/conversations/${currentConversationId}/messages/last`, { method: "DELETE" }).catch(() => {});
         }
         showNotice("Mensaje anulado.");
       } else {
-        msgEl.remove();
-        messages.pop();
+        messages.push({ role: "assistant", content: "Error al enviar: " + e.message });
         renderMessages();
-        if (el.messageInput) {
-          el.messageInput.value = lastUserContent;
-          el.messageInput.focus();
-        }
         showError("Error al enviar: " + e.message);
       }
-      currentStreamingMsgEl = null;
-      currentStreamingDebugEl = null;
       currentAbortController = null;
       setCancelButtonState();
     }
@@ -1752,18 +1783,14 @@
       onShowDebugModeChange(e.target.checked);
     }
   });
-  var fontSizeControls = document.querySelector(".font-size-controls");
-  if (fontSizeControls) {
-    fontSizeControls.addEventListener("click", function (e) {
-      var decrease = e.target.closest("#btn-font-size-decrease");
-      var increase = e.target.closest("#btn-font-size-increase");
-      if (decrease && !decrease.disabled) {
-        setConversationFontSize(-0.05);
-        e.preventDefault();
-      } else if (increase && !increase.disabled) {
-        setConversationFontSize(0.05);
-        e.preventDefault();
-      }
+  if (el.btnFontSizeDecrease) {
+    el.btnFontSizeDecrease.addEventListener("click", function () {
+      if (!this.disabled) setConversationFontSize(-0.05);
+    });
+  }
+  if (el.btnFontSizeIncrease) {
+    el.btnFontSizeIncrease.addEventListener("click", function () {
+      if (!this.disabled) setConversationFontSize(0.05);
     });
   }
   const AUTO_SCROLL_STORAGE_KEY = "autoScrollDuringGeneration";
@@ -2025,6 +2052,17 @@
     el.historyTurnsInput.addEventListener("change", debouncedSaveHistoryTurns);
     el.historyTurnsInput.addEventListener("input", debouncedSaveHistoryTurns);
   }
+  if (el.instructionOverride) {
+    el.instructionOverride.addEventListener("input", debouncedSaveInstructionOverride);
+    el.instructionOverride.addEventListener("blur", saveInstructionOverrideToConversation);
+    window.addEventListener("beforeunload", function () {
+      if (instructionOverrideDebounceTimer) {
+        clearTimeout(instructionOverrideDebounceTimer);
+        instructionOverrideDebounceTimer = null;
+        saveInstructionOverrideToConversation();
+      }
+    });
+  }
   if (el.messageInput) {
     el.messageInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -2157,8 +2195,8 @@
   }
 
   function applyConversationFontSize(rem) {
-    var container = el.messagesContainer || document.getElementById("messages-container");
-    if (container) container.style.setProperty("--chat-font-size", rem + "rem");
+    var wrap = document.querySelector(".chat-stream-wrap");
+    if (wrap) wrap.style.setProperty("--chat-font-size", rem + "rem");
   }
 
   function initConversationFontSize() {
