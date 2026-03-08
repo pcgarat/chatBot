@@ -266,26 +266,29 @@
         </div>
       </div>
       <div class="sidebar-footer">
-        <div class="footer-toggle-row">
-          <label class="footer-toggle-label">
-            <input type="checkbox" id="auto-scroll-during-generation" class="footer-checkbox-input" checked title="Durante la generación, hacer scroll al último contenido." />
-            <span class="checkbox-box" aria-hidden="true"></span>
-            <span>Auto-scroll al generar</span>
-          </label>
+        <div class="segmented-toggle-row" data-checkbox-id="auto-scroll-during-generation">
+          <span class="segmented-toggle-label">Auto-scroll al generar</span>
+          <div class="segmented-toggle-wrap" role="group" aria-label="Auto-scroll al generar">
+            <input type="checkbox" id="auto-scroll-during-generation" class="segmented-toggle-input-sr" checked title="Durante la generación, hacer scroll al último contenido." aria-hidden="true" tabindex="-1" />
+            <button type="button" class="segmented-toggle-btn" data-value="no" aria-pressed="false">NO</button>
+            <button type="button" class="segmented-toggle-btn" data-value="yes" aria-pressed="true">YES</button>
+          </div>
         </div>
-        <div class="footer-toggle-row">
-          <label class="footer-toggle-label">
-            <input type="checkbox" id="dark-mode-toggle" class="footer-checkbox-input" title="Activar modo oscuro" aria-label="Modo oscuro" />
-            <span class="checkbox-box" aria-hidden="true"></span>
-            <span>Modo oscuro</span>
-          </label>
+        <div class="segmented-toggle-row" data-checkbox-id="dark-mode-toggle">
+          <span class="segmented-toggle-label">Modo oscuro</span>
+          <div class="segmented-toggle-wrap" role="group" aria-label="Modo oscuro">
+            <input type="checkbox" id="dark-mode-toggle" class="segmented-toggle-input-sr" title="Activar modo oscuro" aria-hidden="true" tabindex="-1" />
+            <button type="button" class="segmented-toggle-btn" data-value="no" aria-pressed="true">NO</button>
+            <button type="button" class="segmented-toggle-btn" data-value="yes" aria-pressed="false">YES</button>
+          </div>
         </div>
-        <div class="footer-toggle-row">
-          <label class="footer-toggle-label">
-            <input type="checkbox" id="show-debug-mode" class="footer-checkbox-input sidebar-debug-checkbox" title="Mostrar debug del modelo" aria-label="Mostrar debug" />
-            <span class="checkbox-box" aria-hidden="true"></span>
-            <span>Debug</span>
-          </label>
+        <div class="segmented-toggle-row" data-checkbox-id="show-debug-mode">
+          <span class="segmented-toggle-label">Debug</span>
+          <div class="segmented-toggle-wrap" role="group" aria-label="Mostrar debug">
+            <input type="checkbox" id="show-debug-mode" class="segmented-toggle-input-sr sidebar-debug-checkbox" title="Mostrar debug del modelo" aria-hidden="true" tabindex="-1" />
+            <button type="button" class="segmented-toggle-btn" data-value="no" aria-pressed="true">NO</button>
+            <button type="button" class="segmented-toggle-btn" data-value="yes" aria-pressed="false">YES</button>
+          </div>
         </div>
       </div>
     </aside>

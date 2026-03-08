@@ -2332,6 +2332,37 @@
     });
   })();
 
+  (function initSegmentedToggles() {
+    document.querySelectorAll(".segmented-toggle-row").forEach(function (row) {
+      var checkboxId = row.getAttribute("data-checkbox-id");
+      var checkbox = document.getElementById(checkboxId);
+      var wrap = row.querySelector(".segmented-toggle-wrap");
+      var buttons = row.querySelectorAll(".segmented-toggle-btn");
+      if (!checkbox || !wrap || buttons.length !== 2) return;
+
+      function setPressed(value) {
+        buttons.forEach(function (btn) {
+          btn.setAttribute("aria-pressed", btn.getAttribute("data-value") === value ? "true" : "false");
+        });
+      }
+
+      function syncFromCheckbox() {
+        setPressed(checkbox.checked ? "yes" : "no");
+      }
+
+      syncFromCheckbox();
+
+      buttons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var value = this.getAttribute("data-value");
+          checkbox.checked = value === "yes";
+          setPressed(value);
+          checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+      });
+    });
+  })();
+
   document.querySelectorAll(".accordion-header").forEach((btn) => {
     btn.addEventListener("click", () => {
       const section = btn.closest(".accordion-section");
