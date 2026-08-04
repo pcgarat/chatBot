@@ -301,3 +301,43 @@ def test_clear_photos_rejects_user_message(client, db_session):
         f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/clear-photos"
     )
     assert res.status_code == 400
+
+
+def test_illustrated_image_meta_roundtrip(client, db_session, tmp_path, monkeypatch):
+    from app import crud
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    name = storage.save_illustrated_image("s1", b"\x89PNG\r\n\x1a\n")
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", f'<img src="/api/illustrated-images/{name}" class="chat-illustration" />')
+    crud.save_illustrated_image_meta(
+        db_session,
+        message_id=msg.id,
+        filename=name,
+        scene_id="s1",
+        mode="txt2img",
+        params={
+            "prompt": "storm lighthouse",
+            "steps": 8,
+            "width": 768,
+            "height": 512,
+            "model": "flux.safetensors",
+            "sampler_name": "Euler a",
+            "seed": 99,
+        },
+    )
+    res = client.get(f"/api/illustrated-images/{name}/meta")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["filename"] == name
+    assert body["scene_id"] == "s1"
+    assert body["params"]["prompt"] == "storm lighthouse"
+    assert body["params"]["width"] == 768
+    assert body["params"]["model"] == "flux.safetensors"
+
+    clear = client.post(
+        f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/clear-photos"
+    )
+    assert clear.status_code == 200
+    assert client.get(f"/api/illustrated-images/{name}/meta").status_code == 404

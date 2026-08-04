@@ -17,7 +17,11 @@ from app.routers.api_conversations import (
     _effective_system_instructions,
     _parse_model_params,
 )
-from app.schemas import IllustrateRequest, MessageContentUpdateResponse
+from app.schemas import (
+    IllustratedImageMetaResponse,
+    IllustrateRequest,
+    MessageContentUpdateResponse,
+)
 from app.services.image_illustration.content_ops import remove_all_photos, remove_orphan_anchors
 from app.services.image_illustration.forge_client import ForgeHttpClient
 from app.services.image_illustration.last_payload import FileSystemLastPayloadSource
@@ -135,6 +139,22 @@ def illustrate_message(
                         crud.update_message_content(
                             db, conversation_id, message_id, final_content
                         )
+                if event.type == "image":
+                    data = event.data or {}
+                    filename = data.get("filename")
+                    params = data.get("params")
+                    if filename and isinstance(params, dict):
+                        try:
+                            crud.save_illustrated_image_meta(
+                                db,
+                                message_id=message_id,
+                                filename=filename,
+                                scene_id=event.scene_id,
+                                mode=str(data.get("mode") or "txt2img"),
+                                params=params,
+                            )
+                        except Exception:
+                            pass
                 if event.type == "log" and not body.debug:
                     continue
                 if event.type == "llm_debug" and not body.include_prompt_debug:
@@ -183,6 +203,8 @@ def clear_message_photos(conversation_id: str, message_id: str, db: Session = De
     for name in filenames:
         if delete_illustrated_image(name):
             deleted += 1
+    if filenames:
+        crud.delete_illustrated_images_by_filenames(db, filenames)
     updated = crud.update_message_content(db, conversation_id, message_id, new_content)
     return MessageContentUpdateResponse(
         id=updated.id if updated else message_id,
@@ -204,6 +226,30 @@ def prune_orphan_anchors(conversation_id: str, message_id: str, db: Session = De
         id=updated.id if updated else message_id,
         content=new_content,
         deleted_files=0,
+    )
+
+
+@router.get(
+    "/illustrated-images/{filename}/meta",
+    response_model=IllustratedImageMetaResponse,
+)
+def get_illustrated_image_meta(filename: str, db: Session = Depends(get_db)):
+    """Devuelve prompt y parámetros Forge con los que se generó la imagen."""
+    row = crud.get_illustrated_image_meta(db, filename)
+    if not row:
+        raise HTTPException(status_code=404, detail="Metadatos no encontrados")
+    try:
+        params = json.loads(row.params_json or "{}")
+    except json.JSONDecodeError:
+        params = {}
+    if not isinstance(params, dict):
+        params = {}
+    return IllustratedImageMetaResponse(
+        filename=row.filename,
+        scene_id=row.scene_id,
+        mode=row.mode or "txt2img",
+        params=params,
+        created_at=row.created_at.isoformat() if row.created_at else None,
     )
 
 

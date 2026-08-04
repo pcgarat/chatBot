@@ -1196,6 +1196,180 @@
     renderMessages();
   }
 
+  const illustrationInfoIconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+
+  function filenameFromIllustratedSrc(src) {
+    if (!src) return "";
+    try {
+      const path = String(src).split("?")[0];
+      const marker = "/illustrated-images/";
+      const idx = path.indexOf(marker);
+      if (idx >= 0) return decodeURIComponent(path.slice(idx + marker.length).replace(/^\/+/, ""));
+      const parts = path.split("/");
+      return decodeURIComponent(parts[parts.length - 1] || "");
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function enhanceIllustrationFrames(root) {
+    if (!root) return;
+    root.querySelectorAll("img.chat-illustration").forEach(function (img) {
+      if (img.closest(".chat-illustration-frame")) return;
+      const parent = img.parentNode;
+      if (!parent) return;
+      const frame = document.createElement("span");
+      frame.className = "chat-illustration-frame";
+      parent.insertBefore(frame, img);
+      frame.appendChild(img);
+      const filename =
+        img.getAttribute("data-filename") || filenameFromIllustratedSrc(img.getAttribute("src"));
+      if (!filename) return;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chat-illustration-info-btn";
+      btn.title = "Parámetros de generación";
+      btn.setAttribute("aria-label", "Ver parámetros de generación");
+      btn.innerHTML = illustrationInfoIconSvg;
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openIllustrationMetaModal(filename);
+      });
+      frame.appendChild(btn);
+    });
+  }
+
+  function closeIllustrationMetaModal() {
+    const modal = document.getElementById("illustration-meta-modal");
+    if (modal) modal.hidden = true;
+  }
+
+  function formatIllustrationMetaValue(value) {
+    if (value == null) return "—";
+    if (typeof value === "object") {
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch (_) {
+        return String(value);
+      }
+    }
+    return String(value);
+  }
+
+  function renderIllustrationMetaBody(data) {
+    const params = (data && data.params) || {};
+    const model =
+      params.model ||
+      (params.override_settings && params.override_settings.sd_model_checkpoint) ||
+      "—";
+    const size =
+      params.width != null && params.height != null
+        ? `${params.width} × ${params.height}`
+        : "—";
+    const rows = [
+      ["Modo", data.mode || params.mode || "—"],
+      ["Modelo", model],
+      ["Tamaño", size],
+      ["Sampler", params.sampler_name || "—"],
+      ["Scheduler", params.scheduler || "—"],
+      ["Steps", params.steps != null ? params.steps : "—"],
+      ["CFG", params.cfg_scale != null ? params.cfg_scale : "—"],
+      ["Seed", params.seed != null ? params.seed : "—"],
+      ["Denoising", params.denoising_strength != null ? params.denoising_strength : null],
+      ["Escena", data.scene_id || null],
+      ["Archivo", data.filename || null],
+    ].filter(function (pair) {
+      return pair[1] != null && pair[1] !== "";
+    });
+
+    const skipKeys = new Set([
+      "prompt",
+      "negative_prompt",
+      "model",
+      "mode",
+      "width",
+      "height",
+      "sampler_name",
+      "scheduler",
+      "steps",
+      "cfg_scale",
+      "seed",
+      "denoising_strength",
+      "override_settings",
+      "init_images",
+      "mask",
+      "include_init_images",
+    ]);
+    Object.keys(params).forEach(function (key) {
+      if (skipKeys.has(key)) return;
+      rows.push([key, formatIllustrationMetaValue(params[key])]);
+    });
+    if (params.override_settings && typeof params.override_settings === "object") {
+      Object.keys(params.override_settings).forEach(function (key) {
+        if (key === "sd_model_checkpoint") return;
+        rows.push([
+          "override." + key,
+          formatIllustrationMetaValue(params.override_settings[key]),
+        ]);
+      });
+    }
+
+    let html = '<dl class="illustration-meta-grid">';
+    rows.forEach(function (pair) {
+      html +=
+        `<dt>${escapeHtml(pair[0])}</dt><dd>${escapeHtml(formatIllustrationMetaValue(pair[1]))}</dd>`;
+    });
+    html += "</dl>";
+    html += '<div class="illustration-meta-prompt"><h3>Prompt</h3><pre>' +
+      escapeHtml(params.prompt || "—") +
+      "</pre></div>";
+    if (params.negative_prompt) {
+      html +=
+        '<div class="illustration-meta-prompt"><h3>Negative prompt</h3><pre>' +
+        escapeHtml(params.negative_prompt) +
+        "</pre></div>";
+    }
+    return html;
+  }
+
+  async function openIllustrationMetaModal(filename) {
+    const modal = document.getElementById("illustration-meta-modal");
+    const body = document.getElementById("illustration-meta-body");
+    if (!modal || !body || !filename) return;
+    body.innerHTML = '<p class="illustration-meta-loading">Cargando parámetros…</p>';
+    modal.hidden = false;
+    try {
+      const data = await fetchJson(
+        `${API}/illustrated-images/${encodeURIComponent(filename)}/meta`
+      );
+      body.innerHTML = renderIllustrationMetaBody(data || {});
+    } catch (err) {
+      body.innerHTML =
+        '<p class="illustration-meta-empty">No hay metadatos guardados para esta imagen.</p>';
+    }
+  }
+
+  function initIllustrationMetaModal() {
+    const modal = document.getElementById("illustration-meta-modal");
+    const closeBtn = document.getElementById("illustration-meta-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        closeIllustrationMetaModal();
+      });
+    }
+    if (modal) {
+      modal.addEventListener("click", function (e) {
+        if (e.target === modal) closeIllustrationMetaModal();
+      });
+    }
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeIllustrationMetaModal();
+    });
+  }
+
   function buildCollapsibleMessageHtml(content, key, expanded) {
     const parts = splitFirstParagraph(content);
     if (!parts.collapsible) {
@@ -1799,6 +1973,7 @@
       });
     });
     bindMessageContextMenus();
+    enhanceIllustrationFrames(el.messagesContainer);
     scrollToBottomIfEnabled();
   }
 
@@ -2778,6 +2953,7 @@
     if (!overlay || !body) return;
     readingModeMessageIndex = msgIndex;
     body.innerHTML = formatMessageHtml(msg.content || "");
+    enhanceIllustrationFrames(body);
     applyConversationFontSize(getStoredFontSize());
     applyConversationImageSize(getStoredImageSize());
     syncFontSizeButtons(getStoredFontSize());
@@ -2941,6 +3117,7 @@
   initAccordionState();
   initSidebarTabs();
   initConversationFontSize();
+  initIllustrationMetaModal();
   document.addEventListener("click", function () {
     closeAllMessageContextMenus();
   });

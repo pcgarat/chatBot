@@ -3092,10 +3092,119 @@ select.selector-control {
 }
 .chat-illustration {
   display: block;
-  max-width: var(--chat-image-max-width, 100%);
+  max-width: 100%;
   height: auto;
-  margin: 0.75rem 0;
+  margin: 0;
   border-radius: 6px;
+}
+
+.chat-illustration-frame {
+  position: relative;
+  display: block;
+  max-width: var(--chat-image-max-width, 100%);
+  margin: 0.75rem 0;
+  width: fit-content;
+  max-width: min(var(--chat-image-max-width, 100%), 100%);
+}
+
+.chat-illustration-info-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.55);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.chat-illustration-info-btn:hover {
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.chat-illustration-info-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.illustration-meta-modal-content {
+  max-width: 560px;
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.illustration-meta-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 0.5rem;
+}
+
+.illustration-meta-header .modal-title {
+  margin: 0;
+}
+
+.illustration-meta-body {
+  overflow: auto;
+  min-height: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.illustration-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(110px, 34%) 1fr;
+  gap: 6px 12px;
+}
+
+.illustration-meta-grid dt {
+  margin: 0;
+  color: var(--muted-foreground, #64748b);
+  font-weight: 600;
+}
+
+.illustration-meta-grid dd {
+  margin: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.illustration-meta-prompt {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.illustration-meta-prompt h3 {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--muted-foreground, #64748b);
+  font-weight: 600;
+}
+
+.illustration-meta-prompt pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.illustration-meta-empty,
+.illustration-meta-loading {
+  color: var(--muted-foreground, #64748b);
 }
 
 body.reading-mode-open {
@@ -3242,6 +3351,11 @@ body.reading-mode-resizing img {
   box-sizing: border-box;
   font-size: var(--chat-font-size, 0.95rem);
   line-height: 1.65;
+}
+
+.reading-mode-body .chat-illustration-frame {
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .reading-mode-body .chat-illustration {

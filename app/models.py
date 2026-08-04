@@ -62,3 +62,29 @@ class Message(Base):
     debug_response_raw = Column(Text, nullable=True)
 
     conversation = relationship("Conversation", back_populates="messages")
+    illustrated_images = relationship(
+        "IllustratedImage",
+        back_populates="message",
+        cascade="all, delete-orphan",
+    )
+
+
+class IllustratedImage(Base):
+    """Metadatos de una imagen generada (params Forge + prompt) ligada a un mensaje."""
+
+    __tablename__ = "illustrated_images"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    message_id = Column(
+        String(36),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    filename = Column(String(255), nullable=False, unique=True)
+    scene_id = Column(String(64), nullable=True)
+    mode = Column(String(32), nullable=False, default="txt2img")
+    params_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    message = relationship("Message", back_populates="illustrated_images")

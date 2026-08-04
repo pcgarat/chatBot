@@ -19,12 +19,20 @@ from app.services.image_illustration.models import (
     LastGenerationPayload,
     SceneSpec,
 )
+from app.services.image_illustration.generation_params import build_stored_generation_params
 from app.services.image_illustration.ports import ForgeGenerationPort, LastPayloadSource, ScenePlannerPort
 from app.services.image_illustration import status_codes as st
 
 
-def _img_tag(url: str, scene_id: str) -> str:
-    return f'<img src="{url}" alt="escena {scene_id}" class="chat-illustration" loading="lazy" />'
+def _img_tag(url: str, scene_id: str, filename: str = "") -> str:
+    safe_id = html.escape(scene_id)
+    attrs = (
+        f'src="{html.escape(url)}" alt="escena {safe_id}" '
+        f'class="chat-illustration" loading="lazy"'
+    )
+    if filename:
+        attrs += f' data-filename="{html.escape(filename)}"'
+    return f"<img {attrs} />"
 
 
 def _error_placeholder(scene_id: str, message: str) -> str:
@@ -108,7 +116,10 @@ def _run_pass(
             image_bytes = forge.generate(payload.mode, body)
             filename = save_image(scene.id, image_bytes)
             url = url_for_saved(filename)
-            content = _replace_scene_slot(content, scene.id, _img_tag(url, scene.id))
+            content = _replace_scene_slot(
+                content, scene.id, _img_tag(url, scene.id, filename)
+            )
+            stored_params = build_stored_generation_params(payload.mode, body)
             yield st.status_event(
                 st.IMAGES_IMAGE_READY,
                 f"Imagen recibida ({index}/{total})",
@@ -122,6 +133,11 @@ def _run_pass(
                 url=url,
                 message="ok",
                 content=content,
+                data={
+                    "filename": filename,
+                    "params": stored_params,
+                    "mode": payload.mode.value,
+                },
             )
         except Exception as exc:
             still_failed.append(scene)

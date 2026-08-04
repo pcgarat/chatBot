@@ -968,3 +968,9 @@ def test_e2e_illustration_edit_rejects_user_message(client, ollama_available):
             f"/api/conversations/{cid}/messages/{user['id']}/illustrations/{action}"
         )
         assert r.status_code == 400, action
+
+
+def test_e2e_illustrated_image_meta_404(client, ollama_available):
+    """GET /api/illustrated-images/{filename}/meta responde 404 si no hay registro."""
+    r = client.get("/api/illustrated-images/no-such-file.png/meta")
+    assert r.status_code == 404

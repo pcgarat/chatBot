@@ -182,6 +182,11 @@ def test_orchestrator_emits_status_pipeline_for_generation():
     assert codes.count("images.awaiting_generation") == 2
     assert codes.count("images.image_ready") == 2
     assert codes[-1] == "images.done"
+    images = [e for e in events if e.type == "image"]
+    assert len(images) == 2
+    assert images[0].data.get("filename") == "s1.png"
+    assert images[0].data.get("params", {}).get("prompt") == "p1"
+    assert 'data-filename="s1.png"' in (images[0].content or "")
 
 
 def test_orchestrator_retries_only_after_full_first_pass():

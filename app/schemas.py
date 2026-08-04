@@ -228,3 +228,13 @@ class MessageContentUpdateResponse(BaseModel):
     id: str
     content: str
     deleted_files: int = 0
+
+
+class IllustratedImageMetaResponse(BaseModel):
+    """Metadatos de generación Forge de una imagen ilustrada."""
+
+    filename: str
+    scene_id: Optional[str] = None
+    mode: str = "txt2img"
+    params: dict = Field(default_factory=dict)
+    created_at: Optional[str] = None
