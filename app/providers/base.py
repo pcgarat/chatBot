@@ -70,6 +70,8 @@ class LLMProvider(Protocol):
     Implementaciones:
     - OllamaProvider: Modelos locales
     - MancerProvider: Mancer.tech (API OpenAI-compatible)
+    - OpenAIProvider: API oficial OpenAI
+    - AbliterationProvider: abliteration.ai (API OpenAI-compatible)
     """
 
     @property

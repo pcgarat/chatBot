@@ -119,3 +119,17 @@ def mancer_available():
             "Configura la variable de entorno para ejecutar tests e2e de Mancer."
         )
     return True
+
+
+@pytest.fixture(scope="session")
+def abliteration_available():
+    """
+    Comprueba si Abliteration está configurado (ABLIT_KEY) para tests e2e.
+    Si no hay key, hace skip de los tests que dependan de esta fixture.
+    """
+    if not getattr(settings, "ablit_key", ""):
+        pytest.skip(
+            "ABLIT_KEY no configurada. "
+            "Configura la variable de entorno para ejecutar tests e2e de Abliteration."
+        )
+    return True

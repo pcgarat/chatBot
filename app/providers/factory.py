@@ -32,7 +32,7 @@ class ProviderFactory:
         Obtiene una instancia del proveedor especificado.
 
         Args:
-            provider_type: Tipo de proveedor ("ollama", "mancer", "openai").
+            provider_type: Tipo de proveedor ("ollama", "mancer", "openai", "abliteration").
 
         Returns:
             Instancia del proveedor.
@@ -57,10 +57,14 @@ class ProviderFactory:
             from app.providers.openai import OpenAIProvider
 
             provider = OpenAIProvider()
+        elif provider_type == "abliteration":
+            from app.providers.abliteration import AbliterationProvider
+
+            provider = AbliterationProvider()
         else:
             raise ValueError(
                 f"Proveedor '{provider_type}' no soportado. "
-                f"Proveedores disponibles: ollama, mancer, openai"
+                f"Proveedores disponibles: ollama, mancer, openai, abliteration"
             )
 
         cls._providers[provider_type] = provider
@@ -109,7 +113,7 @@ class ProviderFactory:
         if ":" in model_id:
             parts = model_id.split(":", 1)
             # Verificar si el primer parte es un proveedor conocido
-            if parts[0].lower() in ("ollama", "mancer", "openai"):
+            if parts[0].lower() in ("ollama", "mancer", "openai", "abliteration"):
                 return parts[0].lower(), parts[1]
         # Si no hay prefijo de proveedor, usar el default
         return settings.default_llm_provider, model_id
@@ -127,6 +131,8 @@ class ProviderFactory:
             providers.append("mancer")
         if settings.openai_api_key:
             providers.append("openai")
+        if settings.ablit_key:
+            providers.append("abliteration")
         return providers
 
     @classmethod

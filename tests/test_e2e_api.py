@@ -422,6 +422,75 @@ def test_e2e_mancer_context_length(client, mancer_available):
         assert data["context_length"] > 0
 
 
+# ----- API Abliteration (e2e cuando ABLIT_KEY está configurada) -----
+
+
+def _get_first_abliteration_model(client):
+    """Obtiene el primer modelo Abliteration; hace skip si la lista está vacía."""
+    r = client.get("/api/providers/abliteration/models")
+    assert r.status_code == 200
+    models = r.json()
+    if not models:
+        pytest.skip("Abliteration no devolvió ningún modelo. Comprueba ABLIT_KEY y la API.")
+    return models[0]["name"]
+
+
+def test_e2e_list_providers_includes_abliteration_when_key_set(client, abliteration_available):
+    """GET /api/providers incluye abliteration cuando ABLIT_KEY está configurada."""
+    r = client.get("/api/providers")
+    assert r.status_code == 200
+    names = [p["name"] for p in r.json()]
+    assert "abliteration" in names
+
+
+def test_e2e_abliteration_models(client, abliteration_available):
+    """GET /api/providers/abliteration/models incluye los modelos oficiales."""
+    r = client.get("/api/providers/abliteration/models")
+    assert r.status_code == 200
+    models = r.json()
+    assert isinstance(models, list)
+    names = {m["name"] for m in models}
+    assert "abliterated-model" in names
+    assert "abliterated-model-large" in names
+    for m in models:
+        assert m.get("provider") == "abliteration"
+
+
+def test_e2e_abliteration_validate(client, abliteration_available):
+    """GET /api/providers/abliteration/validate devuelve 200 y ok."""
+    r = client.get("/api/providers/abliteration/validate")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("ok") is True
+
+
+def test_e2e_abliteration_params(client, abliteration_available):
+    """GET /api/providers/abliteration/params devuelve provider y params."""
+    r = client.get("/api/providers/abliteration/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("provider") == "abliteration"
+    assert "temperature" in data.get("params", {})
+    assert "max_tokens" in data.get("params", {})
+
+
+def test_e2e_abliteration_capabilities(client, abliteration_available):
+    """GET /api/providers/abliteration/capabilities incluye show_model."""
+    r = client.get("/api/providers/abliteration/capabilities")
+    assert r.status_code == 200
+    data = r.json()
+    assert "show_model" in data.get("capabilities", [])
+
+
+def test_e2e_abliteration_context_length(client, abliteration_available):
+    """context-length de abliterated-model es 262144 según preset/catálogo."""
+    path_id = _encode_model_id("abliterated-model")
+    r = client.get(f"/api/providers/abliteration/models/{path_id}/context-length")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["context_length"] == 262144
+
+
 # ----- API Rules (biblioteca) -----
 
 

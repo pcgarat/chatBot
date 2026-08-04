@@ -141,8 +141,8 @@ class TestOllamaProvider:
         """Chat con extra_body usa httpx y fusiona options en el payload."""
         provider = OllamaProvider(host="http://localhost:11434")
         mock_resp = MagicMock()
+        mock_resp.status_code = 200
         mock_resp.json.return_value = {"message": {"content": "Con temperatura 0.5"}}
-        mock_resp.raise_for_status = MagicMock()
 
         with patch("app.providers.ollama.httpx") as mock_httpx:
             mock_httpx.Timeout.return_value = None
@@ -264,6 +264,7 @@ class TestOllamaProvider:
         mock_response = MagicMock()
         mock_response.status_code = 503
         mock_response.reason_phrase = "Service Unavailable"
+        mock_response.aread = AsyncMock(return_value=b"")
         mock_response.aiter_lines = lambda: EmptyAsyncIter()
 
         mock_stream_ctx = MagicMock()
@@ -287,6 +288,44 @@ class TestOllamaProvider:
         error_chunks = [c for c in chunks if c.type == "error"]
         assert len(error_chunks) == 1
         assert "503" in (error_chunks[0].error or "")
+
+    def test_chat_stream_http_403_includes_ollama_error_body(self):
+        """chat_stream con 403 debe mostrar el mensaje de Ollama (p. ej. modelos cloud sin suscripción)."""
+        subscription_msg = (
+            "this model requires a subscription, upgrade for access: https://ollama.com/upgrade"
+        )
+        provider = OllamaProvider(host="http://localhost:11434")
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.reason_phrase = "Forbidden"
+        mock_response.aread = AsyncMock(
+            return_value=json.dumps({"error": subscription_msg}).encode("utf-8")
+        )
+
+        mock_stream_ctx = MagicMock()
+        mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        async def run():
+            with patch("app.providers.ollama.httpx") as mock_httpx:
+                mock_async_client = MagicMock()
+                mock_async_client.stream.return_value = mock_stream_ctx
+                mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
+                mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=None)
+                with patch("app.providers.ollama.settings") as mock_settings:
+                    mock_settings.verbose = False
+                    chunks = []
+                    async for ch in provider.chat_stream(
+                        "glm-5:cloud", [{"role": "user", "content": "Hi"}]
+                    ):
+                        chunks.append(ch)
+            return chunks
+
+        chunks = asyncio.run(run())
+        error_chunks = [c for c in chunks if c.type == "error"]
+        assert len(error_chunks) == 1
+        assert subscription_msg in (error_chunks[0].error or "")
+        assert error_chunks[0].metadata.get("status_code") == 403
 
     def test_validate_connection_success(self):
         """Test validación de conexión exitosa."""
@@ -422,10 +461,11 @@ class TestProviderFactory:
             assert model_name == "llama3.2:latest"
 
     def test_list_available_providers_ollama_only(self):
-        """Test listado de proveedores (solo Ollama si no hay keys de Mancer/OpenAI)."""
+        """Test listado de proveedores (solo Ollama si no hay keys de cloud)."""
         with patch("app.providers.factory.settings") as mock_settings:
             mock_settings.mancer_api_key = ""
             mock_settings.openai_api_key = ""
+            mock_settings.ablit_key = ""
             providers = ProviderFactory.list_available_providers()
             assert providers == ["ollama"]
 
@@ -434,20 +474,36 @@ class TestProviderFactory:
         with patch("app.providers.factory.settings") as mock_settings:
             mock_settings.mancer_api_key = "mcr-test-key"
             mock_settings.openai_api_key = ""
+            mock_settings.ablit_key = ""
             providers = ProviderFactory.list_available_providers()
             assert "ollama" in providers
             assert "mancer" in providers
             assert "openai" not in providers
+            assert "abliteration" not in providers
 
     def test_list_available_providers_with_openai(self):
         """Test listado de proveedores (incluyendo OpenAI si hay OPENAI_API_KEY)."""
         with patch("app.providers.factory.settings") as mock_settings:
             mock_settings.mancer_api_key = ""
             mock_settings.openai_api_key = "sk-test-key"
+            mock_settings.ablit_key = ""
             providers = ProviderFactory.list_available_providers()
             assert "ollama" in providers
             assert "openai" in providers
             assert "mancer" not in providers
+            assert "abliteration" not in providers
+
+    def test_list_available_providers_with_abliteration(self):
+        """Test listado de proveedores (incluyendo Abliteration si hay ABLIT_KEY)."""
+        with patch("app.providers.factory.settings") as mock_settings:
+            mock_settings.mancer_api_key = ""
+            mock_settings.openai_api_key = ""
+            mock_settings.ablit_key = "ak-test-key"
+            providers = ProviderFactory.list_available_providers()
+            assert "ollama" in providers
+            assert "abliteration" in providers
+            assert "mancer" not in providers
+            assert "openai" not in providers
 
     def test_get_openai_provider(self):
         """Test obtener proveedor OpenAI."""
@@ -458,6 +514,15 @@ class TestProviderFactory:
             provider = ProviderFactory.get_provider("openai")
             assert provider.provider_name == "openai"
 
+    def test_get_abliteration_provider(self):
+        """Test obtener proveedor Abliteration."""
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            provider = ProviderFactory.get_provider("abliteration")
+            assert provider.provider_name == "abliteration"
+
     def test_parse_model_id_openai_prefix(self):
         """Test parseo de model_id con prefijo openai."""
         with patch("app.providers.factory.settings") as mock_settings:
@@ -465,6 +530,16 @@ class TestProviderFactory:
             provider_type, model_name = ProviderFactory.parse_model_id("openai:gpt-4o-mini")
             assert provider_type == "openai"
             assert model_name == "gpt-4o-mini"
+
+    def test_parse_model_id_abliteration_prefix(self):
+        """Test parseo de model_id con prefijo abliteration."""
+        with patch("app.providers.factory.settings") as mock_settings:
+            mock_settings.default_llm_provider = "ollama"
+            provider_type, model_name = ProviderFactory.parse_model_id(
+                "abliteration:abliterated-model"
+            )
+            assert provider_type == "abliteration"
+            assert model_name == "abliterated-model"
 
 
 class TestGetProviderFunction:
@@ -707,4 +782,192 @@ class TestOpenAIProvider:
             mock_settings.verbose = False
             from app.providers.openai import OpenAIProvider
             provider = OpenAIProvider()
+            assert isinstance(provider, LLMProvider)
+
+
+class TestAbliterationProvider:
+    """Tests para AbliterationProvider."""
+
+    def test_provider_name(self):
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider()
+            assert provider.provider_name == "abliteration"
+
+    def test_missing_api_key(self):
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = ""
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            from app.providers.abliteration import AbliterationProvider
+            with pytest.raises(ValueError) as exc_info:
+                AbliterationProvider()
+            assert "ABLIT_KEY" in str(exc_info.value)
+
+    def test_api_key_override(self):
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "default-key"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider(api_key="custom-key")
+            assert provider._api_key == "custom-key"
+
+    def test_list_models_enriches_known_catalog(self):
+        """list_models enriquece IDs de la API con context_length del catálogo."""
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider()
+        with patch("app.providers.abliteration.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "data": [
+                    {"id": "abliterated-model", "object": "model"},
+                    {"id": "abliterated-model-large", "object": "model"},
+                ]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            models = provider.list_models()
+        assert len(models) == 2
+        by_name = {m.name: m for m in models}
+        assert by_name["abliterated-model"].context_length == 262_144
+        assert by_name["abliterated-model-large"].context_length == 1_000_000
+        assert by_name["abliterated-model"].pricing["prompt_per_1k"] == 0.003
+        assert by_name["abliterated-model-large"].pricing["prompt_per_1k"] == 0.005
+
+    def test_list_models_fallback_completes_catalog(self):
+        """Si la API solo devuelve un modelo, se completa con el catálogo conocido."""
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider()
+        with patch("app.providers.abliteration.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "data": [{"id": "abliterated-model", "object": "model"}]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            models = provider.list_models()
+        names = {m.name for m in models}
+        assert names == {"abliterated-model", "abliterated-model-large"}
+
+    def test_chat_success(self):
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider()
+        with patch("app.providers.abliteration.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "choices": [{"message": {"content": "Hello from Abliteration!"}}]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.post.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            result = provider.chat(
+                "abliterated-model", [{"role": "user", "content": "Hi"}]
+            )
+        assert result == "Hello from Abliteration!"
+
+    def test_chat_stream_content_and_done(self):
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider()
+        lines = [
+            "data: " + json.dumps({"choices": [{"delta": {"content": "Hi"}}]}),
+            "data: " + json.dumps({
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+            }),
+        ]
+
+        async def fake_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.aiter_lines = lambda: fake_aiter_lines()
+
+        mock_stream_ctx = MagicMock()
+        mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        async def run():
+            with patch("app.providers.abliteration.httpx") as mock_httpx:
+                mock_async_client = MagicMock()
+                mock_async_client.stream.return_value = mock_stream_ctx
+                mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_async_client
+                )
+                mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=None)
+                chunks = []
+                async for ch in provider.chat_stream(
+                    "abliterated-model", [{"role": "user", "content": "Hi"}]
+                ):
+                    chunks.append(ch)
+            return chunks
+
+        chunks = asyncio.run(run())
+        content_chunks = [c for c in chunks if c.type == "content"]
+        done_chunks = [c for c in chunks if c.type == "done"]
+        assert "".join(c.content for c in content_chunks) == "Hi"
+        assert done_chunks[0].metadata.get("usage") == {
+            "prompt_tokens": 3,
+            "completion_tokens": 1,
+        }
+
+    def test_show_model_uses_known_catalog(self):
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider()
+        with patch("app.providers.abliteration.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            result = provider.show_model("abliterated-model")
+        assert result is not None
+        assert result["context_length"] == 262_144
+        assert "fetched_at" in result
+
+    def test_validate_connection_success(self):
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider()
+        with patch.object(provider, "list_models") as mock_list:
+            mock_list.return_value = [
+                ProviderModelInfo(name="abliterated-model", provider="abliteration")
+            ]
+            assert provider.validate_connection() is True
+
+    def test_implements_protocol(self):
+        with patch("app.providers.abliteration.settings") as mock_settings:
+            mock_settings.ablit_key = "ak-test"
+            mock_settings.ablit_base_url = "https://api.abliteration.ai"
+            mock_settings.verbose = False
+            from app.providers.abliteration import AbliterationProvider
+            provider = AbliterationProvider()
             assert isinstance(provider, LLMProvider)
