@@ -220,3 +220,21 @@ class IllustrateRequest(BaseModel):
         if not self.use_chat_config and not (self.prompt_model or "").strip():
             raise ValueError("prompt_model es obligatorio si use_chat_config es false")
         return self
+
+
+class MessageContentUpdateResponse(BaseModel):
+    """Content actualizado tras editar ilustraciones de un mensaje."""
+
+    id: str
+    content: str
+    deleted_files: int = 0
+
+
+class IllustratedImageMetaResponse(BaseModel):
+    """Metadatos de generación Forge de una imagen ilustrada."""
+
+    filename: str
+    scene_id: Optional[str] = None
+    mode: str = "txt2img"
+    params: dict = Field(default_factory=dict)
+    created_at: Optional[str] = None

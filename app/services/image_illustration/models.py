@@ -53,7 +53,7 @@ class LastGenerationPayload:
 
 @dataclass
 class IllustrationEvent:
-    type: str  # log | placeholder | image | error | done
+    type: str  # log | status | placeholder | image | error | done | llm_debug
     message: str = ""
     scene_id: str | None = None
     url: str | None = None

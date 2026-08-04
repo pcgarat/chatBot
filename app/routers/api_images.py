@@ -17,12 +17,21 @@ from app.routers.api_conversations import (
     _effective_system_instructions,
     _parse_model_params,
 )
-from app.schemas import IllustrateRequest
+from app.schemas import (
+    IllustratedImageMetaResponse,
+    IllustrateRequest,
+    MessageContentUpdateResponse,
+)
+from app.services.image_illustration.content_ops import remove_all_photos, remove_orphan_anchors
 from app.services.image_illustration.forge_client import ForgeHttpClient
 from app.services.image_illustration.last_payload import FileSystemLastPayloadSource
 from app.services.image_illustration.orchestrator import ImageIllustrationOrchestrator
 from app.services.image_illustration.scene_planner import LlmScenePlanner
-from app.services.image_illustration.storage import resolve_illustrated_path, save_illustrated_image
+from app.services.image_illustration.storage import (
+    delete_illustrated_image,
+    resolve_illustrated_path,
+    save_illustrated_image,
+)
 
 router = APIRouter(prefix="/api", tags=["images"])
 
@@ -99,7 +108,7 @@ def illustrate_message(
 ):
     """
     Tras el chat: planifica escenas, genera con Forge (ReplayLastGeneration)
-    y emite NDJSON (log|placeholder|image|error|done).
+    y emite NDJSON (status|log|placeholder|image|error|done|llm_debug).
     """
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
@@ -130,10 +139,27 @@ def illustrate_message(
                         crud.update_message_content(
                             db, conversation_id, message_id, final_content
                         )
+                if event.type == "image":
+                    data = event.data or {}
+                    filename = data.get("filename")
+                    params = data.get("params")
+                    if filename and isinstance(params, dict):
+                        try:
+                            crud.save_illustrated_image_meta(
+                                db,
+                                message_id=message_id,
+                                filename=filename,
+                                scene_id=event.scene_id,
+                                mode=str(data.get("mode") or "txt2img"),
+                                params=params,
+                            )
+                        except Exception:
+                            pass
                 if event.type == "log" and not body.debug:
                     continue
                 if event.type == "llm_debug" and not body.include_prompt_debug:
                     continue
+                # type=status siempre se reenvía (barra de estado; no depende de debug)
                 yield json.dumps(event.to_dict(), ensure_ascii=False) + "\n"
         finally:
             if final_content != text:
@@ -151,6 +177,80 @@ def illustrate_message(
                         persist.close()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+def _require_assistant_message(db: Session, conversation_id: str, message_id: str):
+    conv = crud.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    msg = crud.get_message(db, conversation_id, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    if msg.role != "assistant":
+        raise HTTPException(status_code=400, detail="Solo se editan ilustraciones de mensajes assistant")
+    return msg
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/illustrations/clear-photos",
+    response_model=MessageContentUpdateResponse,
+)
+def clear_message_photos(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+    """Borra para siempre las fotos generadas de la respuesta (ficheros + tags img)."""
+    msg = _require_assistant_message(db, conversation_id, message_id)
+    new_content, filenames = remove_all_photos(msg.content or "")
+    deleted = 0
+    for name in filenames:
+        if delete_illustrated_image(name):
+            deleted += 1
+    if filenames:
+        crud.delete_illustrated_images_by_filenames(db, filenames)
+    updated = crud.update_message_content(db, conversation_id, message_id, new_content)
+    return MessageContentUpdateResponse(
+        id=updated.id if updated else message_id,
+        content=new_content,
+        deleted_files=deleted,
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/illustrations/prune-orphans",
+    response_model=MessageContentUpdateResponse,
+)
+def prune_orphan_anchors(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+    """Elimina anclas huérfanas (marcadores, placeholders y errores sin imagen)."""
+    msg = _require_assistant_message(db, conversation_id, message_id)
+    new_content = remove_orphan_anchors(msg.content or "")
+    updated = crud.update_message_content(db, conversation_id, message_id, new_content)
+    return MessageContentUpdateResponse(
+        id=updated.id if updated else message_id,
+        content=new_content,
+        deleted_files=0,
+    )
+
+
+@router.get(
+    "/illustrated-images/{filename}/meta",
+    response_model=IllustratedImageMetaResponse,
+)
+def get_illustrated_image_meta(filename: str, db: Session = Depends(get_db)):
+    """Devuelve prompt y parámetros Forge con los que se generó la imagen."""
+    row = crud.get_illustrated_image_meta(db, filename)
+    if not row:
+        raise HTTPException(status_code=404, detail="Metadatos no encontrados")
+    try:
+        params = json.loads(row.params_json or "{}")
+    except json.JSONDecodeError:
+        params = {}
+    if not isinstance(params, dict):
+        params = {}
+    return IllustratedImageMetaResponse(
+        filename=row.filename,
+        scene_id=row.scene_id,
+        mode=row.mode or "txt2img",
+        params=params,
+        created_at=row.created_at.isoformat() if row.created_at else None,
+    )
 
 
 @router.get("/illustrated-images/{filename}")

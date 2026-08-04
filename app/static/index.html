@@ -71,9 +71,10 @@
       <div class="body-grid">
         <section class="chat-column">
           <div class="chat-stream-wrap">
-            <div class="font-size-controls chat-font-size-corner" role="group" aria-label="Tamaño del texto">
+            <div class="font-size-controls chat-font-size-corner" role="group" aria-label="Controles del chat">
               <button type="button" id="btn-font-size-decrease" class="icon-btn font-size-btn" title="Reducir tamaño" aria-label="Reducir tamaño"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
               <button type="button" id="btn-font-size-increase" class="icon-btn font-size-btn" title="Aumentar tamaño" aria-label="Aumentar tamaño"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <button type="button" id="btn-collapse-all-messages" class="icon-btn font-size-btn" title="Colapsar todos los mensajes" aria-label="Colapsar todos los mensajes"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 12 6 20 14"/><polyline points="4 20 12 12 20 20"/></svg></button>
             </div>
             <div class="chat-stream" id="messages-container"></div>
           </div>
@@ -340,6 +341,11 @@
       </div>
     </aside>
   </div>
+  <footer id="app-status-bar" class="app-status-bar" role="status" aria-live="polite" aria-atomic="true">
+    <span class="app-status-bar-grip" aria-hidden="true"></span>
+    <span id="app-status-text" class="app-status-bar-text">Listo</span>
+    <span id="app-status-detail" class="app-status-bar-detail" hidden></span>
+  </footer>
   <div id="images-debug-window" class="images-debug-window" hidden>
     <div class="images-debug-window-header">
       <span>Debug generador de imágenes</span>
@@ -434,6 +440,15 @@
         <button type="button" id="rule-edit-btn-save" class="btn btn-primary">Guardar</button>
         <button type="button" id="rule-edit-btn-save-new" class="btn btn-secondary">Guardar nuevo</button>
       </div>
+    </div>
+  </div>
+  <div id="illustration-meta-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="illustration-meta-title" hidden>
+    <div class="modal-content illustration-meta-modal-content">
+      <div class="illustration-meta-header">
+        <h2 id="illustration-meta-title" class="modal-title">Parámetros de generación</h2>
+        <button type="button" id="illustration-meta-close" class="icon-btn" title="Cerrar" aria-label="Cerrar">×</button>
+      </div>
+      <div id="illustration-meta-body" class="illustration-meta-body"></div>
     </div>
   </div>
   <script src="/static/js/app.js"></script>

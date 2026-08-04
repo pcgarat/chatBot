@@ -943,3 +943,34 @@ def test_e2e_illustrate_rejects_non_assistant(client, ollama_available):
         json={"prompt_model": model_name, "prompt_provider": "ollama", "images_per_response": 1},
     )
     assert r.status_code == 400
+
+
+def test_e2e_illustration_edit_rejects_user_message(client, ollama_available):
+    """clear-photos y prune-orphans solo aceptan mensajes assistant."""
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={"title": "Illustrate edit E2E", "model_id": model_name, "provider": "ollama"},
+    )
+    assert r_create.status_code == 200
+    cid = r_create.json()["id"]
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Di solo: hola"},
+    )
+    assert r_msg.status_code == 200
+    r_list = client.get(f"/api/conversations/{cid}/messages")
+    msgs = r_list.json()
+    user = next((m for m in msgs if m.get("role") == "user"), None)
+    assert user and user.get("id")
+    for action in ("clear-photos", "prune-orphans"):
+        r = client.post(
+            f"/api/conversations/{cid}/messages/{user['id']}/illustrations/{action}"
+        )
+        assert r.status_code == 400, action
+
+
+def test_e2e_illustrated_image_meta_404(client, ollama_available):
+    """GET /api/illustrated-images/{filename}/meta responde 404 si no hay registro."""
+    r = client.get("/api/illustrated-images/no-such-file.png/meta")
+    assert r.status_code == 404

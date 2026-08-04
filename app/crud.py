@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Conversation, Message, Rule
+from app.models import Conversation, IllustratedImage, Message, Rule
 
 # Sentinel para "no actualizar inject_instruction_every" en update_conversation
 _INJECT_UNSET = object()
@@ -248,5 +248,62 @@ def delete_message(db: Session, conversation_id: str, message_id: str) -> bool:
 def clear_conversation_messages(db: Session, conversation_id: str) -> int:
     """Elimina todos los mensajes de una conversación. Devuelve el número de mensajes eliminados."""
     count = db.query(Message).filter(Message.conversation_id == conversation_id).delete()
+    db.commit()
+    return count
+
+
+def save_illustrated_image_meta(
+    db: Session,
+    *,
+    message_id: str,
+    filename: str,
+    scene_id: str | None,
+    mode: str,
+    params: dict,
+) -> IllustratedImage:
+    """Upsert por filename: guarda params de generación Forge para una imagen."""
+    row = (
+        db.query(IllustratedImage)
+        .filter(IllustratedImage.filename == filename)
+        .first()
+    )
+    payload = json.dumps(params or {}, ensure_ascii=False, default=str)
+    if row:
+        row.message_id = message_id
+        row.scene_id = scene_id
+        row.mode = mode or row.mode
+        row.params_json = payload
+    else:
+        row = IllustratedImage(
+            message_id=message_id,
+            filename=filename,
+            scene_id=scene_id,
+            mode=mode or "txt2img",
+            params_json=payload,
+        )
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def get_illustrated_image_meta(db: Session, filename: str) -> IllustratedImage | None:
+    if not filename:
+        return None
+    return (
+        db.query(IllustratedImage)
+        .filter(IllustratedImage.filename == filename)
+        .first()
+    )
+
+
+def delete_illustrated_images_by_filenames(db: Session, filenames: list[str]) -> int:
+    if not filenames:
+        return 0
+    count = (
+        db.query(IllustratedImage)
+        .filter(IllustratedImage.filename.in_(filenames))
+        .delete(synchronize_session=False)
+    )
     db.commit()
     return count

@@ -94,6 +94,7 @@
     contextUsageBadge: document.getElementById("context-usage-badge"),
     btnFontSizeDecrease: document.getElementById("btn-font-size-decrease"),
     btnFontSizeIncrease: document.getElementById("btn-font-size-increase"),
+    btnCollapseAllMessages: document.getElementById("btn-collapse-all-messages"),
     paramsSourceLabel: document.getElementById("params-source-label"),
     paramsToSendContainer: document.getElementById("params-to-send-container"),
   };
@@ -103,9 +104,128 @@
   const msgToInputIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 10L4 15 9 20\"/><path d=\"M20 4v11a4 4 0 01-4 4H4\"/></svg>";
   const msgIllustrateIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"/><path d=\"M21 15l-5-5L5 21\"/></svg>";
   const msgReadIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\"/><path d=\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\"/></svg>";
+  const msgMoreIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"19\" r=\"1.75\"/></svg>";
   const illustratingMessageIds = new Set();
   const illustrateAbortControllers = new Set();
   let readingModeMessageIndex = null;
+
+  /** Etiquetas profesionales para la barra de estado (códigos → texto). */
+  const STATUS_LABELS = {
+    "app.ready": "Listo",
+    "chat.preparing": "Preparando solicitud",
+    "chat.sending": "Enviando mensaje al modelo",
+    "chat.awaiting_response": "Esperando respuesta del modelo",
+    "chat.receiving_context": "Recuperando contexto auxiliar",
+    "chat.streaming": "Recibiendo respuesta",
+    "chat.finalizing": "Finalizando respuesta",
+    "chat.cancelled": "Solicitud cancelada",
+    "chat.error": "Error de comunicación con el modelo",
+    "images.starting": "Iniciando ilustración",
+    "images.planning": "Planificando escenas",
+    "images.plan_ready": "Plan de escenas listo",
+    "images.skipped": "Ilustración no aplicable",
+    "images.inserting_anchors": "Insertando anclas de imagen",
+    "images.loading_forge_payload": "Cargando parámetros de generación",
+    "images.submitting_prompt": "Enviando prompt de imagen",
+    "images.awaiting_generation": "Esperando generación de imagen",
+    "images.image_ready": "Imagen recibida",
+    "images.image_failed": "Error al generar imagen",
+    "images.retrying": "Reintentando imágenes fallidas",
+    "images.done": "Ilustración completada",
+    "images.error": "Error en la ilustración",
+    "images.cancelled": "Ilustración cancelada",
+  };
+
+  /**
+   * Barra de estado inferior: stack de actividades concurrentes (chat + ilustración).
+   * Patrón Observer ligero — la UI solo lee el tope del stack.
+   */
+  const appStatus = (function createAppStatus() {
+    const textEl = document.getElementById("app-status-text");
+    const detailEl = document.getElementById("app-status-detail");
+    const barEl = document.getElementById("app-status-bar");
+    /** @type {{ id: string, code: string, label: string, detail: string }[]} */
+    const stack = [];
+    let seq = 0;
+
+    function render() {
+      if (!textEl) return;
+      const top = stack.length ? stack[stack.length - 1] : null;
+      const label = top ? top.label : STATUS_LABELS["app.ready"];
+      const detail = top && top.detail ? top.detail : "";
+      textEl.textContent = label;
+      if (detailEl) {
+        if (detail) {
+          detailEl.hidden = false;
+          detailEl.textContent = detail;
+        } else {
+          detailEl.hidden = true;
+          detailEl.textContent = "";
+        }
+      }
+      if (barEl) barEl.classList.toggle("is-busy", stack.length > 0);
+    }
+
+    function labelFor(code, message, data) {
+      const base = (message && String(message).trim()) || STATUS_LABELS[code] || code;
+      const index = data && data.index != null ? data.index : null;
+      const total = data && data.total != null ? data.total : null;
+      if (
+        index != null &&
+        total != null &&
+        !/\(\d+\s*\/\s*\d+\)/.test(base) &&
+        (code === "images.submitting_prompt" ||
+          code === "images.awaiting_generation" ||
+          code === "images.image_ready" ||
+          code === "images.image_failed" ||
+          code === "images.plan_ready" ||
+          code === "images.retrying")
+      ) {
+        return `${STATUS_LABELS[code] || base} (${index}/${total})`;
+      }
+      if (code === "images.plan_ready" && total != null && !/\(\d+\)/.test(base)) {
+        return `${STATUS_LABELS[code] || base} (${total})`;
+      }
+      return base;
+    }
+
+    function push(source, code, message, data) {
+      const id = `${source}-${++seq}`;
+      stack.push({
+        id,
+        code: code || "app.ready",
+        label: labelFor(code, message, data),
+        detail: (data && data.detail) || "",
+      });
+      render();
+      return id;
+    }
+
+    function update(id, code, message, data) {
+      const item = stack.find((s) => s.id === id);
+      if (!item) return;
+      if (code) item.code = code;
+      item.label = labelFor(code || item.code, message, data);
+      if (data && data.detail != null) item.detail = data.detail;
+      render();
+    }
+
+    function pop(id) {
+      const i = stack.findIndex((s) => s.id === id);
+      if (i >= 0) stack.splice(i, 1);
+      render();
+    }
+
+    function clearSource(sourcePrefix) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].id.startsWith(sourcePrefix + "-")) stack.splice(i, 1);
+      }
+      render();
+    }
+
+    render();
+    return { push, update, pop, clearSource, render };
+  })();
 
   function showError(msg) {
     const toast = document.createElement("div");
@@ -1043,6 +1163,247 @@
       .join("");
   }
 
+  /**
+   * Separa el primer párrafo del resto.
+   * Prioriza bloques separados por línea en blanco; si no hay, usa el primer salto
+   * de línea cuando el resto aporta contenido relevante.
+   */
+  function splitFirstParagraph(content) {
+    const raw = content == null ? "" : String(content);
+    const blank = raw.match(/^([\s\S]*?)(\n\s*\n+)([\s\S]+)$/);
+    if (blank && blank[3].trim()) {
+      return { first: blank[1], rest: blank[2] + blank[3], collapsible: true };
+    }
+    const single = raw.match(/^([^\n]+)(\n+)([\s\S]+)$/);
+    if (single && single[3].trim()) {
+      const restTrim = single[3].trim();
+      if (restTrim.length >= 80 || /\n/.test(restTrim)) {
+        return { first: single[1], rest: single[2] + single[3], collapsible: true };
+      }
+    }
+    return { first: raw, rest: "", collapsible: false };
+  }
+
+  function messageCollapseKey(m, idx) {
+    return m && m.id ? String(m.id) : `idx:${idx}`;
+  }
+
+  /** Claves de mensajes assistant que el usuario ha expandido (el resto colapsable queda plegado). */
+  const expandedMessageKeys = new Set();
+
+  function collapseAllMessages() {
+    expandedMessageKeys.clear();
+    renderMessages();
+  }
+
+  const illustrationInfoIconSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+
+  function filenameFromIllustratedSrc(src) {
+    if (!src) return "";
+    try {
+      const path = String(src).split("?")[0];
+      const marker = "/illustrated-images/";
+      const idx = path.indexOf(marker);
+      if (idx >= 0) return decodeURIComponent(path.slice(idx + marker.length).replace(/^\/+/, ""));
+      const parts = path.split("/");
+      return decodeURIComponent(parts[parts.length - 1] || "");
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function enhanceIllustrationFrames(root) {
+    if (!root) return;
+    root.querySelectorAll("img.chat-illustration").forEach(function (img) {
+      if (img.closest(".chat-illustration-frame")) return;
+      const parent = img.parentNode;
+      if (!parent) return;
+      const frame = document.createElement("span");
+      frame.className = "chat-illustration-frame";
+      parent.insertBefore(frame, img);
+      frame.appendChild(img);
+      const filename =
+        img.getAttribute("data-filename") || filenameFromIllustratedSrc(img.getAttribute("src"));
+      if (!filename) return;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chat-illustration-info-btn";
+      btn.title = "Parámetros de generación";
+      btn.setAttribute("aria-label", "Ver parámetros de generación");
+      btn.innerHTML = illustrationInfoIconSvg;
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openIllustrationMetaModal(filename);
+      });
+      frame.appendChild(btn);
+    });
+  }
+
+  function closeIllustrationMetaModal() {
+    const modal = document.getElementById("illustration-meta-modal");
+    if (modal) modal.hidden = true;
+  }
+
+  function formatIllustrationMetaValue(value) {
+    if (value == null) return "—";
+    if (typeof value === "object") {
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch (_) {
+        return String(value);
+      }
+    }
+    return String(value);
+  }
+
+  /** Formatea ms de generación para el popup (p. ej. 850 ms, 12.3 s). */
+  function formatGenerationDuration(ms) {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n < 0) return "—";
+    if (n < 1000) return `${Math.round(n)} ms`;
+    const seconds = n / 1000;
+    if (seconds < 60) {
+      return `${seconds < 10 ? seconds.toFixed(2) : seconds.toFixed(1)} s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const rem = seconds - minutes * 60;
+    return `${minutes} min ${rem.toFixed(0)} s`;
+  }
+
+  function renderIllustrationMetaBody(data) {
+    const params = (data && data.params) || {};
+    const model =
+      params.model ||
+      (params.override_settings && params.override_settings.sd_model_checkpoint) ||
+      "—";
+    const size =
+      params.width != null && params.height != null
+        ? `${params.width} × ${params.height}`
+        : "—";
+    const genTime =
+      params.generation_time_ms != null && Number.isFinite(Number(params.generation_time_ms))
+        ? formatGenerationDuration(Number(params.generation_time_ms))
+        : null;
+    const rows = [
+      ["Modo", data.mode || params.mode || "—"],
+      ["Modelo", model],
+      ["Tamaño", size],
+      ["Tiempo de generación", genTime],
+      ["Sampler", params.sampler_name || "—"],
+      ["Scheduler", params.scheduler || "—"],
+      ["Steps", params.steps != null ? params.steps : "—"],
+      ["CFG", params.cfg_scale != null ? params.cfg_scale : "—"],
+      ["Seed", params.seed != null ? params.seed : "—"],
+      ["Denoising", params.denoising_strength != null ? params.denoising_strength : null],
+      ["Escena", data.scene_id || null],
+      ["Archivo", data.filename || null],
+    ].filter(function (pair) {
+      return pair[1] != null && pair[1] !== "";
+    });
+
+    const skipKeys = new Set([
+      "prompt",
+      "negative_prompt",
+      "model",
+      "mode",
+      "width",
+      "height",
+      "sampler_name",
+      "scheduler",
+      "steps",
+      "cfg_scale",
+      "seed",
+      "denoising_strength",
+      "generation_time_ms",
+      "override_settings",
+      "init_images",
+      "mask",
+      "include_init_images",
+    ]);
+    Object.keys(params).forEach(function (key) {
+      if (skipKeys.has(key)) return;
+      rows.push([key, formatIllustrationMetaValue(params[key])]);
+    });
+    if (params.override_settings && typeof params.override_settings === "object") {
+      Object.keys(params.override_settings).forEach(function (key) {
+        if (key === "sd_model_checkpoint") return;
+        rows.push([
+          "override." + key,
+          formatIllustrationMetaValue(params.override_settings[key]),
+        ]);
+      });
+    }
+
+    let html = '<dl class="illustration-meta-grid">';
+    rows.forEach(function (pair) {
+      html +=
+        `<dt>${escapeHtml(pair[0])}</dt><dd>${escapeHtml(formatIllustrationMetaValue(pair[1]))}</dd>`;
+    });
+    html += "</dl>";
+    html += '<div class="illustration-meta-prompt"><h3>Prompt</h3><pre>' +
+      escapeHtml(params.prompt || "—") +
+      "</pre></div>";
+    if (params.negative_prompt) {
+      html +=
+        '<div class="illustration-meta-prompt"><h3>Negative prompt</h3><pre>' +
+        escapeHtml(params.negative_prompt) +
+        "</pre></div>";
+    }
+    return html;
+  }
+
+  async function openIllustrationMetaModal(filename) {
+    const modal = document.getElementById("illustration-meta-modal");
+    const body = document.getElementById("illustration-meta-body");
+    if (!modal || !body || !filename) return;
+    body.innerHTML = '<p class="illustration-meta-loading">Cargando parámetros…</p>';
+    modal.hidden = false;
+    try {
+      const data = await fetchJson(
+        `${API}/illustrated-images/${encodeURIComponent(filename)}/meta`
+      );
+      body.innerHTML = renderIllustrationMetaBody(data || {});
+    } catch (err) {
+      body.innerHTML =
+        '<p class="illustration-meta-empty">No hay metadatos guardados para esta imagen.</p>';
+    }
+  }
+
+  function initIllustrationMetaModal() {
+    const modal = document.getElementById("illustration-meta-modal");
+    const closeBtn = document.getElementById("illustration-meta-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        closeIllustrationMetaModal();
+      });
+    }
+    if (modal) {
+      modal.addEventListener("click", function (e) {
+        if (e.target === modal) closeIllustrationMetaModal();
+      });
+    }
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeIllustrationMetaModal();
+    });
+  }
+
+  function buildCollapsibleMessageHtml(content, key, expanded) {
+    const parts = splitFirstParagraph(content);
+    if (!parts.collapsible) {
+      return `<span>${formatMessageHtml(content || "")}</span>`;
+    }
+    const collapsed = !expanded;
+    const toggleLabel = collapsed ? "Show more" : "Show less";
+    return `<div class="message-body-collapsible${collapsed ? " is-collapsed" : ""}" data-collapse-key="${escapeHtml(key)}">
+      <span class="message-content-preview">${formatMessageHtml(parts.first)}</span>
+      <span class="message-content-rest">${formatMessageHtml(parts.rest)}</span>
+      <button type="button" class="msg-collapse-toggle" aria-expanded="${collapsed ? "false" : "true"}">${toggleLabel}</button>
+    </div>`;
+  }
+
   function saveLastConversationId(id) {
     try {
       if (id) localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, id);
@@ -1160,6 +1521,7 @@
         debug_request: m.debug_request || null,
         debug_response: m.debug_response || null,
       }));
+      expandedMessageKeys.clear();
       const turns = conv.history_turns != null && conv.history_turns >= 0 ? conv.history_turns : 5;
       if (el.historyTurnsInput) el.historyTurnsInput.value = String(Math.min(100, Math.max(0, turns)));
     } else {
@@ -1175,6 +1537,7 @@
       await ensureParamsBaselineForCurrentModel();
       paramsSource = "default";
       messages = [];
+      expandedMessageKeys.clear();
       if (el.historyTurnsInput) el.historyTurnsInput.value = "5";
     }
     renderRules();
@@ -1520,8 +1883,18 @@
             !isEphemeralDebug && m.role === "assistant" && hasContent
               ? `<button type="button" class="msg-action-btn msg-read-btn" data-msg-index="${idx}" title="Modo lectura a pantalla completa" aria-label="Modo lectura">${msgReadIconSvg}</button>`
               : "";
-          const footerBtns = (toInputBtn || deleteCopyBtns || illustrateBtn || readBtn)
-            ? `<div class="message-footer">${toInputBtn}${deleteCopyBtns}${illustrateBtn}${readBtn}</div>`
+          const moreMenu =
+            !isEphemeralDebug && m.role === "assistant" && m.id && hasContent
+              ? `<div class="msg-more-wrap">
+                  <button type="button" class="msg-action-btn msg-more-btn" data-msg-id="${escapeHtml(m.id)}" title="Más acciones" aria-label="Más acciones" aria-haspopup="menu" aria-expanded="false">${msgMoreIconSvg}</button>
+                  <div class="msg-context-menu" role="menu" hidden>
+                    <button type="button" class="msg-context-item" role="menuitem" data-action="clear-photos" data-msg-id="${escapeHtml(m.id)}">Borrar todas las fotos</button>
+                    <button type="button" class="msg-context-item" role="menuitem" data-action="prune-orphans" data-msg-id="${escapeHtml(m.id)}">Eliminar anclas huérfanas</button>
+                  </div>
+                </div>`
+              : "";
+          const footerBtns = (toInputBtn || deleteCopyBtns || illustrateBtn || readBtn || moreMenu)
+            ? `<div class="message-footer">${toInputBtn}${deleteCopyBtns}${illustrateBtn}${readBtn}${moreMenu}</div>`
             : "";
           let debugHtml = "";
           if (showDebug && m.role === "assistant" && (m.debug_request || m.debug_response)) {
@@ -1535,9 +1908,20 @@
           const isUser = m.role === "user";
           const rowClass = isUser ? "message-row user-row" : "message-row";
           const bubbleClass = isUser ? "message-bubble user" : "message-bubble assistant";
+          const collapseKey = messageCollapseKey(m, idx);
+          let bodyHtml;
+          if (!isUser && !isEphemeralDebug && hasContent) {
+            bodyHtml = buildCollapsibleMessageHtml(
+              m.content || "",
+              collapseKey,
+              expandedMessageKeys.has(collapseKey)
+            );
+          } else {
+            bodyHtml = `<span>${formatMessageHtml(m.content || "")}</span>`;
+          }
           return `<div class="${rowClass}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
             <div style="max-width: ${isUser ? "70%" : "100%"}; flex: 1; min-width: 0;">
-              <div class="${bubbleClass}"><span>${formatMessageHtml(m.content || "")}</span></div>
+              <div class="${bubbleClass}">${bodyHtml}</div>
               ${debugHtml}
               ${footerBtns}
             </div>
@@ -1545,6 +1929,27 @@
         }
       )
       .join("");
+    el.messagesContainer.querySelectorAll(".msg-collapse-toggle").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const wrap = btn.closest(".message-body-collapsible");
+        if (!wrap) return;
+        const key = wrap.getAttribute("data-collapse-key");
+        if (!key) return;
+        const willExpand = wrap.classList.contains("is-collapsed");
+        if (willExpand) {
+          expandedMessageKeys.add(key);
+          wrap.classList.remove("is-collapsed");
+          btn.setAttribute("aria-expanded", "true");
+          btn.textContent = "Show less";
+        } else {
+          expandedMessageKeys.delete(key);
+          wrap.classList.add("is-collapsed");
+          btn.setAttribute("aria-expanded", "false");
+          btn.textContent = "Show more";
+        }
+      });
+    });
     el.messagesContainer.querySelectorAll(".msg-to-input-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -1587,7 +1992,85 @@
         if (msgIndex >= 0) openReadingMode(msgIndex);
       });
     });
+    bindMessageContextMenus();
+    enhanceIllustrationFrames(el.messagesContainer);
     scrollToBottomIfEnabled();
+  }
+
+  function closeAllMessageContextMenus() {
+    if (!el.messagesContainer) return;
+    el.messagesContainer.querySelectorAll(".msg-context-menu").forEach((menu) => {
+      menu.hidden = true;
+    });
+    el.messagesContainer.querySelectorAll(".msg-more-btn").forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function bindMessageContextMenus() {
+    if (!el.messagesContainer) return;
+    el.messagesContainer.querySelectorAll(".msg-more-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const wrap = btn.closest(".msg-more-wrap");
+        const menu = wrap && wrap.querySelector(".msg-context-menu");
+        if (!menu) return;
+        const willOpen = menu.hidden;
+        closeAllMessageContextMenus();
+        if (willOpen) {
+          menu.hidden = false;
+          btn.setAttribute("aria-expanded", "true");
+        }
+      });
+    });
+    el.messagesContainer.querySelectorAll(".msg-context-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const action = item.getAttribute("data-action");
+        const msgId = item.getAttribute("data-msg-id");
+        closeAllMessageContextMenus();
+        if (action && msgId) runMessageIllustrationAction(action, msgId);
+      });
+    });
+  }
+
+  async function runMessageIllustrationAction(action, messageId) {
+    if (!currentConversationId || !messageId) return;
+    const path =
+      action === "clear-photos"
+        ? "clear-photos"
+        : action === "prune-orphans"
+          ? "prune-orphans"
+          : null;
+    if (!path) return;
+    try {
+      const data = await fetchJson(
+        `${API}/conversations/${currentConversationId}/messages/${messageId}/illustrations/${path}`,
+        { method: "POST" }
+      );
+      const idx = messages.findIndex((m) => m.id === messageId);
+      if (idx >= 0 && data && data.content != null) {
+        messages[idx].content = data.content;
+        renderMessages();
+      }
+      if (action === "clear-photos") {
+        const n = (data && data.deleted_files) || 0;
+        showNotice(
+          n
+            ? `Fotos borradas (${n} archivo${n === 1 ? "" : "s"}).`
+            : "No había fotos que borrar."
+        );
+      } else {
+        showNotice("Anclas huérfanas eliminadas.");
+      }
+    } catch (err) {
+      showError(
+        (action === "clear-photos" ? "Error al borrar fotos: " : "Error al limpiar anclas: ") +
+          err.message
+      );
+    }
   }
 
   async function sendMessage() {
@@ -1632,9 +2115,11 @@
       }
     }
 
+    const chatStatusId = appStatus.push("chat", "chat.preparing");
     currentAbortController = new AbortController();
     setCancelButtonState();
     try {
+      appStatus.update(chatStatusId, "chat.sending");
       const systemInstructionGlobal = getRulesTextForSystem();
       const saveToChromadb = (el.saveToChromadbSelect && el.saveToChromadbSelect.value) ? el.saveToChromadbSelect.value : "user";
       const modelParams = buildModelParams();
@@ -1655,12 +2140,14 @@
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || res.statusText);
       }
+      appStatus.update(chatStatusId, "chat.awaiting_response");
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let fullContent = "";
       let debugRequest = null;
       const debugMetaLines = []; // Solo metadata (sin los chunks de content)
+      let receivedFirstToken = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1685,16 +2172,24 @@
                 debugStreamEl.innerHTML = `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${escapeHtml(debugRequest)}</div><div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(debugMetaLines.join("\n"))}</div>`;
               }
             }
+            if (data.mcp_contexts) {
+              appStatus.update(chatStatusId, "chat.receiving_context");
+            }
             if (data.error) {
               clearAnalyzingDots();
               fullContent += `[Error: ${data.error}]`;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
+              appStatus.update(chatStatusId, "chat.error");
             }
             if (data.user_message_id && messages.length > 0) {
               messages[messages.length - 1].id = data.user_message_id;
             }
             if (data.content !== undefined) {
               clearAnalyzingDots();
+              if (!receivedFirstToken) {
+                receivedFirstToken = true;
+                appStatus.update(chatStatusId, "chat.streaming");
+              }
               fullContent += data.content;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
               scrollToBottomIfEnabled();
@@ -1708,6 +2203,7 @@
             }
             if (data.done) {
               clearAnalyzingDots();
+              appStatus.update(chatStatusId, "chat.finalizing");
               currentStreamingMsgEl = null;
               currentStreamingDebugEl = null;
               msgEl.remove();
@@ -1736,11 +2232,13 @@
       currentStreamingDebugEl = null;
       currentAbortController = null;
       setCancelButtonState();
+      appStatus.pop(chatStatusId);
     } catch (e) {
       clearAnalyzingDots();
       currentStreamingMsgEl = null;
       currentStreamingDebugEl = null;
       if (e.name === "AbortError") {
+        appStatus.update(chatStatusId, "chat.cancelled");
         messages.push({ role: "assistant", content: "Cancelado" });
         renderMessages();
         if (currentConversationId) {
@@ -1748,12 +2246,14 @@
         }
         showNotice("Mensaje anulado.");
       } else {
+        appStatus.update(chatStatusId, "chat.error");
         messages.push({ role: "assistant", content: "Error al enviar: " + e.message });
         renderMessages();
         showError("Error al enviar: " + e.message);
       }
       currentAbortController = null;
       setCancelButtonState();
+      appStatus.pop(chatStatusId);
     }
   }
 
@@ -1851,6 +2351,11 @@
   if (el.btnFontSizeIncrease) {
     el.btnFontSizeIncrease.addEventListener("click", function () {
       if (!this.disabled) setConversationFontSize(0.05);
+    });
+  }
+  if (el.btnCollapseAllMessages) {
+    el.btnCollapseAllMessages.addEventListener("click", function () {
+      collapseAllMessages();
     });
   }
   const AUTO_SCROLL_STORAGE_KEY = "autoScrollDuringGeneration";
@@ -2468,6 +2973,7 @@
     if (!overlay || !body) return;
     readingModeMessageIndex = msgIndex;
     body.innerHTML = formatMessageHtml(msg.content || "");
+    enhanceIllustrationFrames(body);
     applyConversationFontSize(getStoredFontSize());
     applyConversationImageSize(getStoredImageSize());
     syncFontSizeButtons(getStoredFontSize());
@@ -2631,6 +3137,13 @@
   initAccordionState();
   initSidebarTabs();
   initConversationFontSize();
+  initIllustrationMetaModal();
+  document.addEventListener("click", function () {
+    closeAllMessageContextMenus();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeAllMessageContextMenus();
+  });
   initReadingMode();
   initImagesPanel();
 
@@ -2803,6 +3316,13 @@
     });
     illustrateAbortControllers.clear();
     illustratingMessageIds.clear();
+    appStatus.clearSource("images");
+    if (n) {
+      const cancelId = appStatus.push("images", "images.cancelled");
+      setTimeout(function () {
+        appStatus.pop(cancelId);
+      }, 1200);
+    }
     if (isImagesDebugMode()) {
       appendImagesDebugLog(
         n ? `Abortadas ${n} generación(es) de imágenes.` : "No hay generaciones activas."
@@ -2833,6 +3353,7 @@
     illustrateAbortControllers.add(abortCtrl);
     illustratingMessageIds.add(messageId);
     renderMessages();
+    const imgStatusId = appStatus.push("images", "images.starting");
     if (isImagesDebugMode()) {
       appendImagesDebugLog(`Iniciando illustrate message=${messageId}${force ? " (manual)" : ""}`);
     }
@@ -2879,6 +3400,10 @@
           } catch (_) {
             continue;
           }
+          if (data.type === "status") {
+            const code = (data.data && data.data.code) || "images.starting";
+            appStatus.update(imgStatusId, code, data.message || "", data.data || {});
+          }
           if (data.type === "log" && isImagesDebugMode()) {
             appendImagesDebugLog(data.message || JSON.stringify(data));
           }
@@ -2914,14 +3439,17 @@
       if (force) showNotice("Ilustración terminada.");
     } catch (e) {
       if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) {
+        appStatus.update(imgStatusId, "images.cancelled");
         if (isImagesDebugMode()) appendImagesDebugLog(`Illustrate abortado message=${messageId}`);
       } else {
+        appStatus.update(imgStatusId, "images.error", e.message || "");
         if (isImagesDebugMode()) appendImagesDebugLog("Error: " + e.message);
         showError("Ilustración: " + e.message);
       }
     } finally {
       illustrateAbortControllers.delete(abortCtrl);
       illustratingMessageIds.delete(messageId);
+      appStatus.pop(imgStatusId);
       renderMessages();
     }
   }

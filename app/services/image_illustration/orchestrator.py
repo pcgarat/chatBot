@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+import time
 from collections.abc import Callable, Iterator
 
 from app.services.image_illustration.anchors import (
@@ -19,11 +20,20 @@ from app.services.image_illustration.models import (
     LastGenerationPayload,
     SceneSpec,
 )
+from app.services.image_illustration.generation_params import build_stored_generation_params
 from app.services.image_illustration.ports import ForgeGenerationPort, LastPayloadSource, ScenePlannerPort
+from app.services.image_illustration import status_codes as st
 
 
-def _img_tag(url: str, scene_id: str) -> str:
-    return f'<img src="{url}" alt="escena {scene_id}" class="chat-illustration" loading="lazy" />'
+def _img_tag(url: str, scene_id: str, filename: str = "") -> str:
+    safe_id = html.escape(scene_id)
+    attrs = (
+        f'src="{html.escape(url)}" alt="escena {safe_id}" '
+        f'class="chat-illustration" loading="lazy"'
+    )
+    if filename:
+        attrs += f' data-filename="{html.escape(filename)}"'
+    return f"<img {attrs} />"
 
 
 def _error_placeholder(scene_id: str, message: str) -> str:
@@ -79,7 +89,8 @@ def _run_pass(
     extra_prompt: str = "",
 ) -> Iterator[IllustrationEvent]:
     still_failed: list[SceneSpec] = []
-    for scene in scenes:
+    total = len(scenes)
+    for index, scene in enumerate(scenes, start=1):
         forge_prompt = compose_forge_prompt(scene.prompt, extra_prompt)
         yield IllustrationEvent(
             type="log",
@@ -87,24 +98,66 @@ def _run_pass(
             scene_id=scene.id,
             data={"prompt": forge_prompt},
         )
+        yield st.status_event(
+            st.IMAGES_SUBMITTING_PROMPT,
+            f"Enviando prompt de imagen ({index}/{total})",
+            scene_id=scene.id,
+            index=index,
+            total=total,
+        )
+        yield st.status_event(
+            st.IMAGES_AWAITING_GENERATION,
+            f"Esperando generación de imagen ({index}/{total})",
+            scene_id=scene.id,
+            index=index,
+            total=total,
+        )
         try:
             body = payload.body_with_prompt(forge_prompt)
+            t0 = time.perf_counter()
             image_bytes = forge.generate(payload.mode, body)
+            generation_time_ms = (time.perf_counter() - t0) * 1000.0
             filename = save_image(scene.id, image_bytes)
             url = url_for_saved(filename)
-            content = _replace_scene_slot(content, scene.id, _img_tag(url, scene.id))
+            content = _replace_scene_slot(
+                content, scene.id, _img_tag(url, scene.id, filename)
+            )
+            stored_params = build_stored_generation_params(
+                payload.mode,
+                body,
+                generation_time_ms=generation_time_ms,
+            )
+            yield st.status_event(
+                st.IMAGES_IMAGE_READY,
+                f"Imagen recibida ({index}/{total})",
+                scene_id=scene.id,
+                index=index,
+                total=total,
+            )
             yield IllustrationEvent(
                 type="image",
                 scene_id=scene.id,
                 url=url,
                 message="ok",
                 content=content,
+                data={
+                    "filename": filename,
+                    "params": stored_params,
+                    "mode": payload.mode.value,
+                },
             )
         except Exception as exc:
             still_failed.append(scene)
             err = str(exc)
             content = _replace_scene_slot(
                 content, scene.id, _error_placeholder(scene.id, err)
+            )
+            yield st.status_event(
+                st.IMAGES_IMAGE_FAILED,
+                f"Error al generar imagen ({index}/{total})",
+                scene_id=scene.id,
+                index=index,
+                total=total,
             )
             yield IllustrationEvent(
                 type="error",
@@ -142,7 +195,9 @@ class ImageIllustrationOrchestrator:
         prompt: str = "",
         include_prompt_debug: bool = False,
     ) -> Iterator[IllustrationEvent]:
+        yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración")
         yield IllustrationEvent(type="log", message=f"Planificando escenas (max={max_images})")
+        yield st.status_event(st.IMAGES_PLANNING, "Planificando escenas")
         plan_text = strip_illustration_artifacts(text)
         base_content = strip_transient_illustration_artifacts(text)
         plan = self.planner.plan(plan_text, max_images)
@@ -150,6 +205,11 @@ class ImageIllustrationOrchestrator:
             type="log",
             message=f"Plan: illustrate={plan.illustrate} reason={plan.reason} scenes={len(plan.scenes)}",
             data={"illustrate": plan.illustrate, "reason": plan.reason},
+        )
+        yield st.status_event(
+            st.IMAGES_PLAN_READY,
+            f"Plan de escenas listo ({len(plan.scenes)})",
+            total=len(plan.scenes),
         )
 
         planner_debug = getattr(self.planner, "last_debug", None)
@@ -172,9 +232,11 @@ class ImageIllustrationOrchestrator:
                 )
 
         if not plan.illustrate or not plan.scenes:
+            yield st.status_event(st.IMAGES_SKIPPED, "Ilustración no aplicable")
             yield IllustrationEvent(type="done", message="sin ilustración", content=text)
             return
 
+        yield st.status_event(st.IMAGES_INSERTING_ANCHORS, "Insertando anclas de imagen")
         plan = with_unique_scene_ids(plan, base_content)
         content = insert_scene_markers(base_content, plan.scenes)
         extra_prompt = (prompt or "").strip()
@@ -191,10 +253,12 @@ class ImageIllustrationOrchestrator:
                 data={"prompt": forge_prompt},
             )
 
+        yield st.status_event(st.IMAGES_LOADING_FORGE, "Cargando parámetros de generación")
         try:
             payload = self.payload_source.load()
         except Exception as exc:
             yield IllustrationEvent(type="log", message=f"Error cargando último payload: {exc}")
+            yield st.status_event(st.IMAGES_ERROR, "Error al cargar parámetros de Forge")
             for scene in plan.scenes:
                 content = _replace_scene_slot(
                     content, scene.id, _error_placeholder(scene.id, str(exc))
@@ -238,6 +302,12 @@ class ImageIllustrationOrchestrator:
                 type="log",
                 message=f"Reintento {attempt}/{retries} de {len(pending)} escenas fallidas",
             )
+            yield st.status_event(
+                st.IMAGES_RETRYING,
+                f"Reintentando imágenes fallidas ({attempt}/{retries})",
+                index=attempt,
+                total=retries,
+            )
             content, pending = yield from _run_pass(
                 self.forge,
                 self.save_image,
@@ -249,4 +319,5 @@ class ImageIllustrationOrchestrator:
                 extra_prompt=extra_prompt,
             )
 
+        yield st.status_event(st.IMAGES_DONE, "Ilustración completada")
         yield IllustrationEvent(type="done", message="ilustración completa", content=content)

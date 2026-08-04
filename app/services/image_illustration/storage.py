@@ -33,3 +33,15 @@ def resolve_illustrated_path(filename: str) -> Path | None:
     if not path.is_file():
         return None
     return path
+
+
+def delete_illustrated_image(filename: str) -> bool:
+    """Borra el fichero del disco si existe y es seguro. True si se eliminó."""
+    path = resolve_illustrated_path(filename)
+    if path is None:
+        return False
+    try:
+        path.unlink()
+        return True
+    except OSError:
+        return False
