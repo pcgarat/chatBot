@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+import time
 from collections.abc import Callable, Iterator
 
 from app.services.image_illustration.anchors import (
@@ -113,13 +114,19 @@ def _run_pass(
         )
         try:
             body = payload.body_with_prompt(forge_prompt)
+            t0 = time.perf_counter()
             image_bytes = forge.generate(payload.mode, body)
+            generation_time_ms = (time.perf_counter() - t0) * 1000.0
             filename = save_image(scene.id, image_bytes)
             url = url_for_saved(filename)
             content = _replace_scene_slot(
                 content, scene.id, _img_tag(url, scene.id, filename)
             )
-            stored_params = build_stored_generation_params(payload.mode, body)
+            stored_params = build_stored_generation_params(
+                payload.mode,
+                body,
+                generation_time_ms=generation_time_ms,
+            )
             yield st.status_event(
                 st.IMAGES_IMAGE_READY,
                 f"Imagen recibida ({index}/{total})",

@@ -25,3 +25,13 @@ def test_build_stored_generation_params_redacts_init_and_adds_model():
     assert params["width"] == 768
     assert params["height"] == 512
     assert "omitted" in str(params["init_images"][0]).lower() or "base64" in str(params["init_images"][0]).lower()
+    assert "generation_time_ms" not in params
+
+
+def test_build_stored_generation_params_includes_generation_time():
+    params = build_stored_generation_params(
+        ForgeMode.TXT2IMG,
+        {"prompt": "x", "steps": 1},
+        generation_time_ms=1234.56,
+    )
+    assert params["generation_time_ms"] == 1234.6

@@ -186,6 +186,8 @@ def test_orchestrator_emits_status_pipeline_for_generation():
     assert len(images) == 2
     assert images[0].data.get("filename") == "s1.png"
     assert images[0].data.get("params", {}).get("prompt") == "p1"
+    assert "generation_time_ms" in (images[0].data.get("params") or {})
+    assert (images[0].data.get("params") or {})["generation_time_ms"] >= 0
     assert 'data-filename="s1.png"' in (images[0].content or "")
 
 

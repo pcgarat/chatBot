@@ -1258,6 +1258,20 @@
     return String(value);
   }
 
+  /** Formatea ms de generación para el popup (p. ej. 850 ms, 12.3 s). */
+  function formatGenerationDuration(ms) {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n < 0) return "—";
+    if (n < 1000) return `${Math.round(n)} ms`;
+    const seconds = n / 1000;
+    if (seconds < 60) {
+      return `${seconds < 10 ? seconds.toFixed(2) : seconds.toFixed(1)} s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const rem = seconds - minutes * 60;
+    return `${minutes} min ${rem.toFixed(0)} s`;
+  }
+
   function renderIllustrationMetaBody(data) {
     const params = (data && data.params) || {};
     const model =
@@ -1268,10 +1282,15 @@
       params.width != null && params.height != null
         ? `${params.width} × ${params.height}`
         : "—";
+    const genTime =
+      params.generation_time_ms != null && Number.isFinite(Number(params.generation_time_ms))
+        ? formatGenerationDuration(Number(params.generation_time_ms))
+        : null;
     const rows = [
       ["Modo", data.mode || params.mode || "—"],
       ["Modelo", model],
       ["Tamaño", size],
+      ["Tiempo de generación", genTime],
       ["Sampler", params.sampler_name || "—"],
       ["Scheduler", params.scheduler || "—"],
       ["Steps", params.steps != null ? params.steps : "—"],
@@ -1297,6 +1316,7 @@
       "cfg_scale",
       "seed",
       "denoising_strength",
+      "generation_time_ms",
       "override_settings",
       "init_images",
       "mask",
