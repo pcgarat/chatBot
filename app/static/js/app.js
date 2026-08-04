@@ -107,6 +107,124 @@
   const illustrateAbortControllers = new Set();
   let readingModeMessageIndex = null;
 
+  /** Etiquetas profesionales para la barra de estado (códigos → texto). */
+  const STATUS_LABELS = {
+    "app.ready": "Listo",
+    "chat.preparing": "Preparando solicitud",
+    "chat.sending": "Enviando mensaje al modelo",
+    "chat.awaiting_response": "Esperando respuesta del modelo",
+    "chat.receiving_context": "Recuperando contexto auxiliar",
+    "chat.streaming": "Recibiendo respuesta",
+    "chat.finalizing": "Finalizando respuesta",
+    "chat.cancelled": "Solicitud cancelada",
+    "chat.error": "Error de comunicación con el modelo",
+    "images.starting": "Iniciando ilustración",
+    "images.planning": "Planificando escenas",
+    "images.plan_ready": "Plan de escenas listo",
+    "images.skipped": "Ilustración no aplicable",
+    "images.inserting_anchors": "Insertando anclas de imagen",
+    "images.loading_forge_payload": "Cargando parámetros de generación",
+    "images.submitting_prompt": "Enviando prompt de imagen",
+    "images.awaiting_generation": "Esperando generación de imagen",
+    "images.image_ready": "Imagen recibida",
+    "images.image_failed": "Error al generar imagen",
+    "images.retrying": "Reintentando imágenes fallidas",
+    "images.done": "Ilustración completada",
+    "images.error": "Error en la ilustración",
+    "images.cancelled": "Ilustración cancelada",
+  };
+
+  /**
+   * Barra de estado inferior: stack de actividades concurrentes (chat + ilustración).
+   * Patrón Observer ligero — la UI solo lee el tope del stack.
+   */
+  const appStatus = (function createAppStatus() {
+    const textEl = document.getElementById("app-status-text");
+    const detailEl = document.getElementById("app-status-detail");
+    const barEl = document.getElementById("app-status-bar");
+    /** @type {{ id: string, code: string, label: string, detail: string }[]} */
+    const stack = [];
+    let seq = 0;
+
+    function render() {
+      if (!textEl) return;
+      const top = stack.length ? stack[stack.length - 1] : null;
+      const label = top ? top.label : STATUS_LABELS["app.ready"];
+      const detail = top && top.detail ? top.detail : "";
+      textEl.textContent = label;
+      if (detailEl) {
+        if (detail) {
+          detailEl.hidden = false;
+          detailEl.textContent = detail;
+        } else {
+          detailEl.hidden = true;
+          detailEl.textContent = "";
+        }
+      }
+      if (barEl) barEl.classList.toggle("is-busy", stack.length > 0);
+    }
+
+    function labelFor(code, message, data) {
+      const base = (message && String(message).trim()) || STATUS_LABELS[code] || code;
+      const index = data && data.index != null ? data.index : null;
+      const total = data && data.total != null ? data.total : null;
+      if (
+        index != null &&
+        total != null &&
+        !/\(\d+\s*\/\s*\d+\)/.test(base) &&
+        (code === "images.submitting_prompt" ||
+          code === "images.awaiting_generation" ||
+          code === "images.image_ready" ||
+          code === "images.image_failed" ||
+          code === "images.plan_ready" ||
+          code === "images.retrying")
+      ) {
+        return `${STATUS_LABELS[code] || base} (${index}/${total})`;
+      }
+      if (code === "images.plan_ready" && total != null && !/\(\d+\)/.test(base)) {
+        return `${STATUS_LABELS[code] || base} (${total})`;
+      }
+      return base;
+    }
+
+    function push(source, code, message, data) {
+      const id = `${source}-${++seq}`;
+      stack.push({
+        id,
+        code: code || "app.ready",
+        label: labelFor(code, message, data),
+        detail: (data && data.detail) || "",
+      });
+      render();
+      return id;
+    }
+
+    function update(id, code, message, data) {
+      const item = stack.find((s) => s.id === id);
+      if (!item) return;
+      if (code) item.code = code;
+      item.label = labelFor(code || item.code, message, data);
+      if (data && data.detail != null) item.detail = data.detail;
+      render();
+    }
+
+    function pop(id) {
+      const i = stack.findIndex((s) => s.id === id);
+      if (i >= 0) stack.splice(i, 1);
+      render();
+    }
+
+    function clearSource(sourcePrefix) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].id.startsWith(sourcePrefix + "-")) stack.splice(i, 1);
+      }
+      render();
+    }
+
+    render();
+    return { push, update, pop, clearSource, render };
+  })();
+
   function showError(msg) {
     const toast = document.createElement("div");
     toast.className = "error-toast";
@@ -1632,9 +1750,11 @@
       }
     }
 
+    const chatStatusId = appStatus.push("chat", "chat.preparing");
     currentAbortController = new AbortController();
     setCancelButtonState();
     try {
+      appStatus.update(chatStatusId, "chat.sending");
       const systemInstructionGlobal = getRulesTextForSystem();
       const saveToChromadb = (el.saveToChromadbSelect && el.saveToChromadbSelect.value) ? el.saveToChromadbSelect.value : "user";
       const modelParams = buildModelParams();
@@ -1655,12 +1775,14 @@
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || res.statusText);
       }
+      appStatus.update(chatStatusId, "chat.awaiting_response");
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let fullContent = "";
       let debugRequest = null;
       const debugMetaLines = []; // Solo metadata (sin los chunks de content)
+      let receivedFirstToken = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1685,16 +1807,24 @@
                 debugStreamEl.innerHTML = `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${escapeHtml(debugRequest)}</div><div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(debugMetaLines.join("\n"))}</div>`;
               }
             }
+            if (data.mcp_contexts) {
+              appStatus.update(chatStatusId, "chat.receiving_context");
+            }
             if (data.error) {
               clearAnalyzingDots();
               fullContent += `[Error: ${data.error}]`;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
+              appStatus.update(chatStatusId, "chat.error");
             }
             if (data.user_message_id && messages.length > 0) {
               messages[messages.length - 1].id = data.user_message_id;
             }
             if (data.content !== undefined) {
               clearAnalyzingDots();
+              if (!receivedFirstToken) {
+                receivedFirstToken = true;
+                appStatus.update(chatStatusId, "chat.streaming");
+              }
               fullContent += data.content;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
               scrollToBottomIfEnabled();
@@ -1708,6 +1838,7 @@
             }
             if (data.done) {
               clearAnalyzingDots();
+              appStatus.update(chatStatusId, "chat.finalizing");
               currentStreamingMsgEl = null;
               currentStreamingDebugEl = null;
               msgEl.remove();
@@ -1736,11 +1867,13 @@
       currentStreamingDebugEl = null;
       currentAbortController = null;
       setCancelButtonState();
+      appStatus.pop(chatStatusId);
     } catch (e) {
       clearAnalyzingDots();
       currentStreamingMsgEl = null;
       currentStreamingDebugEl = null;
       if (e.name === "AbortError") {
+        appStatus.update(chatStatusId, "chat.cancelled");
         messages.push({ role: "assistant", content: "Cancelado" });
         renderMessages();
         if (currentConversationId) {
@@ -1748,12 +1881,14 @@
         }
         showNotice("Mensaje anulado.");
       } else {
+        appStatus.update(chatStatusId, "chat.error");
         messages.push({ role: "assistant", content: "Error al enviar: " + e.message });
         renderMessages();
         showError("Error al enviar: " + e.message);
       }
       currentAbortController = null;
       setCancelButtonState();
+      appStatus.pop(chatStatusId);
     }
   }
 
@@ -2803,6 +2938,13 @@
     });
     illustrateAbortControllers.clear();
     illustratingMessageIds.clear();
+    appStatus.clearSource("images");
+    if (n) {
+      const cancelId = appStatus.push("images", "images.cancelled");
+      setTimeout(function () {
+        appStatus.pop(cancelId);
+      }, 1200);
+    }
     if (isImagesDebugMode()) {
       appendImagesDebugLog(
         n ? `Abortadas ${n} generación(es) de imágenes.` : "No hay generaciones activas."
@@ -2833,6 +2975,7 @@
     illustrateAbortControllers.add(abortCtrl);
     illustratingMessageIds.add(messageId);
     renderMessages();
+    const imgStatusId = appStatus.push("images", "images.starting");
     if (isImagesDebugMode()) {
       appendImagesDebugLog(`Iniciando illustrate message=${messageId}${force ? " (manual)" : ""}`);
     }
@@ -2879,6 +3022,10 @@
           } catch (_) {
             continue;
           }
+          if (data.type === "status") {
+            const code = (data.data && data.data.code) || "images.starting";
+            appStatus.update(imgStatusId, code, data.message || "", data.data || {});
+          }
           if (data.type === "log" && isImagesDebugMode()) {
             appendImagesDebugLog(data.message || JSON.stringify(data));
           }
@@ -2914,14 +3061,17 @@
       if (force) showNotice("Ilustración terminada.");
     } catch (e) {
       if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) {
+        appStatus.update(imgStatusId, "images.cancelled");
         if (isImagesDebugMode()) appendImagesDebugLog(`Illustrate abortado message=${messageId}`);
       } else {
+        appStatus.update(imgStatusId, "images.error", e.message || "");
         if (isImagesDebugMode()) appendImagesDebugLog("Error: " + e.message);
         showError("Ilustración: " + e.message);
       }
     } finally {
       illustrateAbortControllers.delete(abortCtrl);
       illustratingMessageIds.delete(messageId);
+      appStatus.pop(imgStatusId);
       renderMessages();
     }
   }

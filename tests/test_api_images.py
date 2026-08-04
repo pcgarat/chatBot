@@ -55,6 +55,39 @@ def test_illustrate_stream_skips_when_planner_says_no(client, db_session):
     assert not any(l["type"] == "log" for l in lines)  # debug off
 
 
+def test_illustrate_always_forwards_status_events(client, db_session):
+    """type=status no depende de debug (barra de estado)."""
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "texto")
+
+    class FakeOrch:
+        def run(self, *a, **k):
+            yield IllustrationEvent(
+                type="status",
+                message="Planificando escenas",
+                data={"code": "images.planning"},
+            )
+            yield IllustrationEvent(type="log", message="oculto sin debug")
+            yield IllustrationEvent(type="done", message="ok", content="texto")
+
+    with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
+            json={
+                "prompt_model": "llama3.2",
+                "prompt_provider": "ollama",
+                "images_per_response": 1,
+                "debug": False,
+            },
+        )
+    assert res.status_code == 200
+    lines = _ndjson_lines(res)
+    assert any(l["type"] == "status" and l["data"]["code"] == "images.planning" for l in lines)
+    assert not any(l["type"] == "log" for l in lines)
+
+
 def test_illustrate_emits_logs_when_debug(client, db_session):
     from app import crud
 

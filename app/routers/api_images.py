@@ -99,7 +99,7 @@ def illustrate_message(
 ):
     """
     Tras el chat: planifica escenas, genera con Forge (ReplayLastGeneration)
-    y emite NDJSON (log|placeholder|image|error|done).
+    y emite NDJSON (status|log|placeholder|image|error|done|llm_debug).
     """
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
@@ -134,6 +134,7 @@ def illustrate_message(
                     continue
                 if event.type == "llm_debug" and not body.include_prompt_debug:
                     continue
+                # type=status siempre se reenvía (barra de estado; no depende de debug)
                 yield json.dumps(event.to_dict(), ensure_ascii=False) + "\n"
         finally:
             if final_content != text:

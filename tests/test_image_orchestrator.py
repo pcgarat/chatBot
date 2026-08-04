@@ -154,6 +154,34 @@ def test_orchestrator_skips_when_not_illustrate():
     assert events[-1].type == "done"
     assert events[-1].content == "hola"
     assert not any(e.type == "image" for e in events)
+    statuses = [e for e in events if e.type == "status"]
+    codes = [e.data.get("code") for e in statuses]
+    assert "images.starting" in codes
+    assert "images.planning" in codes
+    assert "images.skipped" in codes
+
+
+def test_orchestrator_emits_status_pipeline_for_generation():
+    scenes = [
+        SceneSpec(id="s1", prompt="p1", anchor_excerpt="A."),
+        SceneSpec(id="s2", prompt="p2", anchor_excerpt="B."),
+    ]
+    orch = ImageIllustrationOrchestrator(
+        planner=FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=scenes)),
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"p1": b"1", "p2": b"2"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run("A.\n\nB.", max_images=2, retries=0))
+    codes = [e.data.get("code") for e in events if e.type == "status"]
+    assert codes[0] == "images.starting"
+    assert "images.planning" in codes
+    assert "images.inserting_anchors" in codes
+    assert "images.loading_forge_payload" in codes
+    assert codes.count("images.submitting_prompt") == 2
+    assert codes.count("images.awaiting_generation") == 2
+    assert codes.count("images.image_ready") == 2
+    assert codes[-1] == "images.done"
 
 
 def test_orchestrator_retries_only_after_full_first_pass():
