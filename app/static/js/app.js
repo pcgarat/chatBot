@@ -101,6 +101,11 @@
   const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
   const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1\"/></svg>";
   const msgToInputIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 10L4 15 9 20\"/><path d=\"M20 4v11a4 4 0 01-4 4H4\"/></svg>";
+  const msgIllustrateIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"/><path d=\"M21 15l-5-5L5 21\"/></svg>";
+  const msgReadIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\"/><path d=\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\"/></svg>";
+  const illustratingMessageIds = new Set();
+  const illustrateAbortControllers = new Set();
+  let readingModeMessageIndex = null;
 
   function showError(msg) {
     const toast = document.createElement("div");
@@ -1011,6 +1016,33 @@
     return div.innerHTML;
   }
 
+  /** Escapa texto pero conserva img/placeholder/error de ilustración y marcadores. */
+  function formatMessageHtml(content) {
+    const raw = content == null ? "" : String(content);
+    const tokens = [];
+    const pattern =
+      /(<img\b[^>]*class="[^"]*chat-illustration[^"]*"[^>]*>|<span\b[^>]*class="[^"]*chat-illustration-(?:error|placeholder)[^"]*"[^>]*>[\s\S]*?<\/span>|⟦img:[^⟧]+⟧)/gi;
+    let last = 0;
+    let m;
+    while ((m = pattern.exec(raw)) !== null) {
+      if (m.index > last) tokens.push({ t: "text", v: raw.slice(last, m.index) });
+      const piece = m[0];
+      if (piece.startsWith("⟦img:")) {
+        tokens.push({
+          t: "html",
+          v: `<span class="chat-illustration-placeholder">Generando imagen…\n\n${escapeHtml(piece)}</span>`,
+        });
+      } else {
+        tokens.push({ t: "html", v: piece });
+      }
+      last = m.index + piece.length;
+    }
+    if (last < raw.length) tokens.push({ t: "text", v: raw.slice(last) });
+    return tokens
+      .map((tok) => (tok.t === "html" ? tok.v : escapeHtml(tok.v).replace(/\n/g, "<br>")))
+      .join("");
+  }
+
   function saveLastConversationId(id) {
     try {
       if (id) localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, id);
@@ -1471,15 +1503,25 @@
       .map(
         (m, idx) => {
           const hasContent = m.content && m.content.trim();
-          const toInputBtn = hasContent
+          const isEphemeralDebug = !!m.ephemeral_debug;
+          const toInputBtn = hasContent && !isEphemeralDebug
             ? `<button type="button" class="msg-action-btn msg-to-input-btn" data-msg-index="${idx}" title="Enviar texto al cuadro de mensaje">${msgToInputIconSvg}</button>`
             : "";
-          const deleteCopyBtns = m.id
+          const deleteCopyBtns = m.id && !isEphemeralDebug
             ? `<button type="button" class="msg-action-btn msg-delete-btn" data-msg-id="${escapeHtml(m.id)}" title="Eliminar del historial">${msgDeleteIconSvg}</button>
                 <button type="button" class="msg-action-btn msg-copy-btn" data-msg-id="${escapeHtml(m.id)}" title="Copiar">${msgCopyIconSvg}</button>`
             : "";
-          const footerBtns = (toInputBtn || deleteCopyBtns)
-            ? `<div class="message-footer">${toInputBtn}${deleteCopyBtns}</div>`
+          const illustrating = m.id && illustratingMessageIds.has(m.id);
+          const illustrateBtn =
+            !isEphemeralDebug && m.role === "assistant" && m.id && hasContent
+              ? `<button type="button" class="msg-action-btn msg-illustrate-btn${illustrating ? " is-busy" : ""}" data-msg-id="${escapeHtml(m.id)}" title="Generar imágenes para esta respuesta" aria-label="Generar imágenes" ${illustrating ? "disabled" : ""}>${msgIllustrateIconSvg}</button>`
+              : "";
+          const readBtn =
+            !isEphemeralDebug && m.role === "assistant" && hasContent
+              ? `<button type="button" class="msg-action-btn msg-read-btn" data-msg-index="${idx}" title="Modo lectura a pantalla completa" aria-label="Modo lectura">${msgReadIconSvg}</button>`
+              : "";
+          const footerBtns = (toInputBtn || deleteCopyBtns || illustrateBtn || readBtn)
+            ? `<div class="message-footer">${toInputBtn}${deleteCopyBtns}${illustrateBtn}${readBtn}</div>`
             : "";
           let debugHtml = "";
           if (showDebug && m.role === "assistant" && (m.debug_request || m.debug_response)) {
@@ -1495,7 +1537,7 @@
           const bubbleClass = isUser ? "message-bubble user" : "message-bubble assistant";
           return `<div class="${rowClass}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
             <div style="max-width: ${isUser ? "70%" : "100%"}; flex: 1; min-width: 0;">
-              <div class="${bubbleClass}"><span>${escapeHtml(m.content || "").replace(/\n/g, "<br>")}</span></div>
+              <div class="${bubbleClass}"><span>${formatMessageHtml(m.content || "")}</span></div>
               ${debugHtml}
               ${footerBtns}
             </div>
@@ -1529,6 +1571,20 @@
         const msgId = btn.dataset.msgId;
         const msg = msgId ? messages.find((m) => m.id === msgId) : null;
         if (msg && msg.content) copyMessageToClipboard(msg.content);
+      });
+    });
+    el.messagesContainer.querySelectorAll(".msg-illustrate-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const msgId = btn.dataset.msgId;
+        if (msgId) maybeIllustrateAssistantMessage(msgId, { force: true });
+      });
+    });
+    el.messagesContainer.querySelectorAll(".msg-read-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const msgIndex = btn.dataset.msgIndex != null ? parseInt(btn.dataset.msgIndex, 10) : -1;
+        if (msgIndex >= 0) openReadingMode(msgIndex);
       });
     });
     scrollToBottomIfEnabled();
@@ -1655,15 +1711,19 @@
               currentStreamingMsgEl = null;
               currentStreamingDebugEl = null;
               msgEl.remove();
-              messages.push({
+              const assistantMsg = {
                 role: "assistant",
                 content: fullContent,
                 id: data.id || null,
                 debug_request: debugRequest || null,
                 debug_response: debugMetaLines.length > 0 ? debugMetaLines.join("\n") : null,
-              });
+              };
+              messages.push(assistantMsg);
               renderMessages();
               loadConversations();
+              if (assistantMsg.id) {
+                maybeIllustrateAssistantMessage(assistantMsg.id);
+              }
             }
           } catch (e) {
             if (e instanceof SyntaxError) continue;
@@ -2177,6 +2237,16 @@
   const FONT_SIZE_MIN = 0.75;
   const FONT_SIZE_MAX = 1.4;
   const FONT_SIZE_STEP = 0.05;
+  const IMAGE_SIZE_STORAGE_KEY = "chatbot_conversation_image_size";
+  const IMAGE_SIZE_DEFAULT = 1;
+  const IMAGE_SIZE_MIN = 0.4;
+  const IMAGE_SIZE_MAX = 1;
+  const IMAGE_SIZE_STEP = 0.1;
+  const READING_WIDTH_STORAGE_KEY = "chatbot_reading_mode_width_px";
+  const READING_WIDTH_DEFAULT_PX = 832; // ~52rem @ 16px
+  const READING_WIDTH_MIN_PX = 320;
+  const READING_WIDTH_SIDE_GUTTER_PX = 24;
+  const READING_WIDTH_KEYBOARD_STEP_PX = 32;
 
   function getStoredFontSize() {
     try {
@@ -2197,15 +2267,29 @@
   function applyConversationFontSize(rem) {
     var wrap = document.querySelector(".chat-stream-wrap");
     if (wrap) wrap.style.setProperty("--chat-font-size", rem + "rem");
+    var readingBody = document.getElementById("reading-mode-body");
+    if (readingBody) readingBody.style.setProperty("--chat-font-size", rem + "rem");
+  }
+
+  function syncFontSizeButtons(rem) {
+    const ids = [
+      "btn-font-size-decrease",
+      "btn-font-size-increase",
+      "reading-font-decrease",
+      "reading-font-increase",
+    ];
+    const decreaseIds = new Set(["btn-font-size-decrease", "reading-font-decrease"]);
+    ids.forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = decreaseIds.has(id) ? rem <= FONT_SIZE_MIN : rem >= FONT_SIZE_MAX;
+    });
   }
 
   function initConversationFontSize() {
     const rem = getStoredFontSize();
     applyConversationFontSize(rem);
-    const decreaseBtn = document.getElementById("btn-font-size-decrease");
-    const increaseBtn = document.getElementById("btn-font-size-increase");
-    if (decreaseBtn) decreaseBtn.disabled = rem <= FONT_SIZE_MIN;
-    if (increaseBtn) increaseBtn.disabled = rem >= FONT_SIZE_MAX;
+    syncFontSizeButtons(rem);
   }
 
   function setConversationFontSize(delta) {
@@ -2215,14 +2299,239 @@
     next = Math.round(next * 100) / 100;
     setStoredFontSize(next);
     applyConversationFontSize(next);
-    const decreaseBtn = document.getElementById("btn-font-size-decrease");
-    const increaseBtn = document.getElementById("btn-font-size-increase");
-    if (decreaseBtn) decreaseBtn.disabled = next <= FONT_SIZE_MIN;
-    if (increaseBtn) increaseBtn.disabled = next >= FONT_SIZE_MAX;
+    syncFontSizeButtons(next);
   }
   window.__chatBotFontSizeDelta = function (delta) {
     setConversationFontSize(delta);
   };
+
+  function getStoredImageSize() {
+    try {
+      const raw = localStorage.getItem(IMAGE_SIZE_STORAGE_KEY);
+      if (raw == null) return IMAGE_SIZE_DEFAULT;
+      const n = parseFloat(raw, 10);
+      if (Number.isFinite(n)) return Math.max(IMAGE_SIZE_MIN, Math.min(IMAGE_SIZE_MAX, n));
+    } catch (_) {}
+    return IMAGE_SIZE_DEFAULT;
+  }
+
+  function setStoredImageSize(factor) {
+    try {
+      localStorage.setItem(IMAGE_SIZE_STORAGE_KEY, String(factor));
+    } catch (_) {}
+  }
+
+  function applyConversationImageSize(factor) {
+    const pct = Math.round(factor * 100) + "%";
+    document.documentElement.style.setProperty("--chat-image-max-width", pct);
+    const reading = document.getElementById("reading-mode");
+    if (reading) reading.style.setProperty("--chat-image-max-width", pct);
+    const wrap = document.querySelector(".chat-stream-wrap");
+    if (wrap) wrap.style.setProperty("--chat-image-max-width", pct);
+  }
+
+  function syncImageSizeButtons(factor) {
+    const dec = document.getElementById("reading-image-decrease");
+    const inc = document.getElementById("reading-image-increase");
+    if (dec) dec.disabled = factor <= IMAGE_SIZE_MIN;
+    if (inc) inc.disabled = factor >= IMAGE_SIZE_MAX;
+  }
+
+  function initConversationImageSize() {
+    const factor = getStoredImageSize();
+    applyConversationImageSize(factor);
+    syncImageSizeButtons(factor);
+  }
+
+  function setConversationImageSize(delta) {
+    const current = getStoredImageSize();
+    let next = Math.round((current + delta) / IMAGE_SIZE_STEP) * IMAGE_SIZE_STEP;
+    next = Math.max(IMAGE_SIZE_MIN, Math.min(IMAGE_SIZE_MAX, next));
+    next = Math.round(next * 100) / 100;
+    setStoredImageSize(next);
+    applyConversationImageSize(next);
+    syncImageSizeButtons(next);
+  }
+
+  function isReadingModeOpen() {
+    const overlay = document.getElementById("reading-mode");
+    return !!(overlay && !overlay.hidden);
+  }
+
+  /** Ancho máximo del panel centrado (deja margen para ver/arrastrar bordes). */
+  function getReadingPanelMaxWidthPx() {
+    return Math.max(READING_WIDTH_MIN_PX, window.innerWidth - READING_WIDTH_SIDE_GUTTER_PX * 2);
+  }
+
+  /**
+   * Ancho simétrico al arrastrar un borde: el panel está centrado, así que
+   * cada px de movimiento del asa implica 2px de cambio de ancho total.
+   */
+  function computeSymmetricReadingWidth(startWidthPx, startX, clientX, edge) {
+    const delta = edge === "right" ? clientX - startX : startX - clientX;
+    return startWidthPx + delta * 2;
+  }
+
+  function clampReadingPanelWidthPx(px) {
+    const n = Number(px);
+    if (!Number.isFinite(n)) return READING_WIDTH_DEFAULT_PX;
+    return Math.max(READING_WIDTH_MIN_PX, Math.min(getReadingPanelMaxWidthPx(), Math.round(n)));
+  }
+
+  function getStoredReadingPanelWidthPx() {
+    try {
+      const raw = localStorage.getItem(READING_WIDTH_STORAGE_KEY);
+      if (raw == null) return READING_WIDTH_DEFAULT_PX;
+      return clampReadingPanelWidthPx(raw);
+    } catch (_) {
+      return READING_WIDTH_DEFAULT_PX;
+    }
+  }
+
+  function saveReadingPanelWidthPx(px) {
+    try {
+      localStorage.setItem(READING_WIDTH_STORAGE_KEY, String(clampReadingPanelWidthPx(px)));
+    } catch (_) {}
+  }
+
+  function applyReadingPanelWidth(px) {
+    const panel = document.getElementById("reading-mode-panel");
+    if (!panel) return;
+    const width = clampReadingPanelWidthPx(px);
+    panel.style.setProperty("--reading-panel-width", width + "px");
+    panel.style.width = width + "px";
+    return width;
+  }
+
+  function initReadingPanelResize() {
+    const panel = document.getElementById("reading-mode-panel");
+    if (!panel) return;
+    applyReadingPanelWidth(getStoredReadingPanelWidthPx());
+
+    let drag = null;
+
+    function endDrag() {
+      if (!drag) return;
+      const width = applyReadingPanelWidth(panel.getBoundingClientRect().width);
+      saveReadingPanelWidthPx(width);
+      drag = null;
+      document.body.classList.remove("reading-mode-resizing");
+    }
+
+    panel.querySelectorAll(".reading-mode-resize").forEach(function (handle) {
+      handle.addEventListener("pointerdown", function (e) {
+        if (e.button != null && e.button !== 0) return;
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        drag = {
+          edge: handle.getAttribute("data-edge") === "left" ? "left" : "right",
+          startX: e.clientX,
+          startWidth: panel.getBoundingClientRect().width,
+        };
+        document.body.classList.add("reading-mode-resizing");
+      });
+
+      handle.addEventListener("pointermove", function (e) {
+        if (!drag) return;
+        applyReadingPanelWidth(
+          computeSymmetricReadingWidth(drag.startWidth, drag.startX, e.clientX, drag.edge)
+        );
+      });
+
+      handle.addEventListener("pointerup", endDrag);
+      handle.addEventListener("pointercancel", endDrag);
+
+      handle.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        const edge = handle.getAttribute("data-edge") === "left" ? "left" : "right";
+        const current = panel.getBoundingClientRect().width;
+        const outward =
+          (edge === "right" && e.key === "ArrowRight") ||
+          (edge === "left" && e.key === "ArrowLeft");
+        const next = current + (outward ? READING_WIDTH_KEYBOARD_STEP_PX : -READING_WIDTH_KEYBOARD_STEP_PX);
+        saveReadingPanelWidthPx(applyReadingPanelWidth(next));
+      });
+    });
+
+    window.addEventListener("resize", function () {
+      if (!isReadingModeOpen()) return;
+      applyReadingPanelWidth(getStoredReadingPanelWidthPx());
+    });
+  }
+
+  function openReadingMode(msgIndex) {
+    const msg = messages[msgIndex];
+    if (!msg || msg.role !== "assistant" || !(msg.content && msg.content.trim())) return;
+    const overlay = document.getElementById("reading-mode");
+    const body = document.getElementById("reading-mode-body");
+    if (!overlay || !body) return;
+    readingModeMessageIndex = msgIndex;
+    body.innerHTML = formatMessageHtml(msg.content || "");
+    applyConversationFontSize(getStoredFontSize());
+    applyConversationImageSize(getStoredImageSize());
+    syncFontSizeButtons(getStoredFontSize());
+    syncImageSizeButtons(getStoredImageSize());
+    applyReadingPanelWidth(getStoredReadingPanelWidthPx());
+    overlay.hidden = false;
+    document.body.classList.add("reading-mode-open");
+    body.scrollTop = 0;
+    const closeBtn = document.getElementById("reading-mode-close");
+    if (closeBtn) closeBtn.focus();
+  }
+
+  function closeReadingMode() {
+    const overlay = document.getElementById("reading-mode");
+    const body = document.getElementById("reading-mode-body");
+    if (!overlay) return;
+    overlay.hidden = true;
+    document.body.classList.remove("reading-mode-open");
+    document.body.classList.remove("reading-mode-resizing");
+    readingModeMessageIndex = null;
+    if (body) body.innerHTML = "";
+  }
+
+  function initReadingMode() {
+    initConversationImageSize();
+    initReadingPanelResize();
+    const closeBtn = document.getElementById("reading-mode-close");
+    const fontDec = document.getElementById("reading-font-decrease");
+    const fontInc = document.getElementById("reading-font-increase");
+    const imgDec = document.getElementById("reading-image-decrease");
+    const imgInc = document.getElementById("reading-image-increase");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        closeReadingMode();
+      });
+    }
+    if (fontDec) {
+      fontDec.addEventListener("click", function () {
+        if (!this.disabled) setConversationFontSize(-FONT_SIZE_STEP);
+      });
+    }
+    if (fontInc) {
+      fontInc.addEventListener("click", function () {
+        if (!this.disabled) setConversationFontSize(FONT_SIZE_STEP);
+      });
+    }
+    if (imgDec) {
+      imgDec.addEventListener("click", function () {
+        if (!this.disabled) setConversationImageSize(-IMAGE_SIZE_STEP);
+      });
+    }
+    if (imgInc) {
+      imgInc.addEventListener("click", function () {
+        if (!this.disabled) setConversationImageSize(IMAGE_SIZE_STEP);
+      });
+    }
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && isReadingModeOpen()) {
+        e.preventDefault();
+        closeReadingMode();
+      }
+    });
+  }
 
   function getAccordionState() {
     try {
@@ -2265,7 +2574,8 @@
     });
   }
 
-  const SIDEBAR_TAB_IDS = ["reglas", "parametros"];
+  const SIDEBAR_TAB_IDS = ["reglas", "parametros", "imagenes"];
+  const IMAGES_PREFS_KEY = "chatbot_images_prefs";
 
   function getStoredSidebarTab() {
     try {
@@ -2289,12 +2599,14 @@
     });
     document.querySelectorAll(".sidebar-tabpanel").forEach((panel) => {
       const panelId = panel.id;
-      const isReglas = panelId === "tab-reglas";
-      const isParametros = panelId === "tab-parametros";
-      const active = (tabId === "reglas" && isReglas) || (tabId === "parametros" && isParametros);
+      const active =
+        (tabId === "reglas" && panelId === "tab-reglas") ||
+        (tabId === "parametros" && panelId === "tab-parametros") ||
+        (tabId === "imagenes" && panelId === "tab-imagenes");
       panel.classList.toggle("is-active", active);
       panel.hidden = !active;
-      if (active && isReglas) loadLibraryRules();
+      if (active && panelId === "tab-reglas") loadLibraryRules();
+      if (active && panelId === "tab-imagenes") ensureImagesPromptSelects();
     });
   }
 
@@ -2319,6 +2631,300 @@
   initAccordionState();
   initSidebarTabs();
   initConversationFontSize();
+  initReadingMode();
+  initImagesPanel();
+
+  function loadImagesPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(IMAGES_PREFS_KEY) || "{}") || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function saveImagesPrefs(partial) {
+    const prefs = Object.assign(loadImagesPrefs(), partial || {});
+    try {
+      localStorage.setItem(IMAGES_PREFS_KEY, JSON.stringify(prefs));
+    } catch (_) {}
+    return prefs;
+  }
+
+  function isImagesEnabled() {
+    const elEnabled = document.getElementById("images-enabled");
+    return !!(elEnabled && elEnabled.checked);
+  }
+
+  function isImagesDebugMode() {
+    const elDbg = document.getElementById("images-debug-mode");
+    return !!(elDbg && elDbg.checked);
+  }
+
+  function appendImagesDebugLog(line) {
+    const pre = document.getElementById("images-debug-log");
+    const win = document.getElementById("images-debug-window");
+    if (!pre || !win) return;
+    win.hidden = false;
+    const ts = new Date().toISOString().slice(11, 19);
+    pre.textContent += `[${ts}] ${line}\n`;
+    pre.scrollTop = pre.scrollHeight;
+  }
+
+  async function ensureImagesPromptSelects() {
+    const providerSel = document.getElementById("images-prompt-provider");
+    const modelSel = document.getElementById("images-prompt-model");
+    if (!providerSel || !modelSel) return;
+    const prefs = loadImagesPrefs();
+    try {
+      const providers = await fetchJson(`${API}/providers`);
+      const list = (Array.isArray(providers) ? providers : []).map((p) => (typeof p === "string" ? p : p.name)).filter(Boolean);
+      providerSel.innerHTML = list.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+      if (prefs.prompt_provider && list.includes(prefs.prompt_provider)) {
+        providerSel.value = prefs.prompt_provider;
+      } else if (el.providerSelect && el.providerSelect.value) {
+        providerSel.value = el.providerSelect.value;
+      }
+      await loadImagesPromptModels();
+    } catch (e) {
+      providerSel.innerHTML = "";
+    }
+  }
+
+  async function loadImagesPromptModels() {
+    const providerSel = document.getElementById("images-prompt-provider");
+    const modelSel = document.getElementById("images-prompt-model");
+    if (!providerSel || !modelSel) return;
+    const provider = providerSel.value;
+    const prefs = loadImagesPrefs();
+    try {
+      const models = await fetchJson(`${API}/providers/${encodeURIComponent(provider)}/models`);
+      const names = (models || []).map((m) => m.name || m.id || m).filter(Boolean);
+      modelSel.innerHTML = names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+      if (prefs.prompt_model && names.includes(prefs.prompt_model)) {
+        modelSel.value = prefs.prompt_model;
+      } else if (el.modelSelect && el.modelSelect.value && names.includes(el.modelSelect.value)) {
+        modelSel.value = el.modelSelect.value;
+      }
+    } catch (_) {
+      modelSel.innerHTML = "";
+    }
+  }
+
+  function initImagesPanel() {
+    const prefs = loadImagesPrefs();
+    const enabled = document.getElementById("images-enabled");
+    const useChatConfig = document.getElementById("images-use-chat-config");
+    const per = document.getElementById("images-per-response");
+    const retries = document.getElementById("images-retries");
+    const promptEl = document.getElementById("images-prompt");
+    const promptSystemEl = document.getElementById("images-prompt-system");
+    const providerSel = document.getElementById("images-prompt-provider");
+    const modelSel = document.getElementById("images-prompt-model");
+    const dbg = document.getElementById("images-debug-mode");
+    const closeBtn = document.getElementById("images-debug-close");
+    const stopBtn = document.getElementById("images-debug-stop");
+    const win = document.getElementById("images-debug-window");
+    if (enabled) enabled.checked = !!prefs.enabled;
+    if (useChatConfig) useChatConfig.checked = !!prefs.use_chat_config;
+    if (per && prefs.images_per_response != null) per.value = prefs.images_per_response;
+    if (retries && prefs.retries != null) retries.value = prefs.retries;
+    if (promptEl && prefs.prompt != null) promptEl.value = prefs.prompt;
+    if (promptSystemEl && prefs.prompt_system_instructions != null) {
+      promptSystemEl.value = prefs.prompt_system_instructions;
+    }
+    if (dbg) dbg.checked = !!prefs.debug;
+
+    function syncChatConfigControlsDisabled() {
+      const on = !!(useChatConfig && useChatConfig.checked);
+      document.querySelectorAll("[data-images-chat-config-control]").forEach(function (row) {
+        row.classList.toggle("is-disabled-by-chat-config", on);
+        row.querySelectorAll("input, select, textarea").forEach(function (ctrl) {
+          ctrl.disabled = on;
+        });
+      });
+    }
+
+    function persist() {
+      saveImagesPrefs({
+        enabled: !!(enabled && enabled.checked),
+        use_chat_config: !!(useChatConfig && useChatConfig.checked),
+        images_per_response: per ? parseInt(per.value, 10) || 2 : 2,
+        retries: retries ? parseInt(retries.value, 10) || 0 : 0,
+        prompt: promptEl ? String(promptEl.value || "") : "",
+        prompt_system_instructions: promptSystemEl ? String(promptSystemEl.value || "") : "",
+        prompt_provider: providerSel ? providerSel.value : "",
+        prompt_model: modelSel ? modelSel.value : "",
+        debug: !!(dbg && dbg.checked),
+      });
+      if (dbg && win) {
+        if (dbg.checked) win.hidden = false;
+        else win.hidden = true;
+      }
+      syncChatConfigControlsDisabled();
+    }
+    [enabled, useChatConfig, per, retries, promptEl, promptSystemEl, providerSel, modelSel, dbg].forEach((node) => {
+      if (!node) return;
+      const evt = node === promptEl || node === promptSystemEl ? "input" : "change";
+      node.addEventListener(evt, function () {
+        if (node === providerSel) loadImagesPromptModels().then(persist);
+        else persist();
+      });
+    });
+    if (stopBtn) {
+      stopBtn.addEventListener("click", function () {
+        abortAllIllustrations();
+      });
+    }
+    if (closeBtn && win) {
+      closeBtn.addEventListener("click", function () {
+        win.hidden = true;
+        if (dbg) dbg.checked = false;
+        persist();
+        // sync segmented toggle if present
+        var row = document.querySelector('.segmented-toggle-row[data-checkbox-id="images-debug-mode"]');
+        if (row) {
+          row.querySelectorAll(".segmented-toggle-btn").forEach(function (btn) {
+            var on = btn.getAttribute("data-value") === "no";
+            btn.setAttribute("aria-pressed", on ? "true" : "false");
+          });
+        }
+      });
+    }
+    syncChatConfigControlsDisabled();
+    ensureImagesPromptSelects();
+  }
+
+  function abortAllIllustrations() {
+    const n = illustrateAbortControllers.size;
+    illustrateAbortControllers.forEach(function (ctrl) {
+      try {
+        ctrl.abort();
+      } catch (_) {}
+    });
+    illustrateAbortControllers.clear();
+    illustratingMessageIds.clear();
+    if (isImagesDebugMode()) {
+      appendImagesDebugLog(
+        n ? `Abortadas ${n} generación(es) de imágenes.` : "No hay generaciones activas."
+      );
+    }
+    renderMessages();
+    if (n) showNotice("Generación de imágenes abortada.");
+  }
+
+  async function maybeIllustrateAssistantMessage(messageId, options) {
+    const force = !!(options && options.force);
+    if ((!force && !isImagesEnabled()) || !currentConversationId || !messageId) return;
+    if (illustratingMessageIds.has(messageId)) return;
+    const providerSel = document.getElementById("images-prompt-provider");
+    const modelSel = document.getElementById("images-prompt-model");
+    const per = document.getElementById("images-per-response");
+    const retries = document.getElementById("images-retries");
+    const promptEl = document.getElementById("images-prompt");
+    const promptSystemEl = document.getElementById("images-prompt-system");
+    const useChatConfig = document.getElementById("images-use-chat-config");
+    const useChat = !!(useChatConfig && useChatConfig.checked);
+    const promptModel = modelSel && modelSel.value;
+    if (!useChat && !promptModel) {
+      showNotice("Imágenes: elige un modelo LLM de prompts en la pestaña Imágenes.");
+      return;
+    }
+    const abortCtrl = new AbortController();
+    illustrateAbortControllers.add(abortCtrl);
+    illustratingMessageIds.add(messageId);
+    renderMessages();
+    if (isImagesDebugMode()) {
+      appendImagesDebugLog(`Iniciando illustrate message=${messageId}${force ? " (manual)" : ""}`);
+    }
+    try {
+      const res = await fetch(
+        `${API}/conversations/${currentConversationId}/messages/${messageId}/illustrate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: abortCtrl.signal,
+          body: JSON.stringify({
+            images_per_response: per ? parseInt(per.value, 10) || 2 : 2,
+            prompt_provider: (providerSel && providerSel.value) || "ollama",
+            prompt_model: promptModel || "",
+            retries: retries ? parseInt(retries.value, 10) || 0 : 0,
+            prompt: promptEl ? String(promptEl.value || "").trim() : "",
+            prompt_system_instructions: promptSystemEl
+              ? String(promptSystemEl.value || "").trim()
+              : "",
+            use_chat_config: useChat,
+            include_prompt_debug: isShowDebugMode(),
+            debug: isImagesDebugMode(),
+          }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let data;
+          try {
+            data = JSON.parse(line);
+          } catch (_) {
+            continue;
+          }
+          if (data.type === "log" && isImagesDebugMode()) {
+            appendImagesDebugLog(data.message || JSON.stringify(data));
+          }
+          if (data.type === "llm_debug" && isShowDebugMode()) {
+            const label =
+              (data.data && data.data.label) ||
+              (data.scene_id ? `Prompt escena ${data.scene_id}` : "Planificador de prompts");
+            const promptText = data.message || "";
+            messages.push({
+              role: "assistant",
+              content: promptText
+                ? `${label}\n\n${promptText}`
+                : label,
+              id: null,
+              ephemeral_debug: true,
+              debug_request: (data.data && data.data.debug_request) || null,
+              debug_response: (data.data && data.data.debug_response) || null,
+            });
+            renderMessages();
+            scrollToBottomIfEnabled();
+          }
+          if (data.content != null) {
+            const idx = messages.findIndex((m) => m.id === messageId);
+            if (idx >= 0) {
+              messages[idx].content = data.content;
+              renderMessages();
+              scrollToBottomIfEnabled();
+            }
+          }
+        }
+      }
+      if (isImagesDebugMode()) appendImagesDebugLog("Illustrate terminado");
+      if (force) showNotice("Ilustración terminada.");
+    } catch (e) {
+      if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) {
+        if (isImagesDebugMode()) appendImagesDebugLog(`Illustrate abortado message=${messageId}`);
+      } else {
+        if (isImagesDebugMode()) appendImagesDebugLog("Error: " + e.message);
+        showError("Ilustración: " + e.message);
+      }
+    } finally {
+      illustrateAbortControllers.delete(abortCtrl);
+      illustratingMessageIds.delete(messageId);
+      renderMessages();
+    }
+  }
 
   (function initDarkMode() {
     var checkbox = document.getElementById("dark-mode-toggle");

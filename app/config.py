@@ -54,6 +54,10 @@ ENV_VARS_TO_SYNC = [
     "OLLAMA_HISTORY_TURNS",
     "DATABASE_URL",
     "VERBOSE",
+    "FORGE_BASE_URL",
+    "FORGE_DATA_PATH",
+    "FORGE_STYLE_INIT_DIR",
+    "FORGE_TIMEOUT_SECONDS",
 ]
 
 
@@ -89,6 +93,18 @@ class Settings(BaseSettings):
     ablit_base_url: str = Field(
         default="https://api.abliteration.ai",
         validation_alias="ABLIT_BASE_URL",
+    )
+
+    # Forge Neo (ilustración de relatos) — ReplayLastGeneration
+    forge_base_url: str = Field(
+        default="http://127.0.0.1:7860",
+        validation_alias="FORGE_BASE_URL",
+    )
+    forge_data_path: str = Field(default="", validation_alias="FORGE_DATA_PATH")
+    forge_style_init_dir: str = Field(default="", validation_alias="FORGE_STYLE_INIT_DIR")
+    forge_timeout_seconds: float = Field(
+        default=600.0,
+        validation_alias="FORGE_TIMEOUT_SECONDS",
     )
 
     @field_validator("ollama_history_turns", mode="before")

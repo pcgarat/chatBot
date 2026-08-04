@@ -100,6 +100,7 @@
       <div class="sidebar-tabs-row sidebar-tabs" role="tablist" aria-label="Panel lateral">
         <button type="button" role="tab" id="tab-btn-reglas" class="sidebar-pill-tab active" aria-selected="true" aria-controls="tab-reglas" data-tab="reglas">Reglas</button>
         <button type="button" role="tab" id="tab-btn-parametros" class="sidebar-pill-tab" aria-selected="false" aria-controls="tab-parametros" data-tab="parametros">Ajustes</button>
+        <button type="button" role="tab" id="tab-btn-imagenes" class="sidebar-pill-tab" aria-selected="false" aria-controls="tab-imagenes" data-tab="imagenes">Imágenes</button>
       </div>
       <div class="sidebar-tabpanels">
         <div role="tabpanel" id="tab-reglas" class="sidebar-tabpanel is-active" aria-labelledby="tab-btn-reglas">
@@ -263,6 +264,44 @@
               </div>
               <div class="badge-row params-to-send-container" id="params-to-send-container" aria-live="polite"></div>
             </div>
+          </div>
+        </div>
+        <div role="tabpanel" id="tab-imagenes" class="sidebar-tabpanel" aria-labelledby="tab-btn-imagenes" hidden>
+          <div class="rules-tab-scroll images-tab-scroll">
+            <div class="sidebar-option">
+              <label class="param-label" for="images-enabled">Activar ilustración</label>
+              <input type="checkbox" id="images-enabled" title="Generar imágenes tras respuestas de relato/roleplay" />
+            </div>
+            <div class="sidebar-option">
+              <label class="param-label" for="images-use-chat-config">Utilizar configuración del chat</label>
+              <input type="checkbox" id="images-use-chat-config" title="Usar el mismo provider, modelo, reglas y parámetros de la conversación para el LLM de prompts" />
+            </div>
+            <div class="sidebar-option" data-images-chat-config-control>
+              <label class="param-label" for="images-prompt-provider">Provider LLM prompts</label>
+              <select id="images-prompt-provider" class="param-control" aria-label="Provider para prompts de imagen"></select>
+            </div>
+            <div class="sidebar-option" data-images-chat-config-control>
+              <label class="param-label" for="images-prompt-model">Modelo LLM prompts</label>
+              <select id="images-prompt-model" class="param-control" aria-label="Modelo para prompts de imagen"></select>
+            </div>
+            <div class="sidebar-option" data-images-chat-config-control>
+              <label class="param-label" for="images-prompt-system">Instrucciones de sistema</label>
+              <textarea id="images-prompt-system" class="param-control images-prompt-textarea" rows="4" maxlength="8000" placeholder="Instrucciones adicionales para el LLM que decide escenas y escribe los prompts (se añaden al system del planificador)" aria-label="Instrucciones de sistema del planificador de imágenes"></textarea>
+            </div>
+            <div class="sidebar-option">
+              <label class="param-label" for="images-per-response">Imágenes por respuesta</label>
+              <input type="number" id="images-per-response" class="param-control" min="1" max="20" value="2" />
+            </div>
+            <div class="sidebar-option">
+              <label class="param-label" for="images-retries">Reintentos</label>
+              <input type="number" id="images-retries" class="param-control" min="0" max="10" value="1" />
+            </div>
+            <div class="sidebar-option">
+              <label class="param-label" for="images-prompt">Prompt</label>
+              <textarea id="images-prompt" class="param-control images-prompt-textarea" rows="3" maxlength="4000" placeholder="Se concatena al prompt de cada escena (p. ej. estilo, calidad)" aria-label="Prompt adicional para Forge"></textarea>
+            </div>
+            <p class="images-tab-hint">Si activas «Utilizar configuración del chat», el planificador usa provider, modelo, reglas y parámetros de la conversación. Si no, usa los controles de este panel. «Prompt» siempre se concatena a Forge.</p>
+          </div>
         </div>
       </div>
       <div class="sidebar-footer">
@@ -290,8 +329,54 @@
             <button type="button" class="segmented-toggle-btn" data-value="yes" aria-pressed="false">YES</button>
           </div>
         </div>
+        <div class="segmented-toggle-row" data-checkbox-id="images-debug-mode">
+          <span class="segmented-toggle-label">Debug imágenes</span>
+          <div class="segmented-toggle-wrap" role="group" aria-label="Debug generador de imágenes">
+            <input type="checkbox" id="images-debug-mode" class="segmented-toggle-input-sr" title="Log del generador de imágenes" aria-hidden="true" tabindex="-1" />
+            <button type="button" class="segmented-toggle-btn" data-value="no" aria-pressed="true">NO</button>
+            <button type="button" class="segmented-toggle-btn" data-value="yes" aria-pressed="false">YES</button>
+          </div>
+        </div>
       </div>
     </aside>
+  </div>
+  <div id="images-debug-window" class="images-debug-window" hidden>
+    <div class="images-debug-window-header">
+      <span>Debug generador de imágenes</span>
+      <div class="images-debug-window-actions">
+        <button type="button" id="images-debug-stop" class="icon-btn" title="Abortar todas las generaciones" aria-label="Abortar generaciones">Stop</button>
+        <button type="button" id="images-debug-close" class="icon-btn" title="Cerrar" aria-label="Cerrar">×</button>
+      </div>
+    </div>
+    <pre id="images-debug-log" class="images-debug-log"></pre>
+  </div>
+  <div id="reading-mode" class="reading-mode" hidden role="dialog" aria-modal="true" aria-label="Modo lectura">
+    <div class="reading-mode-toolbar font-size-controls" role="toolbar" aria-label="Controles de lectura">
+      <button type="button" id="reading-font-decrease" class="icon-btn font-size-btn" title="Reducir tamaño del texto" aria-label="Reducir tamaño del texto">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button type="button" id="reading-font-increase" class="icon-btn font-size-btn" title="Aumentar tamaño del texto" aria-label="Aumentar tamaño del texto">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <span class="reading-mode-toolbar-sep" aria-hidden="true"></span>
+      <button type="button" id="reading-image-decrease" class="icon-btn font-size-btn" title="Reducir tamaño de imágenes" aria-label="Reducir tamaño de imágenes">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="8" cy="10" r="1.5"/><path d="M17 15l-3-3-5 5"/><line x1="18" y1="4" x2="22" y2="4"/></svg>
+      </button>
+      <button type="button" id="reading-image-increase" class="icon-btn font-size-btn" title="Aumentar tamaño de imágenes" aria-label="Aumentar tamaño de imágenes">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="8" cy="10" r="1.5"/><path d="M17 15l-3-3-5 5"/><line x1="20" y1="2" x2="20" y2="6"/><line x1="18" y1="4" x2="22" y2="4"/></svg>
+      </button>
+      <span class="reading-mode-toolbar-sep" aria-hidden="true"></span>
+      <button type="button" id="reading-mode-close" class="icon-btn font-size-btn reading-mode-close-btn" title="Cerrar modo lectura" aria-label="Cerrar modo lectura">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="reading-mode-stage">
+      <div id="reading-mode-panel" class="reading-mode-panel">
+        <div class="reading-mode-resize reading-mode-resize--left" data-edge="left" role="separator" aria-orientation="vertical" aria-label="Ajustar ancho de lectura" tabindex="0"></div>
+        <div id="reading-mode-body" class="reading-mode-body"></div>
+        <div class="reading-mode-resize reading-mode-resize--right" data-edge="right" role="separator" aria-orientation="vertical" aria-label="Ajustar ancho de lectura" tabindex="0"></div>
+      </div>
+    </div>
   </div>
   <div id="model-info-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="model-info-modal-title" hidden>
     <div class="modal-content model-info-modal-content">
