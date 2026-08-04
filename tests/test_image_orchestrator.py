@@ -1,0 +1,273 @@
+"""Tests del orquestador de ilustración."""
+
+from app.services.image_illustration.models import (
+    ForgeMode,
+    LastGenerationPayload,
+    ScenePlan,
+    SceneSpec,
+)
+from app.services.image_illustration.orchestrator import (
+    ImageIllustrationOrchestrator,
+    compose_forge_prompt,
+)
+
+
+class FakePlanner:
+    def __init__(self, scene_plan: ScenePlan):
+        self._scene_plan = scene_plan
+        self.last_text = None
+
+    def plan(self, text, max_images):
+        self.last_text = text
+        return self._scene_plan
+
+
+class FakePayloadSource:
+    def __init__(self, payload: LastGenerationPayload):
+        self._payload = payload
+
+    def load(self):
+        return self._payload
+
+
+class FakeForge:
+    def __init__(self, results: dict[str, bytes | Exception]):
+        self.results = results
+        self.calls = []
+
+    def generate(self, mode, body):
+        self.calls.append({"mode": mode, "prompt": body.get("prompt")})
+        prompt = body.get("prompt")
+        val = self.results.get(prompt)
+        if isinstance(val, Exception):
+            raise val
+        if val is None:
+            raise RuntimeError("unexpected")
+        return val
+
+
+def _payload():
+    return LastGenerationPayload(
+        mode=ForgeMode.TXT2IMG,
+        body={"steps": 8, "prompt": "old"},
+        recovered_fields=["steps"],
+    )
+
+
+def test_compose_forge_prompt_empty_extra_returns_scene_only():
+    assert compose_forge_prompt("a lighthouse in storm") == "a lighthouse in storm"
+    assert compose_forge_prompt("a lighthouse", "") == "a lighthouse"
+    assert compose_forge_prompt("a lighthouse", "   ") == "a lighthouse"
+
+
+def test_compose_forge_prompt_concatenates_with_period():
+    assert (
+        compose_forge_prompt("a lighthouse in storm", "oil painting, detailed")
+        == "a lighthouse in storm. oil painting, detailed"
+    )
+
+
+def test_compose_forge_prompt_avoids_double_period():
+    assert (
+        compose_forge_prompt("a lighthouse in storm.", "cinematic lighting")
+        == "a lighthouse in storm. cinematic lighting"
+    )
+
+
+def test_compose_forge_prompt_extra_only_when_scene_empty():
+    assert compose_forge_prompt("", "masterpiece") == "masterpiece"
+    assert compose_forge_prompt("  ", "masterpiece") == "masterpiece"
+
+
+def test_orchestrator_emits_llm_debug_per_scene_when_requested():
+    scenes = [
+        SceneSpec(id="s1", prompt="p1", anchor_excerpt="A."),
+        SceneSpec(id="s2", prompt="p2", anchor_excerpt="B."),
+    ]
+    planner = FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=scenes))
+    planner.last_debug = {
+        "debug_request": '{"model": "m", "messages": []}',
+        "debug_response": '{"illustrate": true, "scenes": [...]}',
+    }
+    orch = ImageIllustrationOrchestrator(
+        planner=planner,
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"p1": b"1", "p2": b"2"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run("A.\n\nB.", max_images=2, retries=0, include_prompt_debug=True))
+    debugs = [e for e in events if e.type == "llm_debug"]
+    assert len(debugs) == 2
+    assert debugs[0].scene_id == "s1"
+    assert debugs[0].data["debug_request"].startswith("{")
+    assert "p1" in (debugs[0].message or "")
+    assert debugs[1].scene_id == "s2"
+
+
+def test_orchestrator_skips_llm_debug_by_default():
+    scenes = [SceneSpec(id="s1", prompt="p1", anchor_excerpt="A.")]
+    planner = FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=scenes))
+    planner.last_debug = {
+        "debug_request": "{}",
+        "debug_response": "{}",
+    }
+    orch = ImageIllustrationOrchestrator(
+        planner=planner,
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"p1": b"1"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run("A.", max_images=1, retries=0))
+    assert not any(e.type == "llm_debug" for e in events)
+
+
+def test_orchestrator_placeholder_shows_composed_prompt_until_image():
+    """Mientras genera, el content lleva un recuadro con el prompt enviado a Forge."""
+    scenes = [SceneSpec(id="s1", prompt="lighthouse in storm", anchor_excerpt="A.")]
+    orch = ImageIllustrationOrchestrator(
+        planner=FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=scenes)),
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"lighthouse in storm. oil painting": b"img"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run("A.", max_images=1, retries=0, prompt="oil painting"))
+    ph = next(e for e in events if e.type == "placeholder")
+    assert ph.content is not None
+    assert 'class="chat-illustration-placeholder"' in ph.content
+    assert 'data-scene="s1"' in ph.content
+    assert "lighthouse in storm. oil painting" in ph.content
+    assert "⟦img:s1⟧" not in ph.content
+    done = events[-1]
+    assert done.type == "done"
+    assert "chat-illustration-placeholder" not in (done.content or "")
+    assert 'class="chat-illustration"' in (done.content or "")
+
+
+def test_orchestrator_skips_when_not_illustrate():
+    orch = ImageIllustrationOrchestrator(
+        planner=FakePlanner(ScenePlan(illustrate=False, reason="no")),
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run("hola", max_images=2, retries=1))
+    assert events[-1].type == "done"
+    assert events[-1].content == "hola"
+    assert not any(e.type == "image" for e in events)
+
+
+def test_orchestrator_retries_only_after_full_first_pass():
+    scenes = [
+        SceneSpec(id="s1", prompt="p1", anchor_excerpt="A."),
+        SceneSpec(id="s2", prompt="p2", anchor_excerpt="B."),
+    ]
+    text = "A.\n\nB."
+    prompts_seen: list[str] = []
+
+    class OrderedForge:
+        def generate(self, mode, body):
+            prompt = body.get("prompt")
+            prompts_seen.append(prompt)
+            if prompt == "p2":
+                return b"img2"
+            # p1 fails on first attempt only
+            if prompts_seen.count("p1") == 1:
+                raise RuntimeError("fail1")
+            return b"img1"
+
+    orch = ImageIllustrationOrchestrator(
+        planner=FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=scenes)),
+        payload_source=FakePayloadSource(_payload()),
+        forge=OrderedForge(),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run(text, max_images=2, retries=2))
+    first_retry = next(
+        i for i, e in enumerate(events) if e.type == "log" and "Reintento" in e.message
+    )
+    prompts_before = [
+        e.data["prompt"]
+        for e in events[:first_retry]
+        if e.type == "log" and e.data.get("prompt")
+    ]
+    assert "p1" in prompts_before and "p2" in prompts_before
+    assert events[-1].type == "done"
+    assert "chat-illustration" in (events[-1].content or "")
+
+
+def test_orchestrator_partial_failure_keeps_success():
+    scenes = [
+        SceneSpec(id="s1", prompt="ok", anchor_excerpt="Uno."),
+        SceneSpec(id="s2", prompt="bad", anchor_excerpt="Dos."),
+    ]
+    text = "Uno.\n\nDos."
+    orch = ImageIllustrationOrchestrator(
+        planner=FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=scenes)),
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"ok": b"yes", "bad": RuntimeError("nope")}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run(text, max_images=2, retries=0))
+    done = events[-1]
+    assert done.type == "done"
+    assert "chat-illustration" in (done.content or "")
+    assert "Imagen fallida" in (done.content or "")
+
+
+def test_orchestrator_keeps_previous_images_when_reillustrate():
+    """Re-ilustrar añade imágenes nuevas sin borrar las ya insertadas."""
+    planner = FakePlanner(
+        ScenePlan(
+            illustrate=True,
+            reason="r",
+            scenes=[SceneSpec(id="s1", prompt="new", anchor_excerpt="Había un faro.")],
+        )
+    )
+    text = (
+        "Había un faro.\n"
+        '<img src="/api/illustrated-images/old.png" alt="escena s1" class="chat-illustration" />\n'
+        "Fin."
+    )
+    orch = ImageIllustrationOrchestrator(
+        planner=planner,
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"new": b"img"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run(text, max_images=1, retries=0))
+    assert planner.last_text is not None
+    assert "chat-illustration" not in planner.last_text
+    assert "Había un faro." in planner.last_text
+    done = events[-1]
+    assert done.type == "done"
+    assert (done.content or "").count("chat-illustration") == 2
+    assert "old.png" in (done.content or "")
+    assert 'alt="escena s2"' in (done.content or "")
+
+
+def test_orchestrator_strips_previous_illustrations_before_plan():
+    planner = FakePlanner(
+        ScenePlan(
+            illustrate=True,
+            reason="r",
+            scenes=[SceneSpec(id="s1", prompt="new", anchor_excerpt="Había un faro.")],
+        )
+    )
+    text = (
+        "Había un faro.\n"
+        '<img src="/api/illustrated-images/old.png" class="chat-illustration" />\n'
+        "Fin."
+    )
+    orch = ImageIllustrationOrchestrator(
+        planner=planner,
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"new": b"img"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run(text, max_images=1, retries=0))
+    assert planner.last_text is not None
+    assert "chat-illustration" not in planner.last_text
+    done = events[-1]
+    assert done.type == "done"
+    assert "old.png" in (done.content or "")
+    assert (done.content or "").count("chat-illustration") >= 2

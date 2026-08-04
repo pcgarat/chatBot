@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launcher de la aplicación. Acepta -v para volcar en stderr lo que se envía a Ollama."""
+"""Launcher de la aplicación. Acepta -v para volcar en stderr LLM y Forge Neo."""
 import argparse
 import os
 import sys
@@ -40,7 +40,7 @@ def main():
         "-v",
         action="store_true",
         dest="verbose",
-        help="Volcar en stderr el payload enviado a Ollama (modelo + mensajes) en cada petición",
+        help="Volcar en stderr payloads LLM y cada petición a Forge Neo (prompt, steps, seed, …)",
     )
     parser.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8000, help="Puerto (default: 8000)")

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ----- Models -----
@@ -183,3 +183,40 @@ class MessageResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class IllustrateRequest(BaseModel):
+    """Opciones del panel Imágenes para POST .../illustrate."""
+
+    images_per_response: int = Field(default=2, ge=1, le=20)
+    prompt_provider: str = Field(default="ollama", min_length=1)
+    prompt_model: str = Field(default="", description="Obligatorio salvo use_chat_config.")
+    retries: int = Field(default=1, ge=0, le=10)
+    prompt: str = Field(
+        default="",
+        max_length=4000,
+        description="Texto opcional concatenado a cada prompt de escena antes de enviar a Forge.",
+    )
+    prompt_system_instructions: str = Field(
+        default="",
+        max_length=8000,
+        description="Instrucciones adicionales de sistema para el LLM que planifica escenas/prompts.",
+    )
+    use_chat_config: bool = Field(
+        default=False,
+        description=(
+            "Si true, el planificador usa provider/modelo/reglas/params de la conversación "
+            "en lugar de los del panel."
+        ),
+    )
+    include_prompt_debug: bool = Field(
+        default=False,
+        description="Si true, emite eventos llm_debug (request/response del planificador) por escena.",
+    )
+    debug: bool = False
+
+    @model_validator(mode="after")
+    def _require_prompt_model_unless_chat_config(self):
+        if not self.use_chat_config and not (self.prompt_model or "").strip():
+            raise ValueError("prompt_model es obligatorio si use_chat_config es false")
+        return self

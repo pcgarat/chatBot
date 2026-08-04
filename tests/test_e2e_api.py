@@ -917,3 +917,29 @@ def test_e2e_delete_conversation(client, ollama_available):
     assert r.status_code == 204
     r_get = client.get(f"/api/conversations/{cid}")
     assert r_get.status_code == 404
+
+
+def test_e2e_illustrate_rejects_non_assistant(client, ollama_available):
+    """POST .../illustrate solo acepta mensajes assistant (400 en user)."""
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={"title": "Illustrate E2E", "model_id": model_name, "provider": "ollama"},
+    )
+    assert r_create.status_code == 200
+    cid = r_create.json()["id"]
+    r_msg = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Di solo: hola"},
+    )
+    assert r_msg.status_code == 200
+    r_list = client.get(f"/api/conversations/{cid}/messages")
+    assert r_list.status_code == 200
+    msgs = r_list.json()
+    user = next((m for m in msgs if m.get("role") == "user"), None)
+    assert user and user.get("id")
+    r = client.post(
+        f"/api/conversations/{cid}/messages/{user['id']}/illustrate",
+        json={"prompt_model": model_name, "prompt_provider": "ollama", "images_per_response": 1},
+    )
+    assert r.status_code == 400

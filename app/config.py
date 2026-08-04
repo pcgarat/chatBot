@@ -54,13 +54,17 @@ ENV_VARS_TO_SYNC = [
     "OLLAMA_HISTORY_TURNS",
     "DATABASE_URL",
     "VERBOSE",
+    "FORGE_BASE_URL",
+    "FORGE_DATA_PATH",
+    "FORGE_STYLE_INIT_DIR",
+    "FORGE_TIMEOUT_SECONDS",
 ]
 
 
 class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     database_url: str = "sqlite:///./chatbot.db"
-    verbose: bool = Field(False, validation_alias="VERBOSE")  # VERBOSE=1 o -v: volcar RAG + Ollama en stderr
+    verbose: bool = Field(False, validation_alias="VERBOSE")  # VERBOSE=1 o -v: volcar RAG + LLM + Forge Neo en stderr
     # RAG con ChromaDB + embeddings con Ollama (modelo local)
     chroma_host: str = Field(default="http://localhost:8001", validation_alias="CHROMA_HOST")
     ollama_embedding_model: str = Field(
@@ -89,6 +93,18 @@ class Settings(BaseSettings):
     ablit_base_url: str = Field(
         default="https://api.abliteration.ai",
         validation_alias="ABLIT_BASE_URL",
+    )
+
+    # Forge Neo (ilustración de relatos) — ReplayLastGeneration
+    forge_base_url: str = Field(
+        default="http://127.0.0.1:7860",
+        validation_alias="FORGE_BASE_URL",
+    )
+    forge_data_path: str = Field(default="", validation_alias="FORGE_DATA_PATH")
+    forge_style_init_dir: str = Field(default="", validation_alias="FORGE_STYLE_INIT_DIR")
+    forge_timeout_seconds: float = Field(
+        default=600.0,
+        validation_alias="FORGE_TIMEOUT_SECONDS",
     )
 
     @field_validator("ollama_history_turns", mode="before")

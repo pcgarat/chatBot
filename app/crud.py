@@ -169,6 +169,17 @@ def get_message(db: Session, conversation_id: str, message_id: str) -> Message |
     )
 
 
+def update_message_content(db: Session, conversation_id: str, message_id: str, content: str) -> Message | None:
+    """Actualiza el content de un mensaje (p. ej. tras ilustrar)."""
+    msg = get_message(db, conversation_id, message_id)
+    if not msg:
+        return None
+    msg.content = content
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+
 def add_message(
     db: Session,
     conversation_id: str,
