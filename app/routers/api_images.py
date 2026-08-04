@@ -17,12 +17,17 @@ from app.routers.api_conversations import (
     _effective_system_instructions,
     _parse_model_params,
 )
-from app.schemas import IllustrateRequest
+from app.schemas import IllustrateRequest, MessageContentUpdateResponse
+from app.services.image_illustration.content_ops import remove_all_photos, remove_orphan_anchors
 from app.services.image_illustration.forge_client import ForgeHttpClient
 from app.services.image_illustration.last_payload import FileSystemLastPayloadSource
 from app.services.image_illustration.orchestrator import ImageIllustrationOrchestrator
 from app.services.image_illustration.scene_planner import LlmScenePlanner
-from app.services.image_illustration.storage import resolve_illustrated_path, save_illustrated_image
+from app.services.image_illustration.storage import (
+    delete_illustrated_image,
+    resolve_illustrated_path,
+    save_illustrated_image,
+)
 
 router = APIRouter(prefix="/api", tags=["images"])
 
@@ -152,6 +157,54 @@ def illustrate_message(
                         persist.close()
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+def _require_assistant_message(db: Session, conversation_id: str, message_id: str):
+    conv = crud.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    msg = crud.get_message(db, conversation_id, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    if msg.role != "assistant":
+        raise HTTPException(status_code=400, detail="Solo se editan ilustraciones de mensajes assistant")
+    return msg
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/illustrations/clear-photos",
+    response_model=MessageContentUpdateResponse,
+)
+def clear_message_photos(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+    """Borra para siempre las fotos generadas de la respuesta (ficheros + tags img)."""
+    msg = _require_assistant_message(db, conversation_id, message_id)
+    new_content, filenames = remove_all_photos(msg.content or "")
+    deleted = 0
+    for name in filenames:
+        if delete_illustrated_image(name):
+            deleted += 1
+    updated = crud.update_message_content(db, conversation_id, message_id, new_content)
+    return MessageContentUpdateResponse(
+        id=updated.id if updated else message_id,
+        content=new_content,
+        deleted_files=deleted,
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/illustrations/prune-orphans",
+    response_model=MessageContentUpdateResponse,
+)
+def prune_orphan_anchors(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+    """Elimina anclas huérfanas (marcadores, placeholders y errores sin imagen)."""
+    msg = _require_assistant_message(db, conversation_id, message_id)
+    new_content = remove_orphan_anchors(msg.content or "")
+    updated = crud.update_message_content(db, conversation_id, message_id, new_content)
+    return MessageContentUpdateResponse(
+        id=updated.id if updated else message_id,
+        content=new_content,
+        deleted_files=0,
+    )
 
 
 @router.get("/illustrated-images/{filename}")

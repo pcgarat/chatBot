@@ -242,3 +242,62 @@ def test_illustrate_request_requires_prompt_model_unless_use_chat_config():
         IllustrateRequest(prompt_model="", use_chat_config=False)
     ok = IllustrateRequest(prompt_model="", use_chat_config=True)
     assert ok.use_chat_config is True
+
+
+def test_clear_photos_deletes_files_and_updates_content(client, db_session, tmp_path, monkeypatch):
+    from app import crud
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    name = storage.save_illustrated_image("s1", b"\x89PNG\r\n\x1a\n")
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    content = (
+        f'Había un faro.\n<img src="/api/illustrated-images/{name}" class="chat-illustration" />\n'
+        "⟦img:s2⟧"
+    )
+    msg = crud.add_message(db_session, conv.id, "assistant", content)
+    res = client.post(
+        f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/clear-photos"
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["deleted_files"] == 1
+    assert "<img" not in body["content"]
+    assert "⟦img:s2⟧" in body["content"]
+    assert "faro" in body["content"]
+    assert not (tmp_path / "illustrated" / name).is_file()
+    refreshed = crud.get_message(db_session, conv.id, msg.id)
+    assert refreshed is not None
+    assert refreshed.content == body["content"]
+
+
+def test_prune_orphans_keeps_photos(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    content = (
+        'A\n<img src="/api/illustrated-images/keep.png" class="chat-illustration" />\n'
+        "⟦img:s1⟧\n"
+        '<span class="chat-illustration-error" data-scene="s2">fail</span>\nB'
+    )
+    msg = crud.add_message(db_session, conv.id, "assistant", content)
+    res = client.post(
+        f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/prune-orphans"
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert "keep.png" in body["content"]
+    assert "⟦img:" not in body["content"]
+    assert "chat-illustration-error" not in body["content"]
+    assert "A" in body["content"] and "B" in body["content"]
+
+
+def test_clear_photos_rejects_user_message(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "user", "hola")
+    res = client.post(
+        f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/clear-photos"
+    )
+    assert res.status_code == 400

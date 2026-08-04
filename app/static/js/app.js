@@ -94,6 +94,7 @@
     contextUsageBadge: document.getElementById("context-usage-badge"),
     btnFontSizeDecrease: document.getElementById("btn-font-size-decrease"),
     btnFontSizeIncrease: document.getElementById("btn-font-size-increase"),
+    btnCollapseAllMessages: document.getElementById("btn-collapse-all-messages"),
     paramsSourceLabel: document.getElementById("params-source-label"),
     paramsToSendContainer: document.getElementById("params-to-send-container"),
   };
@@ -103,6 +104,7 @@
   const msgToInputIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 10L4 15 9 20\"/><path d=\"M20 4v11a4 4 0 01-4 4H4\"/></svg>";
   const msgIllustrateIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"/><path d=\"M21 15l-5-5L5 21\"/></svg>";
   const msgReadIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\"/><path d=\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\"/></svg>";
+  const msgMoreIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"19\" r=\"1.75\"/></svg>";
   const illustratingMessageIds = new Set();
   const illustrateAbortControllers = new Set();
   let readingModeMessageIndex = null;
@@ -1161,6 +1163,53 @@
       .join("");
   }
 
+  /**
+   * Separa el primer párrafo del resto.
+   * Prioriza bloques separados por línea en blanco; si no hay, usa el primer salto
+   * de línea cuando el resto aporta contenido relevante.
+   */
+  function splitFirstParagraph(content) {
+    const raw = content == null ? "" : String(content);
+    const blank = raw.match(/^([\s\S]*?)(\n\s*\n+)([\s\S]+)$/);
+    if (blank && blank[3].trim()) {
+      return { first: blank[1], rest: blank[2] + blank[3], collapsible: true };
+    }
+    const single = raw.match(/^([^\n]+)(\n+)([\s\S]+)$/);
+    if (single && single[3].trim()) {
+      const restTrim = single[3].trim();
+      if (restTrim.length >= 80 || /\n/.test(restTrim)) {
+        return { first: single[1], rest: single[2] + single[3], collapsible: true };
+      }
+    }
+    return { first: raw, rest: "", collapsible: false };
+  }
+
+  function messageCollapseKey(m, idx) {
+    return m && m.id ? String(m.id) : `idx:${idx}`;
+  }
+
+  /** Claves de mensajes assistant que el usuario ha expandido (el resto colapsable queda plegado). */
+  const expandedMessageKeys = new Set();
+
+  function collapseAllMessages() {
+    expandedMessageKeys.clear();
+    renderMessages();
+  }
+
+  function buildCollapsibleMessageHtml(content, key, expanded) {
+    const parts = splitFirstParagraph(content);
+    if (!parts.collapsible) {
+      return `<span>${formatMessageHtml(content || "")}</span>`;
+    }
+    const collapsed = !expanded;
+    const toggleLabel = collapsed ? "Show more" : "Show less";
+    return `<div class="message-body-collapsible${collapsed ? " is-collapsed" : ""}" data-collapse-key="${escapeHtml(key)}">
+      <span class="message-content-preview">${formatMessageHtml(parts.first)}</span>
+      <span class="message-content-rest">${formatMessageHtml(parts.rest)}</span>
+      <button type="button" class="msg-collapse-toggle" aria-expanded="${collapsed ? "false" : "true"}">${toggleLabel}</button>
+    </div>`;
+  }
+
   function saveLastConversationId(id) {
     try {
       if (id) localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, id);
@@ -1278,6 +1327,7 @@
         debug_request: m.debug_request || null,
         debug_response: m.debug_response || null,
       }));
+      expandedMessageKeys.clear();
       const turns = conv.history_turns != null && conv.history_turns >= 0 ? conv.history_turns : 5;
       if (el.historyTurnsInput) el.historyTurnsInput.value = String(Math.min(100, Math.max(0, turns)));
     } else {
@@ -1293,6 +1343,7 @@
       await ensureParamsBaselineForCurrentModel();
       paramsSource = "default";
       messages = [];
+      expandedMessageKeys.clear();
       if (el.historyTurnsInput) el.historyTurnsInput.value = "5";
     }
     renderRules();
@@ -1638,8 +1689,18 @@
             !isEphemeralDebug && m.role === "assistant" && hasContent
               ? `<button type="button" class="msg-action-btn msg-read-btn" data-msg-index="${idx}" title="Modo lectura a pantalla completa" aria-label="Modo lectura">${msgReadIconSvg}</button>`
               : "";
-          const footerBtns = (toInputBtn || deleteCopyBtns || illustrateBtn || readBtn)
-            ? `<div class="message-footer">${toInputBtn}${deleteCopyBtns}${illustrateBtn}${readBtn}</div>`
+          const moreMenu =
+            !isEphemeralDebug && m.role === "assistant" && m.id && hasContent
+              ? `<div class="msg-more-wrap">
+                  <button type="button" class="msg-action-btn msg-more-btn" data-msg-id="${escapeHtml(m.id)}" title="Más acciones" aria-label="Más acciones" aria-haspopup="menu" aria-expanded="false">${msgMoreIconSvg}</button>
+                  <div class="msg-context-menu" role="menu" hidden>
+                    <button type="button" class="msg-context-item" role="menuitem" data-action="clear-photos" data-msg-id="${escapeHtml(m.id)}">Borrar todas las fotos</button>
+                    <button type="button" class="msg-context-item" role="menuitem" data-action="prune-orphans" data-msg-id="${escapeHtml(m.id)}">Eliminar anclas huérfanas</button>
+                  </div>
+                </div>`
+              : "";
+          const footerBtns = (toInputBtn || deleteCopyBtns || illustrateBtn || readBtn || moreMenu)
+            ? `<div class="message-footer">${toInputBtn}${deleteCopyBtns}${illustrateBtn}${readBtn}${moreMenu}</div>`
             : "";
           let debugHtml = "";
           if (showDebug && m.role === "assistant" && (m.debug_request || m.debug_response)) {
@@ -1653,9 +1714,20 @@
           const isUser = m.role === "user";
           const rowClass = isUser ? "message-row user-row" : "message-row";
           const bubbleClass = isUser ? "message-bubble user" : "message-bubble assistant";
+          const collapseKey = messageCollapseKey(m, idx);
+          let bodyHtml;
+          if (!isUser && !isEphemeralDebug && hasContent) {
+            bodyHtml = buildCollapsibleMessageHtml(
+              m.content || "",
+              collapseKey,
+              expandedMessageKeys.has(collapseKey)
+            );
+          } else {
+            bodyHtml = `<span>${formatMessageHtml(m.content || "")}</span>`;
+          }
           return `<div class="${rowClass}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
             <div style="max-width: ${isUser ? "70%" : "100%"}; flex: 1; min-width: 0;">
-              <div class="${bubbleClass}"><span>${formatMessageHtml(m.content || "")}</span></div>
+              <div class="${bubbleClass}">${bodyHtml}</div>
               ${debugHtml}
               ${footerBtns}
             </div>
@@ -1663,6 +1735,27 @@
         }
       )
       .join("");
+    el.messagesContainer.querySelectorAll(".msg-collapse-toggle").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const wrap = btn.closest(".message-body-collapsible");
+        if (!wrap) return;
+        const key = wrap.getAttribute("data-collapse-key");
+        if (!key) return;
+        const willExpand = wrap.classList.contains("is-collapsed");
+        if (willExpand) {
+          expandedMessageKeys.add(key);
+          wrap.classList.remove("is-collapsed");
+          btn.setAttribute("aria-expanded", "true");
+          btn.textContent = "Show less";
+        } else {
+          expandedMessageKeys.delete(key);
+          wrap.classList.add("is-collapsed");
+          btn.setAttribute("aria-expanded", "false");
+          btn.textContent = "Show more";
+        }
+      });
+    });
     el.messagesContainer.querySelectorAll(".msg-to-input-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -1705,7 +1798,84 @@
         if (msgIndex >= 0) openReadingMode(msgIndex);
       });
     });
+    bindMessageContextMenus();
     scrollToBottomIfEnabled();
+  }
+
+  function closeAllMessageContextMenus() {
+    if (!el.messagesContainer) return;
+    el.messagesContainer.querySelectorAll(".msg-context-menu").forEach((menu) => {
+      menu.hidden = true;
+    });
+    el.messagesContainer.querySelectorAll(".msg-more-btn").forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function bindMessageContextMenus() {
+    if (!el.messagesContainer) return;
+    el.messagesContainer.querySelectorAll(".msg-more-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const wrap = btn.closest(".msg-more-wrap");
+        const menu = wrap && wrap.querySelector(".msg-context-menu");
+        if (!menu) return;
+        const willOpen = menu.hidden;
+        closeAllMessageContextMenus();
+        if (willOpen) {
+          menu.hidden = false;
+          btn.setAttribute("aria-expanded", "true");
+        }
+      });
+    });
+    el.messagesContainer.querySelectorAll(".msg-context-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const action = item.getAttribute("data-action");
+        const msgId = item.getAttribute("data-msg-id");
+        closeAllMessageContextMenus();
+        if (action && msgId) runMessageIllustrationAction(action, msgId);
+      });
+    });
+  }
+
+  async function runMessageIllustrationAction(action, messageId) {
+    if (!currentConversationId || !messageId) return;
+    const path =
+      action === "clear-photos"
+        ? "clear-photos"
+        : action === "prune-orphans"
+          ? "prune-orphans"
+          : null;
+    if (!path) return;
+    try {
+      const data = await fetchJson(
+        `${API}/conversations/${currentConversationId}/messages/${messageId}/illustrations/${path}`,
+        { method: "POST" }
+      );
+      const idx = messages.findIndex((m) => m.id === messageId);
+      if (idx >= 0 && data && data.content != null) {
+        messages[idx].content = data.content;
+        renderMessages();
+      }
+      if (action === "clear-photos") {
+        const n = (data && data.deleted_files) || 0;
+        showNotice(
+          n
+            ? `Fotos borradas (${n} archivo${n === 1 ? "" : "s"}).`
+            : "No había fotos que borrar."
+        );
+      } else {
+        showNotice("Anclas huérfanas eliminadas.");
+      }
+    } catch (err) {
+      showError(
+        (action === "clear-photos" ? "Error al borrar fotos: " : "Error al limpiar anclas: ") +
+          err.message
+      );
+    }
   }
 
   async function sendMessage() {
@@ -1986,6 +2156,11 @@
   if (el.btnFontSizeIncrease) {
     el.btnFontSizeIncrease.addEventListener("click", function () {
       if (!this.disabled) setConversationFontSize(0.05);
+    });
+  }
+  if (el.btnCollapseAllMessages) {
+    el.btnCollapseAllMessages.addEventListener("click", function () {
+      collapseAllMessages();
     });
   }
   const AUTO_SCROLL_STORAGE_KEY = "autoScrollDuringGeneration";
@@ -2766,6 +2941,12 @@
   initAccordionState();
   initSidebarTabs();
   initConversationFontSize();
+  document.addEventListener("click", function () {
+    closeAllMessageContextMenus();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeAllMessageContextMenus();
+  });
   initReadingMode();
   initImagesPanel();
 
