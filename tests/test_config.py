@@ -37,5 +37,12 @@ def test_sync_env_to_dotenv_skipped_under_pytest(monkeypatch, tmp_path):
 
 def test_env_vars_to_sync_contains_expected():
     """ENV_VARS_TO_SYNC incluye las variables usadas por la aplicación."""
-    expected = {"OPENAI_API_KEY", "OPENAI_PROJECT_ID", "OLLAMA_HOST", "MANCER_API_KEY", "PYTHON_VERSION"}
+    expected = {
+        "OPENAI_API_KEY",
+        "OPENAI_PROJECT_ID",
+        "OLLAMA_HOST",
+        "MANCER_API_KEY",
+        "ABLIT_KEY",
+        "PYTHON_VERSION",
+    }
     assert expected.issubset(set(ENV_VARS_TO_SYNC))

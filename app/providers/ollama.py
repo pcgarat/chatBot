@@ -73,6 +73,33 @@ class OllamaProvider:
             return getattr(m, "model", "") or ""
         return m.get("model") or m.get("name") or ""
 
+    @staticmethod
+    def _format_http_error(status_code: int, reason: str | None, body: bytes | str | None) -> str:
+        """Construye un mensaje legible a partir de una respuesta HTTP de error de Ollama."""
+        detail = ""
+        if body:
+            if isinstance(body, bytes):
+                raw = body.decode("utf-8", errors="replace")
+            elif isinstance(body, str):
+                raw = body
+            else:
+                raw = ""
+            if raw:
+                try:
+                    data = json.loads(raw)
+                    if isinstance(data, dict):
+                        detail = (
+                            data.get("error")
+                            or data.get("message")
+                            or data.get("Status")
+                            or ""
+                        )
+                except json.JSONDecodeError:
+                    detail = raw.strip()
+        if detail:
+            return f"HTTP {status_code}: {detail}"
+        return f"HTTP {status_code}: {reason or 'Unknown'}"
+
     def list_models(self) -> list[ProviderModelInfo]:
         """
         Lista los modelos disponibles en Ollama.
@@ -136,7 +163,12 @@ class OllamaProvider:
                 payload.update(extra_body)
                 with httpx.Client(timeout=httpx.Timeout(120)) as client:
                     resp = client.post(url, json=payload)
-                    resp.raise_for_status()
+                    if resp.status_code != 200:
+                        raise ConnectionError(
+                            self._format_http_error(
+                                resp.status_code, resp.reason_phrase, resp.content
+                            )
+                        )
                     data = resp.json()
                 content = data.get("message", {}).get("content", "")
                 return content or ""
@@ -181,10 +213,12 @@ class OllamaProvider:
                     json=payload,
                     timeout=httpx.Timeout(None),
                 ) as response:
-                    # Verificar HTTP status
                     if response.status_code != 200:
+                        body = await response.aread()
                         yield StreamChunk.error_chunk(
-                            f"HTTP {response.status_code}: {response.reason_phrase or 'Unknown'}",
+                            self._format_http_error(
+                                response.status_code, response.reason_phrase, body
+                            ),
                             status_code=response.status_code,
                         )
                         return

@@ -45,6 +45,8 @@ ENV_VARS_TO_SYNC = [
     "OPENAI_PROJECT_ID",
     "CHROMA_HOST",
     "MANCER_API_KEY",
+    "ABLIT_KEY",
+    "ABLIT_BASE_URL",
     "OLLAMA_HOST",
     "EMBEDDINGS_PROVIDER",
     "OLLAMA_EMBEDDING_MODEL",
@@ -82,6 +84,12 @@ class Settings(BaseSettings):
     default_llm_provider: str = Field(default="ollama", validation_alias="DEFAULT_LLM_PROVIDER")
     # Mancer (https://mancer.tech) - API compatible con OpenAI
     mancer_api_key: str = Field(default="", validation_alias="MANCER_API_KEY")
+    # abliteration.ai (https://docs.abliteration.ai/) - API compatible con OpenAI
+    ablit_key: str = Field(default="", validation_alias="ABLIT_KEY")
+    ablit_base_url: str = Field(
+        default="https://api.abliteration.ai",
+        validation_alias="ABLIT_BASE_URL",
+    )
 
     @field_validator("ollama_history_turns", mode="before")
     @classmethod

@@ -1,0 +1,48 @@
+{
+  "abliterated-model": {
+    "context_length": {
+      "max": 262144
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 262144
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Image",
+      "Reasoning",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Video",
+      "Web search",
+      "Uncensored"
+    ]
+  },
+  "abliterated-model-large": {
+    "context_length": {
+      "max": 1000000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 8192,
+      "min": 1,
+      "max": 999990
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Reasoning",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search",
+      "Uncensored"
+    ]
+  }
+}

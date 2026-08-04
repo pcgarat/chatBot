@@ -191,6 +191,31 @@ def test_get_provider_params_mancer(client):
     assert "frequency_penalty" in params
 
 
+def test_get_provider_params_abliteration(client):
+    """GET /api/providers/abliteration/params devuelve parámetros OpenAI-compatible."""
+    r = client.get("/api/providers/abliteration/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider"] == "abliteration"
+    params = data["params"]
+    assert params["temperature"].get("api_key") == "temperature"
+    assert params["max_tokens"].get("api_key") == "max_tokens"
+    assert params["max_tokens"].get("default") == 4096
+
+
+def test_get_provider_presets_abliteration(client):
+    """GET /api/providers/abliteration/presets incluye los dos modelos oficiales."""
+    r = client.get("/api/providers/abliteration/presets")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider"] == "abliteration"
+    presets = data["presets"]
+    assert "abliterated-model" in presets
+    assert "abliterated-model-large" in presets
+    assert presets["abliterated-model"]["context_length"]["max"] == 262144
+    assert presets["abliterated-model-large"]["context_length"]["max"] == 1000000
+
+
 def test_get_provider_params_unknown(client):
     """GET /api/providers/unknown/params devuelve params vacío."""
     r = client.get("/api/providers/unknown_provider_xyz/params")
