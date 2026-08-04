@@ -5,8 +5,87 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.services.image_illustration.forge_client import ForgeClientError, ForgeHttpClient
+from app.services.image_illustration.forge_client import (
+    ForgeClientError,
+    ForgeHttpClient,
+    sanitize_forge_body_for_log,
+)
 from app.services.image_illustration.models import ForgeMode
+
+
+def test_sanitize_forge_body_redacts_init_images_and_keeps_params():
+    body = {
+        "prompt": "a lighthouse",
+        "negative_prompt": "blur",
+        "steps": 20,
+        "sampler_name": "Euler a",
+        "seed": 42,
+        "cfg_scale": 7,
+        "width": 768,
+        "height": 768,
+        "override_settings": {"sd_model_checkpoint": "flux.safetensors"},
+        "init_images": ["AAAA" * 100],
+        "mask": "BBBB" * 50,
+    }
+    out = sanitize_forge_body_for_log(body)
+    assert out["prompt"] == "a lighthouse"
+    assert out["steps"] == 20
+    assert out["sampler_name"] == "Euler a"
+    assert out["seed"] == 42
+    assert out["override_settings"]["sd_model_checkpoint"] == "flux.safetensors"
+    assert isinstance(out["init_images"][0], str)
+    assert "omitted" in out["init_images"][0]
+    assert "omitted" in out["mask"]
+    # original intact
+    assert body["init_images"][0].startswith("AAAA")
+
+
+def test_forge_client_logs_request_to_stderr_when_verbose(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "app.services.image_illustration.forge_client.settings.verbose",
+        True,
+    )
+    raw = b"fake-png-bytes"
+    mock_http = MagicMock()
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"images": [base64.b64encode(raw).decode()]}
+    mock_http.post.return_value = resp
+
+    client = ForgeHttpClient(base_url="http://forge.test", http_client=mock_http)
+    client.generate(
+        ForgeMode.TXT2IMG,
+        {
+            "prompt": "storm lighthouse",
+            "steps": 8,
+            "sampler_name": "DPM++ 2M",
+            "seed": 123,
+            "override_settings": {"sd_model_checkpoint": "model.safetensors"},
+        },
+    )
+    err = capsys.readouterr().err
+    assert "Forge Neo" in err
+    assert "txt2img" in err
+    assert "storm lighthouse" in err
+    assert "DPM++ 2M" in err
+    assert "123" in err
+    assert "model.safetensors" in err
+
+
+def test_forge_client_skips_log_when_not_verbose(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "app.services.image_illustration.forge_client.settings.verbose",
+        False,
+    )
+    mock_http = MagicMock()
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"images": [base64.b64encode(b"x").decode()]}
+    mock_http.post.return_value = resp
+    ForgeHttpClient(http_client=mock_http).generate(
+        ForgeMode.TXT2IMG, {"prompt": "quiet", "steps": 1}
+    )
+    assert "Forge Neo" not in capsys.readouterr().err
 
 
 def test_forge_client_txt2img_decodes_image():

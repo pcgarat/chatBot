@@ -3,11 +3,51 @@
 from __future__ import annotations
 
 import base64
+import json
+import sys
 from typing import Any
 
 import httpx
 
+from app.config import settings
 from app.services.image_illustration.models import ForgeMode
+
+_BINARY_BODY_KEYS = frozenset({"init_images", "mask", "include_init_images"})
+
+
+def sanitize_forge_body_for_log(body: dict[str, Any]) -> dict[str, Any]:
+    """Copia el body para log: omite base64 largos (init_images/mask) y deja el resto intacto."""
+    out: dict[str, Any] = {}
+    for key, value in (body or {}).items():
+        if key in _BINARY_BODY_KEYS:
+            out[key] = _redact_binary_field(value)
+        else:
+            out[key] = value
+    return out
+
+
+def _redact_binary_field(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_redact_binary_field(item) for item in value]
+    if isinstance(value, str):
+        return f"<base64 omitted len={len(value)}>"
+    if value is True or value is False or value is None:
+        return value
+    return f"<omitted type={type(value).__name__}>"
+
+
+def log_forge_request(mode: ForgeMode, url: str, body: dict[str, Any]) -> None:
+    """Si VERBOSE=1, vuelca a stderr la petición a Forge (params, prompt, modelo, etc.)."""
+    if not settings.verbose:
+        return
+    endpoint = "txt2img" if mode == ForgeMode.TXT2IMG else "img2img"
+    print(f"--- Forge Neo {endpoint} → {url} ---", file=sys.stderr, flush=True)
+    print(
+        json.dumps(sanitize_forge_body_for_log(body), ensure_ascii=False, indent=2, default=str),
+        file=sys.stderr,
+        flush=True,
+    )
+    print("--- fin Forge Neo ---", file=sys.stderr, flush=True)
 
 
 class ForgeClientError(RuntimeError):
@@ -32,6 +72,7 @@ class ForgeHttpClient:
     def generate(self, mode: ForgeMode, body: dict[str, Any]) -> bytes:
         endpoint = "txt2img" if mode == ForgeMode.TXT2IMG else "img2img"
         url = f"{self.base_url}/sdapi/v1/{endpoint}"
+        log_forge_request(mode, url, body)
         client = self._http
         owns = False
         if client is None:

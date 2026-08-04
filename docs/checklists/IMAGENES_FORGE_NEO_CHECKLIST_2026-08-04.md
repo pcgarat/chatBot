@@ -1,4 +1,4 @@
-Última modificación: 2026-08-04 (re-ilustrar acumula imgs; Stop en debug)
+Última modificación: 2026-08-04 (`make start-verbose` en primer plano; log Forge con VERBOSE=1)
 
 # Checklist: Ilustración de respuestas con Forge Neo
 
@@ -32,6 +32,7 @@
 - [x] **2.4** `forge_client.py`: POST txt2img/img2img.
 - [x] **2.5** Fixtures en `tests/fixtures_forge_infotext.py`.
 - [x] **2.6** Tests: modo, parse, init dir vs última salida, sin inventar defaults.
+- [x] **2.7** Log Forge en stderr solo con `VERBOSE=1`; `make start-verbose` en primer plano.
 
 **Verify:** `pytest tests/test_forge_last_payload.py tests/test_forge_client.py -q` ✅
 

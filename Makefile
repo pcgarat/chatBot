@@ -38,7 +38,7 @@ help:
 	@echo "  make mutation-test  Tests de mutación con mutmut (config en setup.cfg); genera .mutmut-cache"
 	@echo "  make status  Mostrar estado del entorno y del servidor"
 	@echo "  make clean   Parar la app y borrar .server.pid (no toca Docker ni Chroma)"
-	@echo "  make start-verbose  Iniciar con -v (volcar en stderr lo enviado a Ollama)"
+	@echo "  make start-verbose  Arrancar en primer plano con VERBOSE=1 (stderr: LLM + Forge Neo)"
 	@echo ""
 	@echo "  ChromaDB (solo gestión del contenedor Docker):"
 	@echo "  make chroma-up     Levantar contenedor (puerto 8001); datos en ./data/chroma"
@@ -155,17 +155,11 @@ start: $(VENV)/bin/uvicorn
 	@echo "Servidor iniciado (PID $$(cat $(PIDFILE))). Usa 'make stop' para detenerlo."
 
 start-verbose: $(VENV)/bin/uvicorn
-	@if [ -f $(PIDFILE) ]; then \
-		pid=$$(cat $(PIDFILE)); \
-		if kill -0 $$pid 2>/dev/null; then \
-			$(MAKE) stop; \
-		fi; \
-		rm -f $(PIDFILE); \
-	fi
-	@echo "Iniciando servidor con -v y --reload en http://0.0.0.0:$(PORT) ..."
-	@VERBOSE=1 $(PYTHON_RUN) run.py -v --reload --host 0.0.0.0 --port $(PORT) & echo $$! > $(PIDFILE)
-	@sleep 1
-	@echo "Servidor iniciado con modo verbose (PID $$(cat $(PIDFILE))). Usa 'make stop' para detenerlo."
+	@$(MAKE) stop
+	@echo "Iniciando en primer plano (VERBOSE=1, --reload) en http://0.0.0.0:$(PORT)"
+	@echo "Stderr: payloads LLM + cada petición a Forge Neo (prompt, modelo, sampler, steps, seed, …)."
+	@echo "Ctrl+C para detener."
+	@VERBOSE=1 $(PYTHON_RUN) run.py -v --reload --host 0.0.0.0 --port $(PORT)
 
 stop:
 	@if [ -f $(PIDFILE) ]; then \
