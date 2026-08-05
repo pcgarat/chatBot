@@ -1547,9 +1547,9 @@
     loadConversations();
     lastUsage = null;
     await loadContextLength();
-    // Si el panel Reglas está visible, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
+    // Si el panel Reglas está abierto, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
     const reglasPanel = document.getElementById("tab-reglas");
-    if (reglasPanel && !reglasPanel.hidden) loadLibraryRules();
+    if (reglasPanel && reglasPanel.classList.contains("is-open")) loadLibraryRules();
   }
 
   let saveRulesDebounceTimer = null;
@@ -2736,11 +2736,12 @@
 
   const ACCORDION_STORAGE_KEY = "chatbot_sidebar_accordion";
   const SIDEBAR_TAB_STORAGE_KEY = "chatbot_sidebar_tab";
+  const SIDEBAR_MAIN_SECTION_IDS = ["reglas", "parametros", "imagenes"];
   const LAST_CONVERSATION_STORAGE_KEY = "chatbot_last_conversation_id";
   const FONT_SIZE_STORAGE_KEY = "chatbot_conversation_font_size_rem";
-  const FONT_SIZE_DEFAULT = 0.95;
-  const FONT_SIZE_MIN = 0.75;
-  const FONT_SIZE_MAX = 1.4;
+  const FONT_SIZE_DEFAULT = 0.8;
+  const FONT_SIZE_MIN = 0.65;
+  const FONT_SIZE_MAX = 1.3;
   const FONT_SIZE_STEP = 0.05;
   const IMAGE_SIZE_STORAGE_KEY = "chatbot_conversation_image_size";
   const IMAGE_SIZE_DEFAULT = 1;
@@ -3060,82 +3061,100 @@
     } catch (_) {}
   }
 
-  function initAccordionState() {
-    const state = getAccordionState();
-    if (!state) return;
-    document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((section) => {
-      const id = section.dataset.accordionSection;
-      const isOpen = state[id];
-      if (typeof isOpen === "boolean") {
-        if (isOpen) {
-          section.classList.add("is-open");
-          const btn = section.querySelector(".accordion-header");
-          if (btn) btn.setAttribute("aria-expanded", "true");
-        } else {
-          section.classList.remove("is-open");
-          const btn = section.querySelector(".accordion-header");
-          if (btn) btn.setAttribute("aria-expanded", "false");
-        }
-      }
-    });
+  function getSiblingAccordionSections(section) {
+    if (!section.parentElement) return [];
+    return Array.from(section.parentElement.children).filter((el) =>
+      el.classList.contains("accordion-section")
+    );
   }
 
-  const SIDEBAR_TAB_IDS = ["reglas", "parametros", "imagenes"];
-  const IMAGES_PREFS_KEY = "chatbot_images_prefs";
+  function setAccordionSectionOpen(section, isOpen) {
+    section.classList.toggle("is-open", isOpen);
+    const btn = section.querySelector(":scope > .accordion-header");
+    if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
 
-  function getStoredSidebarTab() {
+  function onSidebarMainSectionOpened(sectionId) {
+    if (sectionId === "reglas") loadLibraryRules();
+    if (sectionId === "imagenes") ensureImagesPromptSelects();
+  }
+
+  function migrateSidebarTabToAccordionState(state) {
     try {
       const t = localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY);
-      if (t && SIDEBAR_TAB_IDS.includes(t)) return t;
-      if (t === "conversaciones") return "reglas";
-    } catch (_) {}
-    return "reglas";
-  }
-
-  function switchSidebarTab(tabId) {
-    if (!SIDEBAR_TAB_IDS.includes(tabId)) return;
-    try {
-      localStorage.setItem(SIDEBAR_TAB_STORAGE_KEY, tabId);
-    } catch (_) {}
-    document.querySelectorAll(".sidebar-tabs [role=\"tab\"]").forEach((tab) => {
-      const id = tab.getAttribute("data-tab");
-      const selected = id === tabId;
-      tab.setAttribute("aria-selected", selected);
-      tab.classList.toggle("active", selected);
-    });
-    document.querySelectorAll(".sidebar-tabpanel").forEach((panel) => {
-      const panelId = panel.id;
-      const active =
-        (tabId === "reglas" && panelId === "tab-reglas") ||
-        (tabId === "parametros" && panelId === "tab-parametros") ||
-        (tabId === "imagenes" && panelId === "tab-imagenes");
-      panel.classList.toggle("is-active", active);
-      panel.hidden = !active;
-      if (active && panelId === "tab-reglas") loadLibraryRules();
-      if (active && panelId === "tab-imagenes") ensureImagesPromptSelects();
-    });
-  }
-
-  function initSidebarTabs() {
-    switchSidebarTab(getStoredSidebarTab());
-    document.querySelectorAll(".sidebar-tabs [role=\"tab\"]").forEach((tab) => {
-      tab.addEventListener("click", function () {
-        const tabId = tab.getAttribute("data-tab");
-        if (tabId) switchSidebarTab(tabId);
+      if (!t) return state;
+      const tabId = SIDEBAR_MAIN_SECTION_IDS.includes(t) ? t : t === "conversaciones" ? "reglas" : null;
+      if (!tabId) return state;
+      const next = Object.assign({}, state || {});
+      SIDEBAR_MAIN_SECTION_IDS.forEach((id) => {
+        next[id] = id === tabId;
       });
-      tab.addEventListener("keydown", function (e) {
-        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-        e.preventDefault();
-        const tabs = Array.from(document.querySelectorAll(".sidebar-tabs [role=\"tab\"]"));
-        const idx = tabs.indexOf(tab);
-        if (e.key === "ArrowLeft" && idx > 0) switchSidebarTab(tabs[idx - 1].getAttribute("data-tab"));
-        if (e.key === "ArrowRight" && idx < tabs.length - 1) switchSidebarTab(tabs[idx + 1].getAttribute("data-tab"));
+      localStorage.removeItem(SIDEBAR_TAB_STORAGE_KEY);
+      return next;
+    } catch (_) {
+      return state;
+    }
+  }
+
+  function ensureExclusiveMainAccordion(state) {
+    const next = Object.assign({}, state || {});
+    const openMain = SIDEBAR_MAIN_SECTION_IDS.filter((id) => next[id] === true);
+    if (openMain.length === 0) {
+      next.reglas = true;
+      SIDEBAR_MAIN_SECTION_IDS.filter((id) => id !== "reglas").forEach((id) => {
+        next[id] = false;
+      });
+      return next;
+    }
+    if (openMain.length > 1) {
+      const keep = openMain[0];
+      SIDEBAR_MAIN_SECTION_IDS.forEach((id) => {
+        next[id] = id === keep;
+      });
+    }
+    return next;
+  }
+
+  function initAccordionState() {
+    let state = getAccordionState();
+    state = migrateSidebarTabToAccordionState(state);
+    state = ensureExclusiveMainAccordion(state);
+    document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((section) => {
+      const id = section.dataset.accordionSection;
+      const isOpen = state && typeof state[id] === "boolean" ? state[id] : section.classList.contains("is-open");
+      setAccordionSectionOpen(section, !!isOpen);
+    });
+    saveAccordionState();
+    const openMain = document.querySelector(
+      ".sidebar-main-accordion > .accordion-section.is-open[data-accordion-section]"
+    );
+    if (openMain) onSidebarMainSectionOpened(openMain.dataset.accordionSection);
+  }
+
+  const IMAGES_PREFS_KEY = "chatbot_images_prefs";
+
+  function initSidebarAccordion() {
+    initAccordionState();
+    document.querySelectorAll(".accordion-header").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const section = btn.closest(".accordion-section");
+        if (!section) return;
+        const wasOpen = section.classList.contains("is-open");
+        if (!wasOpen) {
+          getSiblingAccordionSections(section).forEach((s) => {
+            if (s !== section) setAccordionSectionOpen(s, false);
+          });
+        }
+        setAccordionSectionOpen(section, !wasOpen);
+        saveAccordionState();
+        if (!wasOpen && section.closest(".sidebar-main-accordion") === section.parentElement) {
+          onSidebarMainSectionOpened(section.dataset.accordionSection);
+        }
       });
     });
   }
 
-  initAccordionState();
-  initSidebarTabs();
+  initSidebarAccordion();
   initConversationFontSize();
   initIllustrationMetaModal();
   document.addEventListener("click", function () {
@@ -3293,14 +3312,6 @@
         win.hidden = true;
         if (dbg) dbg.checked = false;
         persist();
-        // sync segmented toggle if present
-        var row = document.querySelector('.segmented-toggle-row[data-checkbox-id="images-debug-mode"]');
-        if (row) {
-          row.querySelectorAll(".segmented-toggle-btn").forEach(function (btn) {
-            var on = btn.getAttribute("data-value") === "no";
-            btn.setAttribute("aria-pressed", on ? "true" : "false");
-          });
-        }
       });
     }
     syncChatConfigControlsDisabled();
@@ -3466,55 +3477,7 @@
     });
   })();
 
-  (function initSegmentedToggles() {
-    document.querySelectorAll(".segmented-toggle-row").forEach(function (row) {
-      var checkboxId = row.getAttribute("data-checkbox-id");
-      var checkbox = document.getElementById(checkboxId);
-      var wrap = row.querySelector(".segmented-toggle-wrap");
-      var buttons = row.querySelectorAll(".segmented-toggle-btn");
-      if (!checkbox || !wrap || buttons.length !== 2) return;
-
-      function setPressed(value) {
-        buttons.forEach(function (btn) {
-          btn.setAttribute("aria-pressed", btn.getAttribute("data-value") === value ? "true" : "false");
-        });
-      }
-
-      function syncFromCheckbox() {
-        setPressed(checkbox.checked ? "yes" : "no");
-      }
-
-      syncFromCheckbox();
-
-      buttons.forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var value = this.getAttribute("data-value");
-          checkbox.checked = value === "yes";
-          setPressed(value);
-          checkbox.dispatchEvent(new Event("change", { bubbles: true }));
-        });
-      });
-    });
-  })();
-
-  document.querySelectorAll(".accordion-header").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const section = btn.closest(".accordion-section");
-      if (!section) return;
-      const wasOpen = section.classList.contains("is-open");
-      if (!wasOpen) {
-        section.parentElement.querySelectorAll(".accordion-section").forEach((s) => {
-          s.classList.remove("is-open");
-          const b = s.querySelector(".accordion-header");
-          if (b) b.setAttribute("aria-expanded", "false");
-        });
-      }
-      section.classList.toggle("is-open");
-      const isOpen = section.classList.contains("is-open");
-      btn.setAttribute("aria-expanded", isOpen);
-      saveAccordionState();
-    });
-  });
+  /* Fluent ToggleSwitch: checkboxes nativos estilizados en CSS; no hace falta sync YES/NO */
 
   // Cargar proveedores; si uno falla al cargar modelos, probar el siguiente
   async function initLoad() {
