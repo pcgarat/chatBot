@@ -62,7 +62,6 @@
     btnNewChat: document.getElementById("btn-new-chat"),
     btnSave: document.getElementById("btn-save"),
     btnSend: document.getElementById("btn-send"),
-    btnCancelMessage: document.getElementById("btn-cancel-message"),
     btnClearMemory: document.getElementById("btn-clear-memory"),
     btnResetParams: document.getElementById("btn-reset-params"),
     btnResetParamsFooter: document.getElementById("btn-reset-params-footer"),
@@ -99,12 +98,12 @@
     paramsToSendContainer: document.getElementById("params-to-send-container"),
   };
 
-  const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
-  const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1\"/></svg>";
-  const msgToInputIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 10L4 15 9 20\"/><path d=\"M20 4v11a4 4 0 01-4 4H4\"/></svg>";
-  const msgIllustrateIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"/><path d=\"M21 15l-5-5L5 21\"/></svg>";
-  const msgReadIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\"/><path d=\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\"/></svg>";
-  const msgMoreIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"19\" r=\"1.75\"/></svg>";
+  const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
+  const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1\"/></svg>";
+  const msgToInputIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 10L4 15 9 20\"/><path d=\"M20 4v11a4 4 0 01-4 4H4\"/></svg>";
+  const msgIllustrateIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"/><path d=\"M21 15l-5-5L5 21\"/></svg>";
+  const msgReadIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\"/><path d=\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\"/></svg>";
+  const msgMoreIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"19\" r=\"1.75\"/></svg>";
   const illustratingMessageIds = new Set();
   const illustrateAbortControllers = new Set();
   let readingModeMessageIndex = null;
@@ -591,25 +590,35 @@
     const segPrompt = el.contextUsageSegmentPrompt || document.getElementById("context-usage-segment-prompt");
     const segCompletion = el.contextUsageSegmentCompletion || document.getElementById("context-usage-segment-completion");
     if (!row) return;
+    const fmt = function (n) { return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n); };
     const hasUsage = lastUsage && (lastUsage.prompt_tokens > 0 || lastUsage.completion_tokens > 0);
     const pt = (lastUsage && lastUsage.prompt_tokens) || 0;
     const ct = (lastUsage && lastUsage.completion_tokens) || 0;
     if (!hasUsage) {
-      if (textEl) textEl.textContent = "—";
-      if (badgeEl) badgeEl.textContent = "—";
+      if (badgeEl) {
+        badgeEl.textContent = contextLength != null ? `0/${fmt(contextLength)}` : "—";
+      }
+      if (textEl) {
+        textEl.textContent = contextLength != null ? `ventana ${fmt(contextLength)}` : "";
+      }
       if (barWrap) barWrap.hidden = true;
       if (bar) bar.setAttribute("aria-valuenow", "0");
+      row.title = contextLength != null
+        ? `Contexto disponible: ${contextLength} tokens`
+        : "Uso de contexto";
       return;
     }
     const total = pt + ct;
-    const fmt = function (n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n); };
-    if (textEl) {
-      if (contextLength != null) {
-        textEl.textContent = `Prompt: ${pt} · Respuesta: ${ct} / ${contextLength} tokens`;
-      } else {
-        textEl.textContent = `Prompt: ${pt} · Respuesta: ${ct} tokens`;
-      }
+    let detail;
+    if (contextLength != null) {
+      detail = `usados ${fmt(total)} · prompt ${fmt(pt)} · resp ${fmt(ct)} · ventana ${fmt(contextLength)}`;
+    } else {
+      detail = `usados ${fmt(total)} · prompt ${fmt(pt)} · resp ${fmt(ct)}`;
     }
+    if (textEl) textEl.textContent = detail;
+    row.title = contextLength != null
+      ? `Prompt: ${pt} · Respuesta: ${ct} / ${contextLength} tokens`
+      : `Prompt: ${pt} · Respuesta: ${ct} tokens`;
     if (badgeEl) {
       badgeEl.textContent = contextLength != null ? `${fmt(total)}/${fmt(contextLength)}` : `${fmt(pt)}+${fmt(ct)}`;
     }
@@ -975,11 +984,15 @@
   function syncHeaderProviderModel() {
     if (el.headerProviderName && el.providerSelect) {
       const opt = el.providerSelect.selectedOptions[0];
-      el.headerProviderName.textContent = opt ? opt.text : "";
+      const text = opt ? opt.text : "";
+      el.headerProviderName.textContent = text;
+      el.headerProviderName.title = text;
     }
     if (el.headerModelName && el.modelSelect) {
       const opt = el.modelSelect.selectedOptions[0];
-      el.headerModelName.textContent = opt ? opt.text : "";
+      const text = opt ? opt.text : "";
+      el.headerModelName.textContent = text;
+      el.headerModelName.title = text;
     }
   }
 
@@ -1013,10 +1026,9 @@
     }
   }
 
-  const convIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/></svg>";
-  const clearHistoryIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 20H7L3 16l10-10 4 4-6 6h9l4-4\"/></svg>";
+  const clearHistoryIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 20H7L3 16l10-10 4 4-6 6h9l4-4\"/></svg>";
 
-  const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "La semana pasada", anteriores: "Anteriores" };
+  const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "Semana", anteriores: "Antes" };
 
   function getConversationGroup(lastActivityAt) {
     const d = lastActivityAt ? new Date(lastActivityAt) : new Date(0);
@@ -1046,17 +1058,17 @@
       .map((key) => {
         const header = `<div class="conv-group-label" aria-hidden="true">${escapeHtml(CONV_GROUP_LABELS[key])}</div>`;
         const items = groups[key]
-          .map(
-            (c) =>
-              `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}">
+          .map((c) => {
+            const when = formatDate(lastActivity(c));
+            const meta = `${c.provider || "ollama"}/${c.model_id} · ${when}`;
+            return `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}" title="${escapeHtml(meta)}">
                 <div class="conv-row">
-                  <span class="conv-icon" aria-hidden="true">${convIconSvg}</span>
                   <span class="conv-title">${escapeHtml(c.title)}</span>
+                  <span class="conv-when">${escapeHtml(when)}</span>
                   ${c.id === currentConversationId ? `<button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>` : ""}
                 </div>
-                <div class="conv-meta">${escapeHtml(c.provider || "ollama")}/${escapeHtml(c.model_id)} · ${formatDate(lastActivity(c))}</div>
-              </div>`
-          )
+              </div>`;
+          })
           .join("");
         return header + items;
       })
@@ -2074,6 +2086,7 @@
   }
 
   async function sendMessage() {
+    if (currentAbortController) return;
     const content = (el.messageInput && el.messageInput.value.trim()) || "";
     if (!content) return;
     const instructionOverride = (el.instructionOverride && el.instructionOverride.value.trim()) || null;
@@ -2117,7 +2130,7 @@
 
     const chatStatusId = appStatus.push("chat", "chat.preparing");
     currentAbortController = new AbortController();
-    setCancelButtonState();
+    setComposerPrimaryActionState();
     try {
       appStatus.update(chatStatusId, "chat.sending");
       const systemInstructionGlobal = getRulesTextForSystem();
@@ -2231,7 +2244,7 @@
       currentStreamingMsgEl = null;
       currentStreamingDebugEl = null;
       currentAbortController = null;
-      setCancelButtonState();
+      setComposerPrimaryActionState();
       appStatus.pop(chatStatusId);
     } catch (e) {
       clearAnalyzingDots();
@@ -2252,7 +2265,7 @@
         showError("Error al enviar: " + e.message);
       }
       currentAbortController = null;
-      setCancelButtonState();
+      setComposerPrimaryActionState();
       appStatus.pop(chatStatusId);
     }
   }
@@ -2260,6 +2273,14 @@
   function cancelLastMessage() {
     if (!currentAbortController) return;
     currentAbortController.abort();
+  }
+
+  function onComposerPrimaryClick() {
+    if (currentAbortController) {
+      cancelLastMessage();
+      return;
+    }
+    sendMessage();
   }
 
   async function clearMemory() {
@@ -2317,15 +2338,20 @@
     syncHeaderProviderModel();
   }
 
-  if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
-
-  function setCancelButtonState() {
-    if (el.btnCancelMessage) el.btnCancelMessage.disabled = !currentAbortController;
+  function setComposerPrimaryActionState() {
+    if (!el.btnSend) return;
+    const stopping = Boolean(currentAbortController);
+    el.btnSend.classList.toggle("is-stop", stopping);
+    el.btnSend.dataset.composerAction = stopping ? "stop" : "send";
+    el.btnSend.title = stopping ? "Detener" : "Enviar";
+    el.btnSend.setAttribute("aria-label", stopping ? "Detener respuesta" : "Enviar mensaje");
   }
+
+  setComposerPrimaryActionState();
 
   if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
-  if (el.btnSend) el.btnSend.addEventListener("click", sendMessage);
+  if (el.btnSend) el.btnSend.addEventListener("click", onComposerPrimaryClick);
   function onShowDebugModeChange(checked) {
     if (currentAbortController && currentStreamingDebugEl) {
       currentStreamingDebugEl.style.display = checked ? "block" : "none";
@@ -2374,7 +2400,6 @@
       localStorage.setItem(AUTO_SCROLL_STORAGE_KEY, el.autoScrollDuringGenerationCheck.checked ? "true" : "false");
     } catch (_) {}
   });
-  if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearCurrentConversation);
   const onResetParams = async function () {
     await resetParamsToDefaults();
@@ -3474,6 +3499,35 @@
       localStorage.setItem("darkMode", dark ? "true" : "false");
       if (dark) document.documentElement.setAttribute("data-theme", "dark");
       else document.documentElement.removeAttribute("data-theme");
+    });
+  })();
+
+  (function initLeftSidebarCollapse() {
+    var KEY = "leftSidebarCollapsed";
+    var collapseBtn = document.getElementById("btn-collapse-left");
+    var expandBtn = document.getElementById("btn-expand-left");
+    var aside = document.getElementById("column-left");
+    if (!collapseBtn || !expandBtn || !aside) return;
+
+    function apply(collapsed) {
+      document.documentElement.setAttribute("data-sidebar-left", collapsed ? "collapsed" : "open");
+      var appEl = document.getElementById("app");
+      if (appEl) appEl.classList.toggle("sidebar-left-collapsed", collapsed);
+      aside.setAttribute("aria-hidden", collapsed ? "true" : "false");
+      collapseBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      expandBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      expandBtn.hidden = !collapsed;
+      try {
+        localStorage.setItem(KEY, collapsed ? "true" : "false");
+      } catch (_) {}
+    }
+
+    apply(localStorage.getItem(KEY) === "true");
+    collapseBtn.addEventListener("click", function () {
+      apply(true);
+    });
+    expandBtn.addEventListener("click", function () {
+      apply(false);
     });
   })();
 
