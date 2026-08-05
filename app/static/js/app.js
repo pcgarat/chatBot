@@ -62,7 +62,6 @@
     btnNewChat: document.getElementById("btn-new-chat"),
     btnSave: document.getElementById("btn-save"),
     btnSend: document.getElementById("btn-send"),
-    btnCancelMessage: document.getElementById("btn-cancel-message"),
     btnClearMemory: document.getElementById("btn-clear-memory"),
     btnResetParams: document.getElementById("btn-reset-params"),
     btnResetParamsFooter: document.getElementById("btn-reset-params-footer"),
@@ -99,12 +98,12 @@
     paramsToSendContainer: document.getElementById("params-to-send-container"),
   };
 
-  const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
-  const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1\"/></svg>";
-  const msgToInputIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 10L4 15 9 20\"/><path d=\"M20 4v11a4 4 0 01-4 4H4\"/></svg>";
-  const msgIllustrateIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"/><path d=\"M21 15l-5-5L5 21\"/></svg>";
-  const msgReadIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\"/><path d=\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\"/></svg>";
-  const msgMoreIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"19\" r=\"1.75\"/></svg>";
+  const msgDeleteIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"/><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"/></svg>";
+  const msgCopyIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1\"/></svg>";
+  const msgToInputIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 10L4 15 9 20\"/><path d=\"M20 4v11a4 4 0 01-4 4H4\"/></svg>";
+  const msgIllustrateIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"/><path d=\"M21 15l-5-5L5 21\"/></svg>";
+  const msgReadIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\"/><path d=\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\"/></svg>";
+  const msgMoreIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"12\" cy=\"5\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"19\" r=\"1.75\"/></svg>";
   const illustratingMessageIds = new Set();
   const illustrateAbortControllers = new Set();
   let readingModeMessageIndex = null;
@@ -591,25 +590,35 @@
     const segPrompt = el.contextUsageSegmentPrompt || document.getElementById("context-usage-segment-prompt");
     const segCompletion = el.contextUsageSegmentCompletion || document.getElementById("context-usage-segment-completion");
     if (!row) return;
+    const fmt = function (n) { return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n); };
     const hasUsage = lastUsage && (lastUsage.prompt_tokens > 0 || lastUsage.completion_tokens > 0);
     const pt = (lastUsage && lastUsage.prompt_tokens) || 0;
     const ct = (lastUsage && lastUsage.completion_tokens) || 0;
     if (!hasUsage) {
-      if (textEl) textEl.textContent = "—";
-      if (badgeEl) badgeEl.textContent = "—";
+      if (badgeEl) {
+        badgeEl.textContent = contextLength != null ? `0/${fmt(contextLength)}` : "—";
+      }
+      if (textEl) {
+        textEl.textContent = contextLength != null ? `ventana ${fmt(contextLength)}` : "";
+      }
       if (barWrap) barWrap.hidden = true;
       if (bar) bar.setAttribute("aria-valuenow", "0");
+      row.title = contextLength != null
+        ? `Contexto disponible: ${contextLength} tokens`
+        : "Uso de contexto";
       return;
     }
     const total = pt + ct;
-    const fmt = function (n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n); };
-    if (textEl) {
-      if (contextLength != null) {
-        textEl.textContent = `Prompt: ${pt} · Respuesta: ${ct} / ${contextLength} tokens`;
-      } else {
-        textEl.textContent = `Prompt: ${pt} · Respuesta: ${ct} tokens`;
-      }
+    let detail;
+    if (contextLength != null) {
+      detail = `usados ${fmt(total)} · prompt ${fmt(pt)} · resp ${fmt(ct)} · ventana ${fmt(contextLength)}`;
+    } else {
+      detail = `usados ${fmt(total)} · prompt ${fmt(pt)} · resp ${fmt(ct)}`;
     }
+    if (textEl) textEl.textContent = detail;
+    row.title = contextLength != null
+      ? `Prompt: ${pt} · Respuesta: ${ct} / ${contextLength} tokens`
+      : `Prompt: ${pt} · Respuesta: ${ct} tokens`;
     if (badgeEl) {
       badgeEl.textContent = contextLength != null ? `${fmt(total)}/${fmt(contextLength)}` : `${fmt(pt)}+${fmt(ct)}`;
     }
@@ -975,11 +984,15 @@
   function syncHeaderProviderModel() {
     if (el.headerProviderName && el.providerSelect) {
       const opt = el.providerSelect.selectedOptions[0];
-      el.headerProviderName.textContent = opt ? opt.text : "";
+      const text = opt ? opt.text : "";
+      el.headerProviderName.textContent = text;
+      el.headerProviderName.title = text;
     }
     if (el.headerModelName && el.modelSelect) {
       const opt = el.modelSelect.selectedOptions[0];
-      el.headerModelName.textContent = opt ? opt.text : "";
+      const text = opt ? opt.text : "";
+      el.headerModelName.textContent = text;
+      el.headerModelName.title = text;
     }
   }
 
@@ -1013,10 +1026,9 @@
     }
   }
 
-  const convIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/></svg>";
-  const clearHistoryIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 20H7L3 16l10-10 4 4-6 6h9l4-4\"/></svg>";
+  const clearHistoryIconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 20H7L3 16l10-10 4 4-6 6h9l4-4\"/></svg>";
 
-  const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "La semana pasada", anteriores: "Anteriores" };
+  const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "Semana", anteriores: "Antes" };
 
   function getConversationGroup(lastActivityAt) {
     const d = lastActivityAt ? new Date(lastActivityAt) : new Date(0);
@@ -1046,17 +1058,17 @@
       .map((key) => {
         const header = `<div class="conv-group-label" aria-hidden="true">${escapeHtml(CONV_GROUP_LABELS[key])}</div>`;
         const items = groups[key]
-          .map(
-            (c) =>
-              `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}">
+          .map((c) => {
+            const when = formatDate(lastActivity(c));
+            const meta = `${c.provider || "ollama"}/${c.model_id} · ${when}`;
+            return `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}" title="${escapeHtml(meta)}">
                 <div class="conv-row">
-                  <span class="conv-icon" aria-hidden="true">${convIconSvg}</span>
                   <span class="conv-title">${escapeHtml(c.title)}</span>
+                  <span class="conv-when">${escapeHtml(when)}</span>
                   ${c.id === currentConversationId ? `<button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>` : ""}
                 </div>
-                <div class="conv-meta">${escapeHtml(c.provider || "ollama")}/${escapeHtml(c.model_id)} · ${formatDate(lastActivity(c))}</div>
-              </div>`
-          )
+              </div>`;
+          })
           .join("");
         return header + items;
       })
@@ -1547,9 +1559,9 @@
     loadConversations();
     lastUsage = null;
     await loadContextLength();
-    // Si el panel Reglas está visible, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
+    // Si el panel Reglas está abierto, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
     const reglasPanel = document.getElementById("tab-reglas");
-    if (reglasPanel && !reglasPanel.hidden) loadLibraryRules();
+    if (reglasPanel && reglasPanel.classList.contains("is-open")) loadLibraryRules();
   }
 
   let saveRulesDebounceTimer = null;
@@ -2074,6 +2086,7 @@
   }
 
   async function sendMessage() {
+    if (currentAbortController) return;
     const content = (el.messageInput && el.messageInput.value.trim()) || "";
     if (!content) return;
     const instructionOverride = (el.instructionOverride && el.instructionOverride.value.trim()) || null;
@@ -2117,7 +2130,7 @@
 
     const chatStatusId = appStatus.push("chat", "chat.preparing");
     currentAbortController = new AbortController();
-    setCancelButtonState();
+    setComposerPrimaryActionState();
     try {
       appStatus.update(chatStatusId, "chat.sending");
       const systemInstructionGlobal = getRulesTextForSystem();
@@ -2231,7 +2244,7 @@
       currentStreamingMsgEl = null;
       currentStreamingDebugEl = null;
       currentAbortController = null;
-      setCancelButtonState();
+      setComposerPrimaryActionState();
       appStatus.pop(chatStatusId);
     } catch (e) {
       clearAnalyzingDots();
@@ -2252,7 +2265,7 @@
         showError("Error al enviar: " + e.message);
       }
       currentAbortController = null;
-      setCancelButtonState();
+      setComposerPrimaryActionState();
       appStatus.pop(chatStatusId);
     }
   }
@@ -2260,6 +2273,14 @@
   function cancelLastMessage() {
     if (!currentAbortController) return;
     currentAbortController.abort();
+  }
+
+  function onComposerPrimaryClick() {
+    if (currentAbortController) {
+      cancelLastMessage();
+      return;
+    }
+    sendMessage();
   }
 
   async function clearMemory() {
@@ -2317,15 +2338,20 @@
     syncHeaderProviderModel();
   }
 
-  if (el.btnCancelMessage) el.btnCancelMessage.disabled = true;
-
-  function setCancelButtonState() {
-    if (el.btnCancelMessage) el.btnCancelMessage.disabled = !currentAbortController;
+  function setComposerPrimaryActionState() {
+    if (!el.btnSend) return;
+    const stopping = Boolean(currentAbortController);
+    el.btnSend.classList.toggle("is-stop", stopping);
+    el.btnSend.dataset.composerAction = stopping ? "stop" : "send";
+    el.btnSend.title = stopping ? "Detener" : "Enviar";
+    el.btnSend.setAttribute("aria-label", stopping ? "Detener respuesta" : "Enviar mensaje");
   }
+
+  setComposerPrimaryActionState();
 
   if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
-  if (el.btnSend) el.btnSend.addEventListener("click", sendMessage);
+  if (el.btnSend) el.btnSend.addEventListener("click", onComposerPrimaryClick);
   function onShowDebugModeChange(checked) {
     if (currentAbortController && currentStreamingDebugEl) {
       currentStreamingDebugEl.style.display = checked ? "block" : "none";
@@ -2374,7 +2400,6 @@
       localStorage.setItem(AUTO_SCROLL_STORAGE_KEY, el.autoScrollDuringGenerationCheck.checked ? "true" : "false");
     } catch (_) {}
   });
-  if (el.btnCancelMessage) el.btnCancelMessage.addEventListener("click", cancelLastMessage);
   if (el.btnClearMemory) el.btnClearMemory.addEventListener("click", clearCurrentConversation);
   const onResetParams = async function () {
     await resetParamsToDefaults();
@@ -2736,11 +2761,12 @@
 
   const ACCORDION_STORAGE_KEY = "chatbot_sidebar_accordion";
   const SIDEBAR_TAB_STORAGE_KEY = "chatbot_sidebar_tab";
+  const SIDEBAR_MAIN_SECTION_IDS = ["reglas", "parametros", "imagenes"];
   const LAST_CONVERSATION_STORAGE_KEY = "chatbot_last_conversation_id";
   const FONT_SIZE_STORAGE_KEY = "chatbot_conversation_font_size_rem";
-  const FONT_SIZE_DEFAULT = 0.95;
-  const FONT_SIZE_MIN = 0.75;
-  const FONT_SIZE_MAX = 1.4;
+  const FONT_SIZE_DEFAULT = 0.8;
+  const FONT_SIZE_MIN = 0.65;
+  const FONT_SIZE_MAX = 1.3;
   const FONT_SIZE_STEP = 0.05;
   const IMAGE_SIZE_STORAGE_KEY = "chatbot_conversation_image_size";
   const IMAGE_SIZE_DEFAULT = 1;
@@ -3060,82 +3086,100 @@
     } catch (_) {}
   }
 
-  function initAccordionState() {
-    const state = getAccordionState();
-    if (!state) return;
-    document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((section) => {
-      const id = section.dataset.accordionSection;
-      const isOpen = state[id];
-      if (typeof isOpen === "boolean") {
-        if (isOpen) {
-          section.classList.add("is-open");
-          const btn = section.querySelector(".accordion-header");
-          if (btn) btn.setAttribute("aria-expanded", "true");
-        } else {
-          section.classList.remove("is-open");
-          const btn = section.querySelector(".accordion-header");
-          if (btn) btn.setAttribute("aria-expanded", "false");
-        }
-      }
-    });
+  function getSiblingAccordionSections(section) {
+    if (!section.parentElement) return [];
+    return Array.from(section.parentElement.children).filter((el) =>
+      el.classList.contains("accordion-section")
+    );
   }
 
-  const SIDEBAR_TAB_IDS = ["reglas", "parametros", "imagenes"];
-  const IMAGES_PREFS_KEY = "chatbot_images_prefs";
+  function setAccordionSectionOpen(section, isOpen) {
+    section.classList.toggle("is-open", isOpen);
+    const btn = section.querySelector(":scope > .accordion-header");
+    if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
 
-  function getStoredSidebarTab() {
+  function onSidebarMainSectionOpened(sectionId) {
+    if (sectionId === "reglas") loadLibraryRules();
+    if (sectionId === "imagenes") ensureImagesPromptSelects();
+  }
+
+  function migrateSidebarTabToAccordionState(state) {
     try {
       const t = localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY);
-      if (t && SIDEBAR_TAB_IDS.includes(t)) return t;
-      if (t === "conversaciones") return "reglas";
-    } catch (_) {}
-    return "reglas";
-  }
-
-  function switchSidebarTab(tabId) {
-    if (!SIDEBAR_TAB_IDS.includes(tabId)) return;
-    try {
-      localStorage.setItem(SIDEBAR_TAB_STORAGE_KEY, tabId);
-    } catch (_) {}
-    document.querySelectorAll(".sidebar-tabs [role=\"tab\"]").forEach((tab) => {
-      const id = tab.getAttribute("data-tab");
-      const selected = id === tabId;
-      tab.setAttribute("aria-selected", selected);
-      tab.classList.toggle("active", selected);
-    });
-    document.querySelectorAll(".sidebar-tabpanel").forEach((panel) => {
-      const panelId = panel.id;
-      const active =
-        (tabId === "reglas" && panelId === "tab-reglas") ||
-        (tabId === "parametros" && panelId === "tab-parametros") ||
-        (tabId === "imagenes" && panelId === "tab-imagenes");
-      panel.classList.toggle("is-active", active);
-      panel.hidden = !active;
-      if (active && panelId === "tab-reglas") loadLibraryRules();
-      if (active && panelId === "tab-imagenes") ensureImagesPromptSelects();
-    });
-  }
-
-  function initSidebarTabs() {
-    switchSidebarTab(getStoredSidebarTab());
-    document.querySelectorAll(".sidebar-tabs [role=\"tab\"]").forEach((tab) => {
-      tab.addEventListener("click", function () {
-        const tabId = tab.getAttribute("data-tab");
-        if (tabId) switchSidebarTab(tabId);
+      if (!t) return state;
+      const tabId = SIDEBAR_MAIN_SECTION_IDS.includes(t) ? t : t === "conversaciones" ? "reglas" : null;
+      if (!tabId) return state;
+      const next = Object.assign({}, state || {});
+      SIDEBAR_MAIN_SECTION_IDS.forEach((id) => {
+        next[id] = id === tabId;
       });
-      tab.addEventListener("keydown", function (e) {
-        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-        e.preventDefault();
-        const tabs = Array.from(document.querySelectorAll(".sidebar-tabs [role=\"tab\"]"));
-        const idx = tabs.indexOf(tab);
-        if (e.key === "ArrowLeft" && idx > 0) switchSidebarTab(tabs[idx - 1].getAttribute("data-tab"));
-        if (e.key === "ArrowRight" && idx < tabs.length - 1) switchSidebarTab(tabs[idx + 1].getAttribute("data-tab"));
+      localStorage.removeItem(SIDEBAR_TAB_STORAGE_KEY);
+      return next;
+    } catch (_) {
+      return state;
+    }
+  }
+
+  function ensureExclusiveMainAccordion(state) {
+    const next = Object.assign({}, state || {});
+    const openMain = SIDEBAR_MAIN_SECTION_IDS.filter((id) => next[id] === true);
+    if (openMain.length === 0) {
+      next.reglas = true;
+      SIDEBAR_MAIN_SECTION_IDS.filter((id) => id !== "reglas").forEach((id) => {
+        next[id] = false;
+      });
+      return next;
+    }
+    if (openMain.length > 1) {
+      const keep = openMain[0];
+      SIDEBAR_MAIN_SECTION_IDS.forEach((id) => {
+        next[id] = id === keep;
+      });
+    }
+    return next;
+  }
+
+  function initAccordionState() {
+    let state = getAccordionState();
+    state = migrateSidebarTabToAccordionState(state);
+    state = ensureExclusiveMainAccordion(state);
+    document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((section) => {
+      const id = section.dataset.accordionSection;
+      const isOpen = state && typeof state[id] === "boolean" ? state[id] : section.classList.contains("is-open");
+      setAccordionSectionOpen(section, !!isOpen);
+    });
+    saveAccordionState();
+    const openMain = document.querySelector(
+      ".sidebar-main-accordion > .accordion-section.is-open[data-accordion-section]"
+    );
+    if (openMain) onSidebarMainSectionOpened(openMain.dataset.accordionSection);
+  }
+
+  const IMAGES_PREFS_KEY = "chatbot_images_prefs";
+
+  function initSidebarAccordion() {
+    initAccordionState();
+    document.querySelectorAll(".accordion-header").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const section = btn.closest(".accordion-section");
+        if (!section) return;
+        const wasOpen = section.classList.contains("is-open");
+        if (!wasOpen) {
+          getSiblingAccordionSections(section).forEach((s) => {
+            if (s !== section) setAccordionSectionOpen(s, false);
+          });
+        }
+        setAccordionSectionOpen(section, !wasOpen);
+        saveAccordionState();
+        if (!wasOpen && section.closest(".sidebar-main-accordion") === section.parentElement) {
+          onSidebarMainSectionOpened(section.dataset.accordionSection);
+        }
       });
     });
   }
 
-  initAccordionState();
-  initSidebarTabs();
+  initSidebarAccordion();
   initConversationFontSize();
   initIllustrationMetaModal();
   document.addEventListener("click", function () {
@@ -3293,14 +3337,6 @@
         win.hidden = true;
         if (dbg) dbg.checked = false;
         persist();
-        // sync segmented toggle if present
-        var row = document.querySelector('.segmented-toggle-row[data-checkbox-id="images-debug-mode"]');
-        if (row) {
-          row.querySelectorAll(".segmented-toggle-btn").forEach(function (btn) {
-            var on = btn.getAttribute("data-value") === "no";
-            btn.setAttribute("aria-pressed", on ? "true" : "false");
-          });
-        }
       });
     }
     syncChatConfigControlsDisabled();
@@ -3466,55 +3502,36 @@
     });
   })();
 
-  (function initSegmentedToggles() {
-    document.querySelectorAll(".segmented-toggle-row").forEach(function (row) {
-      var checkboxId = row.getAttribute("data-checkbox-id");
-      var checkbox = document.getElementById(checkboxId);
-      var wrap = row.querySelector(".segmented-toggle-wrap");
-      var buttons = row.querySelectorAll(".segmented-toggle-btn");
-      if (!checkbox || !wrap || buttons.length !== 2) return;
+  (function initLeftSidebarCollapse() {
+    var KEY = "leftSidebarCollapsed";
+    var collapseBtn = document.getElementById("btn-collapse-left");
+    var expandBtn = document.getElementById("btn-expand-left");
+    var aside = document.getElementById("column-left");
+    if (!collapseBtn || !expandBtn || !aside) return;
 
-      function setPressed(value) {
-        buttons.forEach(function (btn) {
-          btn.setAttribute("aria-pressed", btn.getAttribute("data-value") === value ? "true" : "false");
-        });
-      }
+    function apply(collapsed) {
+      document.documentElement.setAttribute("data-sidebar-left", collapsed ? "collapsed" : "open");
+      var appEl = document.getElementById("app");
+      if (appEl) appEl.classList.toggle("sidebar-left-collapsed", collapsed);
+      aside.setAttribute("aria-hidden", collapsed ? "true" : "false");
+      collapseBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      expandBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      expandBtn.hidden = !collapsed;
+      try {
+        localStorage.setItem(KEY, collapsed ? "true" : "false");
+      } catch (_) {}
+    }
 
-      function syncFromCheckbox() {
-        setPressed(checkbox.checked ? "yes" : "no");
-      }
-
-      syncFromCheckbox();
-
-      buttons.forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var value = this.getAttribute("data-value");
-          checkbox.checked = value === "yes";
-          setPressed(value);
-          checkbox.dispatchEvent(new Event("change", { bubbles: true }));
-        });
-      });
+    apply(localStorage.getItem(KEY) === "true");
+    collapseBtn.addEventListener("click", function () {
+      apply(true);
+    });
+    expandBtn.addEventListener("click", function () {
+      apply(false);
     });
   })();
 
-  document.querySelectorAll(".accordion-header").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const section = btn.closest(".accordion-section");
-      if (!section) return;
-      const wasOpen = section.classList.contains("is-open");
-      if (!wasOpen) {
-        section.parentElement.querySelectorAll(".accordion-section").forEach((s) => {
-          s.classList.remove("is-open");
-          const b = s.querySelector(".accordion-header");
-          if (b) b.setAttribute("aria-expanded", "false");
-        });
-      }
-      section.classList.toggle("is-open");
-      const isOpen = section.classList.contains("is-open");
-      btn.setAttribute("aria-expanded", isOpen);
-      saveAccordionState();
-    });
-  });
+  /* Fluent ToggleSwitch: checkboxes nativos estilizados en CSS; no hace falta sync YES/NO */
 
   // Cargar proveedores; si uno falla al cargar modelos, probar el siguiente
   async function initLoad() {
