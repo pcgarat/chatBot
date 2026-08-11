@@ -55,3 +55,23 @@ def test_opening_debug_syncs_full_buffer_to_window():
     persist_m = re.search(r"function persist\s*\(\s*\)\s*\{(.*?)\n    \}", js, re.DOTALL)
     assert persist_m, "No se encontró persist en initImagesPanel"
     assert "syncImagesDebugWindow" in persist_m.group(1)
+
+
+def test_images_debug_buffer_declared_before_init_images_panel_call():
+    """
+    Regresión TDZ: initImagesPanel() no puede ejecutarse antes de
+    `const imagesDebugLogLines` (ReferenceError en syncImagesDebugWindow).
+    """
+    js = _js()
+    decl = js.find("const imagesDebugLogLines")
+    assert decl >= 0, "Falta la declaración de imagesDebugLogLines"
+    # Solo la llamada de arranque (indentación típica del init), no la definición
+    call_matches = [
+        m.start()
+        for m in re.finditer(r"(?m)^\s*initImagesPanel\s*\(\s*\)\s*;", js)
+    ]
+    assert call_matches, "No se encontró la llamada initImagesPanel()"
+    assert all(pos > decl for pos in call_matches), (
+        "initImagesPanel() se llama antes de declarar imagesDebugLogLines "
+        "(Temporal Dead Zone → Cannot access before initialization)"
+    )

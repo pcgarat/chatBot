@@ -3399,7 +3399,6 @@
     if (e.key === "Escape") closeAllMessageContextMenus();
   });
   initReadingMode();
-  initImagesPanel();
 
   function loadImagesPrefs() {
     try {
@@ -3573,6 +3572,8 @@
     syncImagesDebugWindow();
     ensureImagesPromptSelects();
   }
+
+  initImagesPanel();
 
   function abortAllIllustrations() {
     const n = illustrateAbortControllers.size;
