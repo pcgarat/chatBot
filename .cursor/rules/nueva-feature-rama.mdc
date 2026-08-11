@@ -1,0 +1,35 @@
+---
+description: Preguntar si crear rama feature al pedir una implementación nueva
+alwaysApply: true
+---
+
+# Nueva implementación → rama feature
+
+Cuando el usuario pida **algo nuevo** (feature, endpoint, flujo, pantalla, integración, refactor grande o implementación no trivial), **antes de escribir código**:
+
+1. Pregunta de forma explícita y breve si quiere **crear una feature** (rama) para ello.
+2. Si responde **sí**:
+   - Asegúrate de partir de `main` remoto actualizado (`git fetch origin` + `git checkout main` + `git pull --ff-only origin main`).
+   - Crea y cámbiate a una rama con nombre descriptivo del pedido, en kebab-case: `feat/<descripcion-corta>`.
+   - Ejemplos: pedido «pantalla completa del chat» → `feat/chat-fullscreen`; «papelera de conversaciones» → `feat/conversation-trash`.
+   - Confirma la rama creada y **entonces** empieza la implementación.
+3. Si responde **no**: continúa en la rama actual sin crear otra.
+
+## Cuándo SÍ preguntar
+
+- Nueva capacidad o cambio de producto no trivial.
+- Trabajo que previsiblemente acabará en PR (`/cerrar-feature` u similar).
+
+## Cuándo NO preguntar
+
+- Bugs puntuales, typos, ajustes menores o “cambia X en el archivo Y”.
+- Ya estamos en una rama `feat/...` / `fix/...` claramente dedicada a ese mismo pedido.
+- El usuario ya indicó la rama o dijo “en esta rama” / “sin PR” / “directo en main” (en ese caso no crear rama a menos que lo pida).
+- Tareas solo de lectura, explicación o exploración.
+
+## Criticidad
+
+- **No asumas** que quiere rama: pregunta siempre en los casos del “SÍ”.
+- **No empieces a implementar** hasta tener la respuesta (salvo que diga explícitamente que implementes ya sin rama).
+- No uses nombres vagos (`feat/nueva-feature`, `feat/changes`, `feat/wip`).
+- No hagas commit/push/PR en este paso; solo preparar la rama.
