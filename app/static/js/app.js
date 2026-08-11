@@ -3788,6 +3788,141 @@
     });
   })();
 
+  (function initChatFullscreen() {
+    var btn = document.getElementById("btn-chat-fullscreen");
+    if (!btn) return;
+    var iconEnter = btn.querySelector(".chat-fs-icon-enter");
+    var iconExit = btn.querySelector(".chat-fs-icon-exit");
+    var layoutBeforeFullscreen = null;
+    var chatFullscreenActive = false;
+
+    function currentFullscreenElement() {
+      return (
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement ||
+        null
+      );
+    }
+
+    function requestBrowserFullscreen() {
+      var root = document.documentElement;
+      var req =
+        root.requestFullscreen ||
+        root.webkitRequestFullscreen ||
+        root.msRequestFullscreen;
+      if (!req) return Promise.reject(new Error("Fullscreen no soportado"));
+      return Promise.resolve(req.call(root));
+    }
+
+    function exitBrowserFullscreen() {
+      var exit =
+        document.exitFullscreen ||
+        document.webkitExitFullscreen ||
+        document.msExitFullscreen;
+      if (!exit || !currentFullscreenElement()) return Promise.resolve();
+      return Promise.resolve(exit.call(document));
+    }
+
+    function captureLayoutSnapshot() {
+      return {
+        sidebarLeft: document.documentElement.getAttribute("data-sidebar-left") || "open",
+        composer: document.documentElement.getAttribute("data-composer") || "open",
+      };
+    }
+
+    function restoreLayoutSnapshot(snapshot) {
+      if (!snapshot) return;
+      var sidebarCollapsed = snapshot.sidebarLeft === "collapsed";
+      var composerCollapsed = snapshot.composer === "collapsed";
+      document.documentElement.setAttribute(
+        "data-sidebar-left",
+        sidebarCollapsed ? "collapsed" : "open"
+      );
+      document.documentElement.setAttribute(
+        "data-composer",
+        composerCollapsed ? "collapsed" : "open"
+      );
+      var appEl = document.getElementById("app");
+      if (appEl) {
+        appEl.classList.toggle("sidebar-left-collapsed", sidebarCollapsed);
+        appEl.classList.toggle("composer-collapsed", composerCollapsed);
+      }
+      var leftAside = document.getElementById("column-left");
+      var expandLeft = document.getElementById("btn-expand-left");
+      var collapseLeft = document.getElementById("btn-collapse-left");
+      if (leftAside) leftAside.setAttribute("aria-hidden", sidebarCollapsed ? "true" : "false");
+      if (expandLeft) {
+        expandLeft.hidden = !sidebarCollapsed;
+        expandLeft.setAttribute("aria-expanded", sidebarCollapsed ? "false" : "true");
+      }
+      if (collapseLeft) {
+        collapseLeft.setAttribute("aria-expanded", sidebarCollapsed ? "false" : "true");
+      }
+      var composerPanel = document.getElementById("composer-panel");
+      var expandComposer = document.getElementById("btn-expand-composer");
+      var collapseComposer = document.getElementById("btn-collapse-composer");
+      if (composerPanel) {
+        composerPanel.setAttribute("aria-hidden", composerCollapsed ? "true" : "false");
+      }
+      if (expandComposer) {
+        expandComposer.hidden = !composerCollapsed;
+        expandComposer.setAttribute("aria-expanded", composerCollapsed ? "false" : "true");
+      }
+      if (collapseComposer) {
+        collapseComposer.setAttribute("aria-expanded", composerCollapsed ? "false" : "true");
+      }
+    }
+
+    function setChatFullscreenLayout(on) {
+      chatFullscreenActive = !!on;
+      document.documentElement.setAttribute("data-chat-fullscreen", on ? "on" : "off");
+      var appEl = document.getElementById("app");
+      if (appEl) appEl.classList.toggle("chat-fullscreen", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.title = on ? "Salir de pantalla completa" : "Pantalla completa";
+      btn.setAttribute("aria-label", btn.title);
+      if (iconEnter) iconEnter.hidden = !!on;
+      if (iconExit) iconExit.hidden = !on;
+    }
+
+    function leaveChatFullscreen() {
+      setChatFullscreenLayout(false);
+      restoreLayoutSnapshot(layoutBeforeFullscreen);
+      layoutBeforeFullscreen = null;
+    }
+
+    function enterChatFullscreen() {
+      if (chatFullscreenActive) return;
+      layoutBeforeFullscreen = captureLayoutSnapshot();
+      setChatFullscreenLayout(true);
+      requestBrowserFullscreen().catch(function () {
+        leaveChatFullscreen();
+      });
+    }
+
+    btn.addEventListener("click", function () {
+      if (chatFullscreenActive || currentFullscreenElement()) {
+        exitBrowserFullscreen().then(function () {
+          if (chatFullscreenActive) leaveChatFullscreen();
+        });
+      } else {
+        enterChatFullscreen();
+      }
+    });
+
+    document.addEventListener("fullscreenchange", function () {
+      if (!currentFullscreenElement() && chatFullscreenActive) {
+        leaveChatFullscreen();
+      }
+    });
+    document.addEventListener("webkitfullscreenchange", function () {
+      if (!currentFullscreenElement() && chatFullscreenActive) {
+        leaveChatFullscreen();
+      }
+    });
+  })();
+
   (function initComposerCollapse() {
     var KEY = "composerCollapsed";
     var collapseBtn = document.getElementById("btn-collapse-composer");

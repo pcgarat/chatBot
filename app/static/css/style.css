@@ -1710,6 +1710,38 @@ select.selector-control {
   opacity: 1;
 }
 
+/* Conversación a pantalla completa: solo columna central */
+html[data-chat-fullscreen="on"] .column-left,
+html[data-chat-fullscreen="on"] .column-right,
+.app-shell.chat-fullscreen .column-left,
+.app-shell.chat-fullscreen .column-right {
+  display: none !important;
+}
+
+html[data-chat-fullscreen="on"] .column-center,
+.app-shell.chat-fullscreen .column-center {
+  flex: 1 1 100%;
+  width: 100%;
+  max-width: none;
+}
+
+html[data-chat-fullscreen="on"] .sidebar-expand-btn,
+.app-shell.chat-fullscreen .sidebar-expand-btn {
+  display: none !important;
+}
+
+html[data-chat-fullscreen="on"] .composer-panel,
+html[data-chat-fullscreen="on"] .composer-expand-btn,
+.app-shell.chat-fullscreen .composer-panel,
+.app-shell.chat-fullscreen .composer-expand-btn {
+  display: none !important;
+}
+
+.chat-font-size-corner .chat-fs-icon-enter,
+.chat-font-size-corner .chat-fs-icon-exit {
+  display: block;
+}
+
 .chat-font-size-corner .font-size-btn:hover {
   color: var(--accent);
   background: var(--accent-light);
