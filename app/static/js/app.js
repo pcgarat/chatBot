@@ -1902,6 +1902,7 @@
                   <div class="msg-context-menu" role="menu" hidden>
                     <button type="button" class="msg-context-item" role="menuitem" data-action="clear-photos" data-msg-id="${escapeHtml(m.id)}">Borrar todas las fotos</button>
                     <button type="button" class="msg-context-item" role="menuitem" data-action="prune-orphans" data-msg-id="${escapeHtml(m.id)}">Eliminar anclas huérfanas</button>
+                    <button type="button" class="msg-context-item" role="menuitem" data-action="generate-remaining" data-msg-id="${escapeHtml(m.id)}">Generar imágenes restantes</button>
                   </div>
                 </div>`
               : "";
@@ -2043,7 +2044,12 @@
         const action = item.getAttribute("data-action");
         const msgId = item.getAttribute("data-msg-id");
         closeAllMessageContextMenus();
-        if (action && msgId) runMessageIllustrationAction(action, msgId);
+        if (!action || !msgId) return;
+        if (action === "generate-remaining") {
+          generateRemainingImages(msgId);
+          return;
+        }
+        runMessageIllustrationAction(action, msgId);
       });
     });
   }
@@ -3272,6 +3278,7 @@
     const enabled = document.getElementById("images-enabled");
     const useChatConfig = document.getElementById("images-use-chat-config");
     const per = document.getElementById("images-per-response");
+    const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
     const promptEl = document.getElementById("images-prompt");
     const promptSystemEl = document.getElementById("images-prompt-system");
@@ -3284,6 +3291,7 @@
     if (enabled) enabled.checked = !!prefs.enabled;
     if (useChatConfig) useChatConfig.checked = !!prefs.use_chat_config;
     if (per && prefs.images_per_response != null) per.value = prefs.images_per_response;
+    if (batchSize && prefs.batch_size != null) batchSize.value = prefs.batch_size;
     if (retries && prefs.retries != null) retries.value = prefs.retries;
     if (promptEl && prefs.prompt != null) promptEl.value = prefs.prompt;
     if (promptSystemEl && prefs.prompt_system_instructions != null) {
@@ -3306,6 +3314,7 @@
         enabled: !!(enabled && enabled.checked),
         use_chat_config: !!(useChatConfig && useChatConfig.checked),
         images_per_response: per ? parseInt(per.value, 10) || 2 : 2,
+        batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
         retries: retries ? parseInt(retries.value, 10) || 0 : 0,
         prompt: promptEl ? String(promptEl.value || "") : "",
         prompt_system_instructions: promptSystemEl ? String(promptSystemEl.value || "") : "",
@@ -3319,7 +3328,7 @@
       }
       syncChatConfigControlsDisabled();
     }
-    [enabled, useChatConfig, per, retries, promptEl, promptSystemEl, providerSel, modelSel, dbg].forEach((node) => {
+    [enabled, useChatConfig, per, batchSize, retries, promptEl, promptSystemEl, providerSel, modelSel, dbg].forEach((node) => {
       if (!node) return;
       const evt = node === promptEl || node === promptSystemEl ? "input" : "change";
       node.addEventListener(evt, function () {
@@ -3375,6 +3384,7 @@
     const providerSel = document.getElementById("images-prompt-provider");
     const modelSel = document.getElementById("images-prompt-model");
     const per = document.getElementById("images-per-response");
+    const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
     const promptEl = document.getElementById("images-prompt");
     const promptSystemEl = document.getElementById("images-prompt-system");
@@ -3385,36 +3395,65 @@
       showNotice("Imágenes: elige un modelo LLM de prompts en la pestaña Imágenes.");
       return;
     }
+    await runIllustrationStream({
+      messageId,
+      url: `${API}/conversations/${currentConversationId}/messages/${messageId}/illustrate`,
+      body: {
+        images_per_response: per ? parseInt(per.value, 10) || 2 : 2,
+        batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
+        prompt_provider: (providerSel && providerSel.value) || "ollama",
+        prompt_model: promptModel || "",
+        retries: retries ? parseInt(retries.value, 10) || 0 : 0,
+        prompt: promptEl ? String(promptEl.value || "").trim() : "",
+        prompt_system_instructions: promptSystemEl
+          ? String(promptSystemEl.value || "").trim()
+          : "",
+        use_chat_config: useChat,
+        include_prompt_debug: isShowDebugMode(),
+        debug: isImagesDebugMode(),
+      },
+      debugLabel: `Iniciando illustrate message=${messageId}${force ? " (manual)" : ""}`,
+      doneNotice: force ? "Ilustración terminada." : null,
+      errorPrefix: "Ilustración: ",
+    });
+  }
+
+  async function generateRemainingImages(messageId) {
+    if (!currentConversationId || !messageId) return;
+    if (illustratingMessageIds.has(messageId)) return;
+    const retries = document.getElementById("images-retries");
+    const batchSize = document.getElementById("images-batch-size");
+    await runIllustrationStream({
+      messageId,
+      url: `${API}/conversations/${currentConversationId}/messages/${messageId}/illustrations/generate-remaining`,
+      body: {
+        retries: retries ? parseInt(retries.value, 10) || 0 : 0,
+        batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
+        debug: isImagesDebugMode(),
+      },
+      debugLabel: `Iniciando generate-remaining message=${messageId}`,
+      doneNotice: "Imágenes restantes terminadas.",
+      errorPrefix: "Imágenes restantes: ",
+    });
+  }
+
+  async function runIllustrationStream(opts) {
+    const messageId = opts.messageId;
     const abortCtrl = new AbortController();
     illustrateAbortControllers.add(abortCtrl);
     illustratingMessageIds.add(messageId);
     renderMessages();
     const imgStatusId = appStatus.push("images", "images.starting");
     if (isImagesDebugMode()) {
-      appendImagesDebugLog(`Iniciando illustrate message=${messageId}${force ? " (manual)" : ""}`);
+      appendImagesDebugLog(opts.debugLabel || `Iniciando stream message=${messageId}`);
     }
     try {
-      const res = await fetch(
-        `${API}/conversations/${currentConversationId}/messages/${messageId}/illustrate`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: abortCtrl.signal,
-          body: JSON.stringify({
-            images_per_response: per ? parseInt(per.value, 10) || 2 : 2,
-            prompt_provider: (providerSel && providerSel.value) || "ollama",
-            prompt_model: promptModel || "",
-            retries: retries ? parseInt(retries.value, 10) || 0 : 0,
-            prompt: promptEl ? String(promptEl.value || "").trim() : "",
-            prompt_system_instructions: promptSystemEl
-              ? String(promptSystemEl.value || "").trim()
-              : "",
-            use_chat_config: useChat,
-            include_prompt_debug: isShowDebugMode(),
-            debug: isImagesDebugMode(),
-          }),
-        }
-      );
+      const res = await fetch(opts.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortCtrl.signal,
+        body: JSON.stringify(opts.body || {}),
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || res.statusText);
@@ -3471,16 +3510,16 @@
           }
         }
       }
-      if (isImagesDebugMode()) appendImagesDebugLog("Illustrate terminado");
-      if (force) showNotice("Ilustración terminada.");
+      if (isImagesDebugMode()) appendImagesDebugLog("Stream de ilustración terminado");
+      if (opts.doneNotice) showNotice(opts.doneNotice);
     } catch (e) {
       if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) {
         appStatus.update(imgStatusId, "images.cancelled");
-        if (isImagesDebugMode()) appendImagesDebugLog(`Illustrate abortado message=${messageId}`);
+        if (isImagesDebugMode()) appendImagesDebugLog(`Stream abortado message=${messageId}`);
       } else {
         appStatus.update(imgStatusId, "images.error", e.message || "");
         if (isImagesDebugMode()) appendImagesDebugLog("Error: " + e.message);
-        showError("Ilustración: " + e.message);
+        showError((opts.errorPrefix || "Ilustración: ") + e.message);
       }
     } finally {
       illustrateAbortControllers.delete(abortCtrl);

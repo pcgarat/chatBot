@@ -299,7 +299,11 @@
                 <h3 id="images-limits-heading" class="panel-section-title">Límites</h3>
                 <div class="sidebar-option">
                   <label class="param-label" for="images-per-response">Imágenes por respuesta</label>
-                  <input type="number" id="images-per-response" class="param-control" min="1" max="20" value="2" />
+                  <input type="number" id="images-per-response" class="param-control" min="1" value="2" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-batch-size">Tamaño de lote</label>
+                  <input type="number" id="images-batch-size" class="param-control" min="1" value="10" title="Si hay más imágenes que este tamaño, se planifican y generan por lotes" />
                 </div>
                 <div class="sidebar-option">
                   <label class="param-label" for="images-retries">Reintentos</label>

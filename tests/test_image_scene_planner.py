@@ -7,6 +7,7 @@ from app.services.image_illustration.scene_planner import (
     extract_json_object,
     plan_from_dict,
 )
+from app.services.image_illustration.models import SceneSpec
 
 
 class FakeProvider:
@@ -101,3 +102,67 @@ def test_planner_stores_last_debug_request_and_response():
     assert "faro" in planner.last_debug["debug_response"] or "lighthouse" in planner.last_debug[
         "debug_response"
     ]
+
+
+def test_planner_includes_already_planned_in_user_message():
+    provider = FakeProvider(
+        json.dumps({"illustrate": False, "reason": "nada más", "scenes": []})
+    )
+    planner = LlmScenePlanner(provider, model="m1", system_prompt="SYS")
+    prior = [
+        SceneSpec(id="s1", prompt="old", anchor_excerpt="Había un faro."),
+    ]
+    planner.plan("Había un faro. Luego el mar.", max_images=2, already_planned=prior)
+    user = provider.calls[0]["messages"][1]["content"]
+    assert "max_images=2" in user
+    assert "Ya hay 1 escenas" in user
+    assert "Había un faro." in user
+
+
+def test_filter_duplicate_planned_scenes():
+    from app.services.image_illustration.scene_planner import filter_duplicate_planned_scenes
+
+    prior = [SceneSpec(id="s1", prompt="a", anchor_excerpt="Faro")]
+    new = [
+        SceneSpec(id="s2", prompt="b", anchor_excerpt="Faro"),
+        SceneSpec(id="s3", prompt="c", anchor_excerpt="Mar"),
+    ]
+    filtered = filter_duplicate_planned_scenes(new, prior)
+    assert [s.id for s in filtered] == ["s3"]
+
+
+def test_planner_writes_prompts_for_assigned_paragraphs():
+    from app.services.image_illustration.coverage import ParagraphInfo
+
+    provider = FakeProvider(
+        json.dumps(
+            {
+                "illustrate": True,
+                "reason": "relato",
+                "scenes": [
+                    {"id": "s1", "prompt": "calm sea at dusk", "paragraph_index": 1},
+                    {"id": "s2", "prompt": "sunrise over beach", "paragraph_index": 2},
+                ],
+            }
+        )
+    )
+    planner = LlmScenePlanner(provider, model="m1", system_prompt="SYS")
+    assigned = [
+        ParagraphInfo(index=1, text="El mar seguía en calma.", illustration_count=0),
+        ParagraphInfo(index=2, text="Al final llegó el alba.", illustration_count=0),
+    ]
+    plan = planner.plan(
+        "Había un faro.\n\nEl mar seguía en calma.\n\nAl final llegó el alba.",
+        max_images=2,
+        assigned_paragraphs=assigned,
+    )
+    assert plan.illustrate is True
+    assert len(plan.scenes) == 2
+    assert plan.scenes[0].prompt == "calm sea at dusk"
+    assert plan.scenes[0].paragraph_index == 1
+    assert "calma" in plan.scenes[0].anchor_excerpt
+    assert plan.scenes[1].prompt == "sunrise over beach"
+    assert plan.scenes[1].paragraph_index == 2
+    user = provider.calls[0]["messages"][1]["content"]
+    assert "Párrafos asignados" in user
+    assert "paragraph_index=1" in user

@@ -18,6 +18,7 @@ from app.routers.api_conversations import (
     _parse_model_params,
 )
 from app.schemas import (
+    GenerateRemainingRequest,
     IllustratedImageMetaResponse,
     IllustrateRequest,
     MessageContentUpdateResponse,
@@ -99,6 +100,88 @@ def _build_orchestrator(
     )
 
 
+def _build_forge_orchestrator() -> ImageIllustrationOrchestrator:
+    """Orquestador solo Forge (sin planificador LLM): regenerate remaining."""
+
+    class _UnusedPlanner:
+        def plan(self, text, max_images):
+            raise RuntimeError("ScenePlanner no se usa en generate-remaining")
+
+    payload_source = FileSystemLastPayloadSource(
+        data_path=settings.forge_data_path,
+        style_init_dir=settings.forge_style_init_dir,
+        forge_base_url=settings.forge_base_url,
+        timeout_seconds=min(60.0, settings.forge_timeout_seconds),
+    )
+    forge = ForgeHttpClient(
+        base_url=settings.forge_base_url,
+        timeout_seconds=settings.forge_timeout_seconds,
+    )
+    return ImageIllustrationOrchestrator(
+        planner=_UnusedPlanner(),
+        payload_source=payload_source,
+        forge=forge,
+        save_image=save_illustrated_image,
+    )
+
+
+def _stream_illustration_events(
+    *,
+    db: Session,
+    conversation_id: str,
+    message_id: str,
+    text: str,
+    events,
+    debug: bool,
+    include_prompt_debug: bool = False,
+):
+    """Persiste content en cada avance y emite NDJSON."""
+    final_content = text
+    try:
+        for event in events:
+            if event.content is not None:
+                final_content = event.content
+                if event.type in ("placeholder", "image", "error", "done") and final_content != text:
+                    crud.update_message_content(
+                        db, conversation_id, message_id, final_content
+                    )
+            if event.type == "image":
+                data = event.data or {}
+                filename = data.get("filename")
+                params = data.get("params")
+                if filename and isinstance(params, dict):
+                    try:
+                        crud.save_illustrated_image_meta(
+                            db,
+                            message_id=message_id,
+                            filename=filename,
+                            scene_id=event.scene_id,
+                            mode=str(data.get("mode") or "txt2img"),
+                            params=params,
+                        )
+                    except Exception:
+                        pass
+            if event.type == "log" and not debug:
+                continue
+            if event.type == "llm_debug" and not include_prompt_debug:
+                continue
+            yield json.dumps(event.to_dict(), ensure_ascii=False) + "\n"
+    finally:
+        if final_content != text:
+            try:
+                crud.update_message_content(db, conversation_id, message_id, final_content)
+            except Exception:
+                from app.db import SessionLocal
+
+                persist = SessionLocal()
+                try:
+                    crud.update_message_content(
+                        persist, conversation_id, message_id, final_content
+                    )
+                finally:
+                    persist.close()
+
+
 @router.post("/conversations/{conversation_id}/messages/{message_id}/illustrate")
 def illustrate_message(
     conversation_id: str,
@@ -123,58 +206,54 @@ def illustrate_message(
     orch = _build_orchestrator(body, conv=conv, db=db)
 
     def event_stream():
-        final_content = text
-        try:
-            for event in orch.run(
+        yield from _stream_illustration_events(
+            db=db,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            text=text,
+            events=orch.run(
                 text,
                 max_images=body.images_per_response,
                 retries=body.retries,
                 prompt=body.prompt,
                 include_prompt_debug=body.include_prompt_debug,
-            ):
-                if event.content is not None:
-                    final_content = event.content
-                    # Persistir en cada avance para no perder imgs si el cliente cierra el stream.
-                    if event.type in ("placeholder", "image", "error", "done") and final_content != text:
-                        crud.update_message_content(
-                            db, conversation_id, message_id, final_content
-                        )
-                if event.type == "image":
-                    data = event.data or {}
-                    filename = data.get("filename")
-                    params = data.get("params")
-                    if filename and isinstance(params, dict):
-                        try:
-                            crud.save_illustrated_image_meta(
-                                db,
-                                message_id=message_id,
-                                filename=filename,
-                                scene_id=event.scene_id,
-                                mode=str(data.get("mode") or "txt2img"),
-                                params=params,
-                            )
-                        except Exception:
-                            pass
-                if event.type == "log" and not body.debug:
-                    continue
-                if event.type == "llm_debug" and not body.include_prompt_debug:
-                    continue
-                # type=status siempre se reenvía (barra de estado; no depende de debug)
-                yield json.dumps(event.to_dict(), ensure_ascii=False) + "\n"
-        finally:
-            if final_content != text:
-                try:
-                    crud.update_message_content(db, conversation_id, message_id, final_content)
-                except Exception:
-                    from app.db import SessionLocal
+                batch_size=body.batch_size,
+            ),
+            debug=body.debug,
+            include_prompt_debug=body.include_prompt_debug,
+        )
 
-                    persist = SessionLocal()
-                    try:
-                        crud.update_message_content(
-                            persist, conversation_id, message_id, final_content
-                        )
-                    finally:
-                        persist.close()
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/illustrations/generate-remaining"
+)
+def generate_remaining_images(
+    conversation_id: str,
+    message_id: str,
+    body: GenerateRemainingRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Regenera placeholders/errores con prompt recuperable (sin re-planificar LLM).
+    Emite el mismo NDJSON que illustrate.
+    """
+    msg = _require_assistant_message(db, conversation_id, message_id)
+    text = msg.content or ""
+    orch = _build_forge_orchestrator()
+
+    def event_stream():
+        yield from _stream_illustration_events(
+            db=db,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            text=text,
+            events=orch.run_remaining(
+                text, retries=body.retries, batch_size=body.batch_size
+            ),
+            debug=body.debug,
+        )
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 

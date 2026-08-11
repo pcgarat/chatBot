@@ -15,9 +15,17 @@ from app.services.image_illustration.anchors import (
     strip_transient_illustration_artifacts,
     with_unique_scene_ids,
 )
+from app.services.image_illustration.coverage import (
+    analyze_coverage,
+    bind_scenes_to_paragraphs,
+    format_coverage_block,
+    occupied_scenes_from_coverage,
+    suggest_distributed_targets,
+)
 from app.services.image_illustration.models import (
     IllustrationEvent,
     LastGenerationPayload,
+    ScenePlan,
     SceneSpec,
 )
 from app.services.image_illustration.generation_params import build_stored_generation_params
@@ -36,20 +44,25 @@ def _img_tag(url: str, scene_id: str, filename: str = "") -> str:
     return f"<img {attrs} />"
 
 
-def _error_placeholder(scene_id: str, message: str) -> str:
+def _error_placeholder(scene_id: str, message: str, forge_prompt: str = "") -> str:
     safe = html.escape(message or "error")
-    return f'<span class="chat-illustration-error" data-scene="{html.escape(scene_id)}">[Imagen fallida: {safe}]</span>'
+    attrs = f'class="chat-illustration-error" data-scene="{html.escape(scene_id)}"'
+    prompt = (forge_prompt or "").strip()
+    if prompt:
+        attrs += f' data-prompt="{html.escape(prompt, quote=True)}"'
+    return f"<span {attrs}>[Imagen fallida: {safe}]</span>"
 
 
 def _prompt_placeholder(scene_id: str, forge_prompt: str) -> str:
     """Recuadro visible con el prompt que se enviará a Forge mientras genera."""
     safe_id = html.escape(scene_id)
-    safe_prompt = html.escape((forge_prompt or "").strip() or "(sin prompt)")
-    return (
-        f'<span class="chat-illustration-placeholder" data-scene="{safe_id}">'
-        f"Generando imagen…\n\n{safe_prompt}"
-        f"</span>"
+    prompt = (forge_prompt or "").strip()
+    safe_prompt = html.escape(prompt or "(sin prompt)")
+    attrs = (
+        f'class="chat-illustration-placeholder" data-scene="{safe_id}"'
+        f' data-prompt="{html.escape(prompt, quote=True)}"'
     )
+    return f"<span {attrs}>Generando imagen…\n\n{safe_prompt}</span>"
 
 
 def compose_forge_prompt(scene_prompt: str, extra_prompt: str | None = None) -> str:
@@ -63,6 +76,13 @@ def compose_forge_prompt(scene_prompt: str, extra_prompt: str | None = None) -> 
     return f"{base.rstrip('.')}. {extra}"
 
 
+def _iter_batches(items: list, size: int):
+    """Parte una lista en trozos de `size` (mínimo 1)."""
+    n = max(1, int(size))
+    for i in range(0, len(items), n):
+        yield items[i : i + n]
+
+
 def _replace_scene_slot(content: str, scene_id: str, replacement: str) -> str:
     """Sustituye marcador, placeholder de prompt o error de una escena."""
     mark = marker_for(scene_id)
@@ -70,7 +90,10 @@ def _replace_scene_slot(content: str, scene_id: str, replacement: str) -> str:
         return content.replace(mark, replacement)
     escaped = re.escape(scene_id)
     for cls in ("chat-illustration-placeholder", "chat-illustration-error"):
-        pat = rf'<span class="{cls}" data-scene="{escaped}">[\s\S]*?</span>'
+        pat = (
+            rf'<span\b(?=[^>]*\bclass="{cls}")(?=[^>]*\bdata-scene="{escaped}")[^>]*>'
+            rf"[\s\S]*?</span>"
+        )
         new, n = re.subn(pat, replacement, content, count=1)
         if n:
             return new
@@ -150,7 +173,7 @@ def _run_pass(
             still_failed.append(scene)
             err = str(exc)
             content = _replace_scene_slot(
-                content, scene.id, _error_placeholder(scene.id, err)
+                content, scene.id, _error_placeholder(scene.id, err, forge_prompt)
             )
             yield st.status_event(
                 st.IMAGES_IMAGE_FAILED,
@@ -194,63 +217,289 @@ class ImageIllustrationOrchestrator:
         retries: int,
         prompt: str = "",
         include_prompt_debug: bool = False,
+        batch_size: int = 10,
     ) -> Iterator[IllustrationEvent]:
         yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración")
-        yield IllustrationEvent(type="log", message=f"Planificando escenas (max={max_images})")
-        yield st.status_event(st.IMAGES_PLANNING, "Planificando escenas")
-        plan_text = strip_illustration_artifacts(text)
-        base_content = strip_transient_illustration_artifacts(text)
-        plan = self.planner.plan(plan_text, max_images)
+        batch_n = max(1, int(batch_size))
         yield IllustrationEvent(
             type="log",
-            message=f"Plan: illustrate={plan.illustrate} reason={plan.reason} scenes={len(plan.scenes)}",
-            data={"illustrate": plan.illustrate, "reason": plan.reason},
+            message=f"Planificando escenas (max={max_images}, lote={batch_n})",
         )
-        yield st.status_event(
-            st.IMAGES_PLAN_READY,
-            f"Plan de escenas listo ({len(plan.scenes)})",
-            total=len(plan.scenes),
-        )
+        plan_text = strip_illustration_artifacts(text)
+        content = strip_transient_illustration_artifacts(text)
+        extra_prompt = (prompt or "").strip()
 
-        planner_debug = getattr(self.planner, "last_debug", None)
-        if include_prompt_debug and isinstance(planner_debug, dict):
-            scenes_for_debug = plan.scenes if plan.scenes else [None]
-            for scene in scenes_for_debug:
-                sid = scene.id if scene else None
-                scene_prompt = scene.prompt if scene else ""
+        coverage = analyze_coverage(text)
+        remaining_quota = max(0, int(max_images))
+        already_planned: list[SceneSpec] = occupied_scenes_from_coverage(coverage)
+        # Solo evita duplicar párrafo dentro de esta ejecución; la cobertura
+        # existente se prioriza vía illustration_count (huecos primero).
+        reserved_paragraphs: set[int] = set()
+        payload: LastGenerationPayload | None = None
+        batch_idx = 0
+        any_batch = False
+
+        while remaining_quota > 0:
+            requested = min(batch_n, remaining_quota)
+            batch_idx += 1
+            suggested = suggest_distributed_targets(
+                coverage, requested, also_avoid=reserved_paragraphs
+            )
+            assigned = [
+                coverage.paragraphs[i]
+                for i in suggested
+                if 0 <= i < len(coverage.paragraphs)
+            ]
+            if not assigned:
+                if not any_batch:
+                    yield st.status_event(st.IMAGES_SKIPPED, "Ilustración no aplicable")
+                    yield IllustrationEvent(
+                        type="done", message="sin ilustración", content=text
+                    )
+                    return
+                break
+
+            coverage_block = format_coverage_block(
+                coverage, suggested=[p.index for p in assigned]
+            )
+            yield st.status_event(
+                st.IMAGES_PLANNING,
+                f"Planificando prompts (lote {batch_idx})",
+                index=batch_idx,
+                total=None,
+                batch=batch_idx,
+                batch_size=len(assigned),
+            )
+            yield IllustrationEvent(
+                type="log",
+                message=(
+                    f"Lote {batch_idx}: párrafos asignados "
+                    f"{[p.index for p in assigned]} → pidiendo prompts al LLM"
+                ),
+                data={
+                    "batch": batch_idx,
+                    "assigned_paragraphs": [p.index for p in assigned],
+                },
+            )
+            plan = self.planner.plan(
+                plan_text,
+                len(assigned),
+                already_planned=already_planned or None,
+                coverage_block=coverage_block,
+                assigned_paragraphs=assigned,
+            )
+            if plan.illustrate and plan.scenes:
+                bound = bind_scenes_to_paragraphs(plan.scenes, assigned)
+                plan = ScenePlan(
+                    illustrate=bool(bound),
+                    reason=plan.reason,
+                    scenes=bound,
+                )
+            yield IllustrationEvent(
+                type="log",
+                message=(
+                    f"Lote {batch_idx}: illustrate={plan.illustrate} "
+                    f"reason={plan.reason} scenes={len(plan.scenes)} "
+                    f"(asignados={len(assigned)})"
+                ),
+                data={
+                    "illustrate": plan.illustrate,
+                    "reason": plan.reason,
+                    "batch": batch_idx,
+                    "requested": len(assigned),
+                    "scenes": len(plan.scenes),
+                    "assigned_paragraphs": [p.index for p in assigned],
+                },
+            )
+
+            planner_debug = getattr(self.planner, "last_debug", None)
+            if include_prompt_debug and isinstance(planner_debug, dict):
+                scenes_for_debug = plan.scenes if plan.scenes else [None]
+                for scene in scenes_for_debug:
+                    sid = scene.id if scene else None
+                    scene_prompt = scene.prompt if scene else ""
+                    yield IllustrationEvent(
+                        type="llm_debug",
+                        scene_id=sid,
+                        message=scene_prompt or (plan.reason or "Planificador de prompts"),
+                        data={
+                            "debug_request": planner_debug.get("debug_request") or "",
+                            "debug_response": planner_debug.get("debug_response") or "",
+                            "label": (
+                                f"Prompt escena {sid} (lote {batch_idx})"
+                                if sid
+                                else f"Planificador de prompts (lote {batch_idx}, sin escenas)"
+                            ),
+                            "batch": batch_idx,
+                        },
+                    )
+
+            if not plan.illustrate or not plan.scenes:
+                if not any_batch:
+                    yield st.status_event(st.IMAGES_SKIPPED, "Ilustración no aplicable")
+                    yield IllustrationEvent(
+                        type="done", message="sin ilustración", content=text
+                    )
+                    return
+                break
+
+            plan = with_unique_scene_ids(plan, content)
+            yield st.status_event(
+                st.IMAGES_PLAN_READY,
+                f"Plan de escenas listo (lote {batch_idx}, {len(plan.scenes)})",
+                total=len(plan.scenes),
+                batch=batch_idx,
+            )
+            yield st.status_event(
+                st.IMAGES_INSERTING_ANCHORS,
+                f"Insertando anclas de imagen (lote {batch_idx})",
+                batch=batch_idx,
+            )
+            content = insert_scene_markers(content, plan.scenes)
+            for scene in plan.scenes:
+                forge_prompt = compose_forge_prompt(scene.prompt, extra_prompt)
+                content = replace_marker_with(
+                    content, scene.id, _prompt_placeholder(scene.id, forge_prompt)
+                )
                 yield IllustrationEvent(
-                    type="llm_debug",
-                    scene_id=sid,
-                    message=scene_prompt or (plan.reason or "Planificador de prompts"),
-                    data={
-                        "debug_request": planner_debug.get("debug_request") or "",
-                        "debug_response": planner_debug.get("debug_response") or "",
-                        "label": (
-                            f"Prompt escena {sid}" if sid else "Planificador de prompts (sin escenas)"
-                        ),
-                    },
+                    type="placeholder",
+                    scene_id=scene.id,
+                    message=forge_prompt,
+                    content=content,
+                    data={"prompt": forge_prompt, "batch": batch_idx},
                 )
 
-        if not plan.illustrate or not plan.scenes:
-            yield st.status_event(st.IMAGES_SKIPPED, "Ilustración no aplicable")
-            yield IllustrationEvent(type="done", message="sin ilustración", content=text)
+            if payload is None:
+                yield st.status_event(
+                    st.IMAGES_LOADING_FORGE, "Cargando parámetros de generación"
+                )
+                try:
+                    payload = self.payload_source.load()
+                except Exception as exc:
+                    yield IllustrationEvent(
+                        type="log", message=f"Error cargando último payload: {exc}"
+                    )
+                    yield st.status_event(
+                        st.IMAGES_ERROR, "Error al cargar parámetros de Forge"
+                    )
+                    for scene in plan.scenes:
+                        forge_prompt = compose_forge_prompt(scene.prompt, extra_prompt)
+                        content = _replace_scene_slot(
+                            content,
+                            scene.id,
+                            _error_placeholder(scene.id, str(exc), forge_prompt),
+                        )
+                        yield IllustrationEvent(
+                            type="error",
+                            scene_id=scene.id,
+                            message=str(exc),
+                            content=content,
+                        )
+                    yield IllustrationEvent(
+                        type="done", message="fallo payload", content=content
+                    )
+                    return
+                yield from self._emit_payload_log(payload)
+
+            yield IllustrationEvent(
+                type="log",
+                message=f"Generando lote {batch_idx} ({len(plan.scenes)} escenas)",
+                data={"batch": batch_idx, "scenes": len(plan.scenes)},
+            )
+            pending = list(plan.scenes)
+            content, pending = yield from _run_pass(
+                self.forge,
+                self.save_image,
+                self.url_for_saved,
+                pending,
+                payload,
+                content,
+                pass_name=f"lote-{batch_idx}",
+                extra_prompt=extra_prompt,
+            )
+            content, pending = yield from self._retry_failed(
+                pending,
+                payload,
+                content,
+                retries=retries,
+                extra_prompt=extra_prompt,
+            )
+
+            already_planned.extend(plan.scenes)
+            for scene in plan.scenes:
+                if scene.paragraph_index is not None:
+                    reserved_paragraphs.add(scene.paragraph_index)
+            remaining_quota -= len(plan.scenes)
+            any_batch = True
+            # Si el LLM no cubrió todos los párrafos asignados, no forzar más lotes.
+            if len(plan.scenes) < len(assigned):
+                break
+
+        yield st.status_event(st.IMAGES_DONE, "Ilustración completada")
+        yield IllustrationEvent(type="done", message="ilustración completa", content=content)
+
+    def run_remaining(
+        self,
+        text: str,
+        *,
+        retries: int,
+        batch_size: int = 10,
+    ) -> Iterator[IllustrationEvent]:
+        """
+        Regenera anclas/placeholders/errores pendientes sin re-planificar.
+        Usa el prompt guardado en el ancla; omite marcadores sin prompt.
+        Genera en lotes de `batch_size`.
+        """
+        from app.services.image_illustration.content_ops import (
+            extract_pending_illustration_scenes,
+        )
+
+        yield st.status_event(st.IMAGES_STARTING, "Reanudando imágenes pendientes")
+        pending_slots = extract_pending_illustration_scenes(text)
+        regenerable = [s for s in pending_slots if (s.prompt or "").strip()]
+        skipped = [s for s in pending_slots if not (s.prompt or "").strip()]
+        batch_n = max(1, int(batch_size))
+        yield IllustrationEvent(
+            type="log",
+            message=(
+                f"Pendientes={len(pending_slots)} regenerables={len(regenerable)} "
+                f"sin_prompt={len(skipped)} lote={batch_n}"
+            ),
+            data={
+                "pending": len(pending_slots),
+                "regenerable": len(regenerable),
+                "skipped_no_prompt": [s.id for s in skipped],
+                "batch_size": batch_n,
+            },
+        )
+        for slot in skipped:
+            yield IllustrationEvent(
+                type="log",
+                message=f"Omitida escena {slot.id}: sin prompt recuperable",
+                scene_id=slot.id,
+            )
+
+        if not regenerable:
+            yield st.status_event(st.IMAGES_SKIPPED, "No hay imágenes pendientes regenerables")
+            yield IllustrationEvent(
+                type="done",
+                message="sin pendientes regenerables",
+                content=text,
+            )
             return
 
-        yield st.status_event(st.IMAGES_INSERTING_ANCHORS, "Insertando anclas de imagen")
-        plan = with_unique_scene_ids(plan, base_content)
-        content = insert_scene_markers(base_content, plan.scenes)
-        extra_prompt = (prompt or "").strip()
-        for scene in plan.scenes:
-            forge_prompt = compose_forge_prompt(scene.prompt, extra_prompt)
-            content = replace_marker_with(
-                content, scene.id, _prompt_placeholder(scene.id, forge_prompt)
+        content = text
+        scenes = [SceneSpec(id=s.id, prompt=s.prompt.strip()) for s in regenerable]
+        for scene in scenes:
+            content = _replace_scene_slot(
+                content, scene.id, _prompt_placeholder(scene.id, scene.prompt)
             )
             yield IllustrationEvent(
                 type="placeholder",
                 scene_id=scene.id,
-                message=forge_prompt,
+                message=scene.prompt,
                 content=content,
-                data={"prompt": forge_prompt},
+                data={"prompt": scene.prompt},
             )
 
         yield st.status_event(st.IMAGES_LOADING_FORGE, "Cargando parámetros de generación")
@@ -259,9 +508,11 @@ class ImageIllustrationOrchestrator:
         except Exception as exc:
             yield IllustrationEvent(type="log", message=f"Error cargando último payload: {exc}")
             yield st.status_event(st.IMAGES_ERROR, "Error al cargar parámetros de Forge")
-            for scene in plan.scenes:
+            for scene in scenes:
                 content = _replace_scene_slot(
-                    content, scene.id, _error_placeholder(scene.id, str(exc))
+                    content,
+                    scene.id,
+                    _error_placeholder(scene.id, str(exc), scene.prompt),
                 )
                 yield IllustrationEvent(
                     type="error", scene_id=scene.id, message=str(exc), content=content
@@ -269,6 +520,33 @@ class ImageIllustrationOrchestrator:
             yield IllustrationEvent(type="done", message="fallo payload", content=content)
             return
 
+        yield from self._emit_payload_log(payload)
+
+        for batch_idx, chunk in enumerate(_iter_batches(scenes, batch_n), start=1):
+            yield IllustrationEvent(
+                type="log",
+                message=f"Generando restantes lote {batch_idx} ({len(chunk)} escenas)",
+                data={"batch": batch_idx, "scenes": len(chunk)},
+            )
+            pending = list(chunk)
+            content, pending = yield from _run_pass(
+                self.forge,
+                self.save_image,
+                self.url_for_saved,
+                pending,
+                payload,
+                content,
+                pass_name=f"restantes-{batch_idx}",
+                extra_prompt="",
+            )
+            content, pending = yield from self._retry_failed(
+                pending, payload, content, retries=retries, extra_prompt=""
+            )
+
+        yield st.status_event(st.IMAGES_DONE, "Imágenes restantes completadas")
+        yield IllustrationEvent(type="done", message="restantes completadas", content=content)
+
+    def _emit_payload_log(self, payload: LastGenerationPayload) -> Iterator[IllustrationEvent]:
         yield IllustrationEvent(
             type="log",
             message=(
@@ -283,18 +561,15 @@ class ImageIllustrationOrchestrator:
             },
         )
 
-        pending = list(plan.scenes)
-        content, pending = yield from _run_pass(
-            self.forge,
-            self.save_image,
-            self.url_for_saved,
-            pending,
-            payload,
-            content,
-            pass_name="inicial",
-            extra_prompt=extra_prompt,
-        )
-
+    def _retry_failed(
+        self,
+        pending: list[SceneSpec],
+        payload: LastGenerationPayload,
+        content: str,
+        *,
+        retries: int,
+        extra_prompt: str,
+    ) -> Iterator[IllustrationEvent]:
         attempt = 0
         while pending and attempt < max(0, retries):
             attempt += 1
@@ -318,6 +593,4 @@ class ImageIllustrationOrchestrator:
                 pass_name=f"retry-{attempt}",
                 extra_prompt=extra_prompt,
             )
-
-        yield st.status_event(st.IMAGES_DONE, "Ilustración completada")
-        yield IllustrationEvent(type="done", message="ilustración completa", content=content)
+        return (content, pending)

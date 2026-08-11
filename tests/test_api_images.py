@@ -140,9 +140,10 @@ def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10):
             captured["prompt"] = prompt
             captured["max_images"] = max_images
+            captured["batch_size"] = batch_size
             yield IllustrationEvent(type="done", message="ok", content=text)
 
     with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
@@ -152,12 +153,14 @@ def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
                 "prompt_model": "llama3.2",
                 "prompt_provider": "ollama",
                 "images_per_response": 1,
+                "batch_size": 7,
                 "retries": 0,
                 "prompt": "oil painting, detailed",
             },
         )
     assert res.status_code == 200
     assert captured["prompt"] == "oil painting, detailed"
+    assert captured["batch_size"] == 7
     assert _ndjson_lines(res)[-1]["type"] == "done"
 
 
@@ -244,6 +247,20 @@ def test_illustrate_request_requires_prompt_model_unless_use_chat_config():
     assert ok.use_chat_config is True
 
 
+def test_illustrate_request_allows_more_than_20_images_per_response():
+    from app.schemas import IllustrateRequest
+
+    req = IllustrateRequest(prompt_model="m", images_per_response=50)
+    assert req.images_per_response == 50
+
+
+def test_illustrate_request_batch_size_defaults_to_10():
+    from app.schemas import GenerateRemainingRequest, IllustrateRequest
+
+    assert IllustrateRequest(prompt_model="m").batch_size == 10
+    assert GenerateRemainingRequest().batch_size == 10
+
+
 def test_clear_photos_deletes_files_and_updates_content(client, db_session, tmp_path, monkeypatch):
     from app import crud
     from app.services.image_illustration import storage
@@ -299,6 +316,63 @@ def test_clear_photos_rejects_user_message(client, db_session):
     msg = crud.add_message(db_session, conv.id, "user", "hola")
     res = client.post(
         f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/clear-photos"
+    )
+    assert res.status_code == 400
+
+
+def test_generate_remaining_stream_regenerates_pending(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    content = (
+        'A\n<img src="/api/illustrated-images/keep.png" class="chat-illustration" />\n'
+        '<span class="chat-illustration-placeholder" data-scene="s1" data-prompt="storm">'
+        "Generando imagen…\n\nstorm</span>\nB"
+    )
+    msg = crud.add_message(db_session, conv.id, "assistant", content)
+
+    class FakeOrch:
+        def run_remaining(self, text, *, retries, batch_size=10):
+            assert retries == 0
+            assert batch_size == 5
+            assert "data-prompt" in text
+            new_content = (
+                'A\n<img src="/api/illustrated-images/keep.png" class="chat-illustration" />\n'
+                '<img src="/api/illustrated-images/s1.png" alt="escena s1" class="chat-illustration" />\nB'
+            )
+            yield IllustrationEvent(type="log", message="restantes")
+            yield IllustrationEvent(
+                type="image",
+                scene_id="s1",
+                content=new_content,
+                data={"filename": "s1.png", "params": {"prompt": "storm"}, "mode": "txt2img"},
+            )
+            yield IllustrationEvent(type="done", message="restantes completadas", content=new_content)
+
+    with patch("app.routers.api_images._build_forge_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/generate-remaining",
+            json={"retries": 0, "batch_size": 5, "debug": True},
+        )
+    assert res.status_code == 200
+    lines = _ndjson_lines(res)
+    assert lines[-1]["type"] == "done"
+    assert any(l["type"] == "image" for l in lines)
+    assert any(l["type"] == "log" for l in lines)
+    refreshed = crud.get_message(db_session, conv.id, msg.id)
+    assert refreshed is not None
+    assert "s1.png" in (refreshed.content or "")
+    assert "keep.png" in (refreshed.content or "")
+
+
+def test_generate_remaining_rejects_user_message(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "user", "hola")
+    res = client.post(
+        f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/generate-remaining",
+        json={"retries": 0},
     )
     assert res.status_code == 400
 

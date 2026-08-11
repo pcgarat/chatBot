@@ -1,4 +1,4 @@
-Última modificación: 2026-08-04 (`make start-verbose` en primer plano; log Forge con VERBOSE=1)
+Última modificación: 2026-08-11 (prompts LLM tras asignar huecos de párrafo)
 
 # Checklist: Ilustración de respuestas con Forge Neo
 
@@ -55,6 +55,8 @@
 - [x] **4.2** Eventos: log, placeholder, image, error, done.
 - [x] **4.3** Tests reintentos / fallo parcial / skip.
 - [x] **4.4** `compose_forge_prompt`: concatena prompt del panel (`escena. extra`); vacío no altera.
+- [x] **4.5** Cobertura por párrafo + redistribución a huecos al re-ilustrar (no repetir los mismos sitios).
+- [x] **4.6** Flujo invertido: se asignan huecos primero y el LLM escribe el prompt de cada párrafo asignado.
 
 **Verify:** ✅
 
@@ -76,6 +78,7 @@
 - [x] **5.5** Router en `main.py`.
 - [x] **5.6** `tests/test_api_images.py` (forward de `prompt` al orquestador).
 - [x] **5.7** E2E: `test_e2e_illustrate_rejects_non_assistant`.
+- [x] **5.8** `POST .../illustrations/generate-remaining` (NDJSON, sin planificador) + tests API/orquestador/content_ops.
 
 **Verify:** ✅ (suite no-e2e)
 
@@ -84,11 +87,12 @@
 ## 6. Frontend — pestaña Imágenes
 
 - [x] **6.1** Tab `imagenes`.
-- [x] **6.2** Controles: activar, N, provider+modelo, reintentos, **prompt** (Forge), **instrucciones de sistema** (LLM planificador).
-- [x] **6.3** Prefs en `localStorage` (incl. `prompt`, `prompt_system_instructions`, `use_chat_config`).
+- [x] **6.2** Controles: activar, N, **tamaño de lote**, provider+modelo, reintentos, **prompt** (Forge), **instrucciones de sistema** (LLM planificador).
+- [x] **6.3** Prefs en `localStorage` (incl. `prompt`, `prompt_system_instructions`, `use_chat_config`, `batch_size`).
 - [x] **6.4** Tras `done` del stream → `illustrate` (envía `prompt` + `prompt_system_instructions` / o chat config).
 - [x] **6.5** `prompt_system_instructions` se concatena al system base del ScenePlanner (no lo sustituye).
 - [x] **6.6** Check «Utilizar configuración del chat»: planificador usa provider/modelo/reglas/params de la conversación; deshabilita provider, modelo e instrucciones del panel.
+- [x] **6.7** Si `images_per_response` > `batch_size`: planificar y generar intercalados por lotes; `generate-remaining` también respeta el lote.
 
 **Verify:** manual pendiente en smoke.
 
@@ -104,6 +108,7 @@
 - [x] **7.6** Placeholder mientras genera: recuadro de color distinto con el prompt compuesto enviado a Forge; se sustituye por la imagen al completar.
 - [x] **7.7** Con debug de conversación ON: por cada escena, mensaje efímero tipo respuesta con Request/Response del LLM planificador (`include_prompt_debug`).
 - [x] **7.8** Re-ilustrar acumula imágenes (conserva imgs previas; ids de escena únicos). Stop en ventana debug aborta todas las generaciones en curso.
+- [x] **7.9** Menú ⋮ del mensaje: «Generar imágenes restantes» → `POST .../illustrations/generate-remaining` (sin LLM; regenera placeholders/errores con `data-prompt`; omite `⟦img:id⟧` sin prompt).
 
 **Verify:** manual pendiente en smoke.
 

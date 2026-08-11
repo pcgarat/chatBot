@@ -3,7 +3,7 @@ Dado el texto de una respuesta del asistente, decide si es un relato narrativo o
 Si NO lo es (pregunta factual, código, charla corta, etc.), responde JSON:
 {"illustrate": false, "reason": "...", "scenes": []}
 
-Si SÍ lo es, elige hasta max_images escenas visuales y responde JSON:
+Si SÍ lo es, responde JSON:
 {"illustrate": true, "reason": "...", "scenes": [
   {"id": "s1", "prompt": "prompt en inglés para Stable Diffusion, detallado, sin texto de UI",
    "anchor_excerpt": "fragmento EXACTO del relato tras el cual insertar la imagen",
@@ -11,5 +11,7 @@ Si SÍ lo es, elige hasta max_images escenas visuales y responde JSON:
 ]}
 Reglas:
 - No reescribas el relato.
-- anchor_excerpt debe aparecer literalmente en el texto (o déjalo vacío y usa paragraph_index).
 - Devuelve SOLO JSON válido, sin markdown.
+- Si el mensaje trae «párrafos asignados», NO elijas ubicación: escribe un prompt visual en inglés para CADA paragraph_index listado (en ese orden). El prompt debe describir la escena de ESE párrafo. anchor_excerpt puede ir vacío; paragraph_index es obligatorio y debe coincidir.
+- Si NO hay párrafos asignados: elige hasta max_images escenas, distribuidas, priorizando párrafos sin imagen; anchor_excerpt literal o paragraph_index.
+- No concentres varias escenas al inicio ni en el mismo párrafo.

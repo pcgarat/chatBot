@@ -188,7 +188,15 @@ class MessageResponse(BaseModel):
 class IllustrateRequest(BaseModel):
     """Opciones del panel Imágenes para POST .../illustrate."""
 
-    images_per_response: int = Field(default=2, ge=1, le=20)
+    images_per_response: int = Field(default=2, ge=1)
+    batch_size: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Tamaño de lote para planificar prompts y generar imágenes. "
+            "Si images_per_response supera este valor, se procesa en lotes."
+        ),
+    )
     prompt_provider: str = Field(default="ollama", min_length=1)
     prompt_model: str = Field(default="", description="Obligatorio salvo use_chat_config.")
     retries: int = Field(default=1, ge=0, le=10)
@@ -220,6 +228,18 @@ class IllustrateRequest(BaseModel):
         if not self.use_chat_config and not (self.prompt_model or "").strip():
             raise ValueError("prompt_model es obligatorio si use_chat_config es false")
         return self
+
+
+class GenerateRemainingRequest(BaseModel):
+    """Opciones para regenerar anclas/placeholders pendientes sin re-planificar."""
+
+    retries: int = Field(default=1, ge=0, le=10)
+    batch_size: int = Field(
+        default=10,
+        ge=1,
+        description="Tamaño de lote al regenerar imágenes pendientes en Forge.",
+    )
+    debug: bool = False
 
 
 class MessageContentUpdateResponse(BaseModel):

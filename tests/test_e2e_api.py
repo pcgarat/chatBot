@@ -946,7 +946,7 @@ def test_e2e_illustrate_rejects_non_assistant(client, ollama_available):
 
 
 def test_e2e_illustration_edit_rejects_user_message(client, ollama_available):
-    """clear-photos y prune-orphans solo aceptan mensajes assistant."""
+    """clear-photos, prune-orphans y generate-remaining solo aceptan mensajes assistant."""
     model_name = _get_first_ollama_model(client)
     r_create = client.post(
         "/api/conversations",
@@ -963,9 +963,10 @@ def test_e2e_illustration_edit_rejects_user_message(client, ollama_available):
     msgs = r_list.json()
     user = next((m for m in msgs if m.get("role") == "user"), None)
     assert user and user.get("id")
-    for action in ("clear-photos", "prune-orphans"):
+    for action in ("clear-photos", "prune-orphans", "generate-remaining"):
         r = client.post(
-            f"/api/conversations/{cid}/messages/{user['id']}/illustrations/{action}"
+            f"/api/conversations/{cid}/messages/{user['id']}/illustrations/{action}",
+            json={"retries": 0} if action == "generate-remaining" else None,
         )
         assert r.status_code == 400, action
 
