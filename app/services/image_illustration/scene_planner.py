@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
+from app.config import settings
 from app.providers.base import LLMProvider
 from app.services.image_illustration.coverage import (
     ParagraphInfo,
@@ -53,6 +55,17 @@ def compose_planner_system_prompt(base: str, extra_instructions: str | None = No
     if not core:
         return extra
     return f"{core}\n\n--- Instrucciones adicionales ---\n{extra}"
+
+
+def log_planner_exchange(debug_request: str, debug_response: str) -> None:
+    """Si VERBOSE=1, vuelca a stderr request y respuesta raw del ScenePlanner."""
+    if not settings.verbose:
+        return
+    print("--- ScenePlanner request ---", file=sys.stderr, flush=True)
+    print(debug_request, file=sys.stderr, flush=True)
+    print("--- ScenePlanner response ---", file=sys.stderr, flush=True)
+    print(debug_response, file=sys.stderr, flush=True)
+    print("--- fin ScenePlanner ---", file=sys.stderr, flush=True)
 
 
 def extract_json_object(text: str) -> dict[str, Any]:
@@ -244,12 +257,16 @@ class LlmScenePlanner:
         if self.extra_body:
             payload.update(self.extra_body)
         debug_request = json.dumps(payload, ensure_ascii=False, indent=2)
+        logged = False
         try:
             raw = self.provider.chat(self.model, messages, extra_body=self.extra_body)
+            debug_response = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
             self.last_debug = {
                 "debug_request": debug_request,
-                "debug_response": raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False),
+                "debug_response": debug_response,
             }
+            log_planner_exchange(debug_request, debug_response)
+            logged = True
             data = extract_json_object(raw)
             plan = plan_from_dict(data, limit)
             if plan.illustrate and plan.scenes and assigned:
@@ -272,8 +289,11 @@ class LlmScenePlanner:
                 plan = ScenePlan(illustrate=True, reason=plan.reason, scenes=filtered)
             return plan
         except (ValueError, TypeError, json.JSONDecodeError, ConnectionError, OSError) as exc:
+            error_response = json.dumps({"error": str(exc)}, ensure_ascii=False, indent=2)
+            if not logged:
+                log_planner_exchange(debug_request, error_response)
             self.last_debug = {
                 "debug_request": debug_request,
-                "debug_response": json.dumps({"error": str(exc)}, ensure_ascii=False, indent=2),
+                "debug_response": error_response,
             }
             return ScenePlan(illustrate=False, reason=f"planificador falló: {exc}", scenes=[])

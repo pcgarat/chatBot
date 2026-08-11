@@ -104,6 +104,56 @@ def test_planner_stores_last_debug_request_and_response():
     ]
 
 
+def test_planner_logs_request_and_response_to_stderr_when_verbose(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "app.services.image_illustration.scene_planner.settings.verbose",
+        True,
+    )
+    raw = json.dumps(
+        {
+            "illustrate": True,
+            "reason": "relato",
+            "scenes": [{"id": "s1", "prompt": "a lighthouse", "anchor_excerpt": "faro"}],
+        }
+    )
+    planner = LlmScenePlanner(FakeProvider(raw), model="m1", system_prompt="SYS")
+    planner.plan("Había un faro.", max_images=1)
+    err = capsys.readouterr().err
+    assert "ScenePlanner request" in err
+    assert '"model": "m1"' in err or '"model":"m1"' in err
+    assert "Había un faro." in err
+    assert "ScenePlanner response" in err
+    assert "a lighthouse" in err
+    assert "fin ScenePlanner" in err
+
+
+def test_planner_skips_stderr_log_when_not_verbose(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "app.services.image_illustration.scene_planner.settings.verbose",
+        False,
+    )
+    raw = json.dumps({"illustrate": False, "reason": "código", "scenes": []})
+    LlmScenePlanner(FakeProvider(raw), model="m1", system_prompt="SYS").plan(
+        "def foo(): pass", max_images=1
+    )
+    err = capsys.readouterr().err
+    assert "ScenePlanner" not in err
+
+
+def test_planner_logs_stderr_on_error_when_verbose(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "app.services.image_illustration.scene_planner.settings.verbose",
+        True,
+    )
+    planner = LlmScenePlanner(FakeProvider("esto no es json"), model="m1", system_prompt="SYS")
+    plan = planner.plan("Érase una vez...", max_images=1)
+    assert plan.illustrate is False
+    err = capsys.readouterr().err
+    assert "ScenePlanner request" in err
+    assert "ScenePlanner response" in err
+    assert "esto no es json" in err or "error" in err.lower()
+
+
 def test_planner_includes_already_planned_in_user_message():
     provider = FakeProvider(
         json.dumps({"illustrate": False, "reason": "nada más", "scenes": []})
