@@ -38,7 +38,7 @@ help:
 	@echo "  make mutation-test  Tests de mutación con mutmut (config en setup.cfg); genera .mutmut-cache"
 	@echo "  make status  Mostrar estado del entorno y del servidor"
 	@echo "  make clean   Parar la app y borrar .server.pid (no toca Docker ni Chroma)"
-	@echo "  make start-verbose  Arrancar en primer plano con VERBOSE=1 (stderr: LLM + Forge Neo)"
+	@echo "  make start-verbose  Arrancar en primer plano con VERBOSE=1 (stderr: LLM + ScenePlanner + Forge Neo)"
 	@echo ""
 	@echo "  ChromaDB (solo gestión del contenedor Docker):"
 	@echo "  make chroma-up     Levantar contenedor (puerto 8001); datos en ./data/chroma"
@@ -157,7 +157,7 @@ start: $(VENV)/bin/uvicorn
 start-verbose: $(VENV)/bin/uvicorn
 	@$(MAKE) stop
 	@echo "Iniciando en primer plano (VERBOSE=1, --reload) en http://0.0.0.0:$(PORT)"
-	@echo "Stderr: payloads LLM + cada petición a Forge Neo (prompt, modelo, sampler, steps, seed, …)."
+	@echo "Stderr: payloads LLM + request/response ScenePlanner + cada petición a Forge Neo."
 	@echo "Ctrl+C para detener."
 	@VERBOSE=1 $(PYTHON_RUN) run.py -v --reload --host 0.0.0.0 --port $(PORT)
 

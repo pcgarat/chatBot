@@ -64,7 +64,7 @@ ENV_VARS_TO_SYNC = [
 class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     database_url: str = "sqlite:///./chatbot.db"
-    verbose: bool = Field(False, validation_alias="VERBOSE")  # VERBOSE=1 o -v: volcar RAG + LLM + Forge Neo en stderr
+    verbose: bool = Field(False, validation_alias="VERBOSE")  # VERBOSE=1 o -v: RAG + LLM + ScenePlanner + Forge Neo en stderr
     # RAG con ChromaDB + embeddings con Ollama (modelo local)
     chroma_host: str = Field(default="http://localhost:8001", validation_alias="CHROMA_HOST")
     ollama_embedding_model: str = Field(
