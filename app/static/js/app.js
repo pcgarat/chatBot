@@ -2886,6 +2886,121 @@
     syncFontSizeButtons(rem);
   }
 
+  /**
+   * Mensajes (.message-row) que intersectan el viewport del stream,
+   * aunque solo se vean parcialmente.
+   */
+  function getPartiallyVisibleMessageRows(container) {
+    if (!container) return [];
+    const rows = Array.from(container.querySelectorAll(".message-row"));
+    if (!rows.length) return [];
+    const cRect = container.getBoundingClientRect();
+    return rows.filter((row) => {
+      const r = row.getBoundingClientRect();
+      return r.bottom > cRect.top + 0.5 && r.top < cRect.bottom - 0.5;
+    });
+  }
+
+  /** Alinea el top del mensaje con el top del panel de scroll. */
+  function scrollMessageStartIntoView(container, messageEl) {
+    if (!container || !messageEl) return;
+    const cRect = container.getBoundingClientRect();
+    const mRect = messageEl.getBoundingClientRect();
+    container.scrollTop += mRect.top - cRect.top;
+  }
+
+  /** Alinea el bottom del mensaje con el bottom del panel de scroll. */
+  function scrollMessageEndIntoView(container, messageEl) {
+    if (!container || !messageEl) return;
+    const cRect = container.getBoundingClientRect();
+    const mRect = messageEl.getBoundingClientRect();
+    container.scrollTop += mRect.bottom - cRect.bottom;
+  }
+
+  function scrollToFirstVisibleMessageStart() {
+    const container = el.messagesContainer;
+    const visible = getPartiallyVisibleMessageRows(container);
+    if (!visible.length) return;
+    scrollMessageStartIntoView(container, visible[0]);
+  }
+
+  function scrollToLastVisibleMessageEnd() {
+    const container = el.messagesContainer;
+    const visible = getPartiallyVisibleMessageRows(container);
+    if (!visible.length) return;
+    scrollMessageEndIntoView(container, visible[visible.length - 1]);
+  }
+
+  /**
+   * Rail flotante ↑/↓ a media altura: aparece al mover el ratón por el stream,
+   * se oculta en idle salvo si el puntero está sobre el rail.
+   */
+  function initConversationScrollNav() {
+    const wrap = document.querySelector(".chat-stream-wrap");
+    const nav = document.getElementById("chat-scroll-nav");
+    const btnUp = document.getElementById("btn-scroll-msg-up");
+    const btnDown = document.getElementById("btn-scroll-msg-down");
+    if (!wrap || !nav || !btnUp || !btnDown) return;
+
+    const IDLE_HIDE_MS = 1200;
+    let hideTimer = null;
+    let pointerOverNav = false;
+
+    function setVisible(visible) {
+      nav.classList.toggle("is-visible", visible);
+      nav.setAttribute("aria-hidden", visible ? "false" : "true");
+    }
+
+    function clearHideTimer() {
+      if (hideTimer != null) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    }
+
+    function scheduleHide() {
+      clearHideTimer();
+      hideTimer = setTimeout(function () {
+        hideTimer = null;
+        if (!pointerOverNav) setVisible(false);
+      }, IDLE_HIDE_MS);
+    }
+
+    function revealFromActivity() {
+      setVisible(true);
+      if (!pointerOverNav) scheduleHide();
+      else clearHideTimer();
+    }
+
+    wrap.addEventListener("mousemove", revealFromActivity);
+    wrap.addEventListener("mouseleave", function () {
+      pointerOverNav = false;
+      clearHideTimer();
+      setVisible(false);
+    });
+
+    nav.addEventListener("mouseenter", function () {
+      pointerOverNav = true;
+      clearHideTimer();
+      setVisible(true);
+    });
+    nav.addEventListener("mouseleave", function () {
+      pointerOverNav = false;
+      scheduleHide();
+    });
+
+    btnUp.addEventListener("click", function (e) {
+      e.preventDefault();
+      scrollToFirstVisibleMessageStart();
+      revealFromActivity();
+    });
+    btnDown.addEventListener("click", function (e) {
+      e.preventDefault();
+      scrollToLastVisibleMessageEnd();
+      revealFromActivity();
+    });
+  }
+
   function setConversationFontSize(delta) {
     const current = getStoredFontSize();
     let next = Math.round((current + delta) / FONT_SIZE_STEP) * FONT_SIZE_STEP;
@@ -3244,6 +3359,7 @@
 
   initSidebarAccordion();
   initConversationFontSize();
+  initConversationScrollNav();
   initIllustrationMetaModal();
   document.addEventListener("click", function () {
     closeAllMessageContextMenus();
