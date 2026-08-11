@@ -1,9 +1,45 @@
 """Botones flotantes ↑/↓ para saltar al inicio/fin del mensaje visible en el stream."""
 from pathlib import Path
+import re
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
 APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
 STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+
+
+def _fn_body(js: str, name: str) -> str:
+    marker = f"function {name}"
+    start = js.index(marker)
+    return js[start : start + 900]
+
+
+def compute_scroll_top_to_align_end(message_top: float, message_height: float, client_height: float) -> float:
+    """ScrollTop absoluto para dejar el bottom del mensaje al bottom del viewport."""
+    return max(0.0, message_top + message_height - client_height)
+
+
+def test_align_end_math_reaches_bottom_in_one_step():
+    """Reproduce el fallo: un único delta incompleto no basta; el target absoluto sí."""
+    message_top = 0.0
+    message_height = 2000.0
+    client_height = 500.0
+    target = compute_scroll_top_to_align_end(message_top, message_height, client_height)
+    assert target == 1500.0
+
+    # Simula el bug reportado: primera pasada se queda corta (p.ej. flex/subpixel).
+    first_pass_scroll = 1400.0
+    visible_bottom = first_pass_scroll + client_height
+    residual = (message_top + message_height) - visible_bottom
+    assert residual == 100.0
+    assert first_pass_scroll + residual == target
+
+
+def test_scroll_message_end_corrects_residual_after_layout():
+    """El click ↓ debe corregir residual tras layout; si no, hace falta un segundo click."""
+    body = _fn_body(APP_JS.read_text(encoding="utf-8"), "scrollMessageEndIntoView")
+    assert "clientHeight" in body
+    assert "requestAnimationFrame" in body
+    assert re.search(r"scrollTop\s*=", body), "debe asignar scrollTop absoluto, no solo += delta"
 
 
 def test_index_has_scroll_nav_markup():

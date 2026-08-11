@@ -1310,6 +1310,19 @@
     });
   }
 
+  /** Tras salir de display:none, fuerza el fetch de imgs lazy que quedaron a 0×0. */
+  function kickLazyIllustrations(root) {
+    if (!root) return;
+    root.querySelectorAll("img.chat-illustration").forEach(function (img) {
+      if (img.naturalWidth > 0) return;
+      try {
+        img.loading = "eager";
+      } catch (_) {}
+      const src = img.getAttribute("src");
+      if (src) img.src = src;
+    });
+  }
+
   function closeIllustrationMetaModal() {
     const modal = document.getElementById("illustration-meta-modal");
     if (modal) modal.hidden = true;
@@ -2012,6 +2025,7 @@
           wrap.classList.remove("is-collapsed");
           btn.setAttribute("aria-expanded", "true");
           btn.textContent = "Show less";
+          kickLazyIllustrations(wrap);
         } else {
           expandedMessageKeys.delete(key);
           wrap.classList.add("is-collapsed");
@@ -2901,20 +2915,37 @@
     });
   }
 
+  /** Posición Y del elemento respecto al contenido scrolleable del contenedor. */
+  function messageOffsetInContainer(container, messageEl) {
+    const cRect = container.getBoundingClientRect();
+    const mRect = messageEl.getBoundingClientRect();
+    return mRect.top - cRect.top + container.scrollTop;
+  }
+
   /** Alinea el top del mensaje con el top del panel de scroll. */
   function scrollMessageStartIntoView(container, messageEl) {
     if (!container || !messageEl) return;
-    const cRect = container.getBoundingClientRect();
-    const mRect = messageEl.getBoundingClientRect();
-    container.scrollTop += mRect.top - cRect.top;
+    const top = messageOffsetInContainer(container, messageEl);
+    container.scrollTop = Math.max(0, top);
+    requestAnimationFrame(function () {
+      const residual =
+        messageEl.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      if (Math.abs(residual) > 0.5) container.scrollTop += residual;
+    });
   }
 
   /** Alinea el bottom del mensaje con el bottom del panel de scroll. */
   function scrollMessageEndIntoView(container, messageEl) {
     if (!container || !messageEl) return;
-    const cRect = container.getBoundingClientRect();
-    const mRect = messageEl.getBoundingClientRect();
-    container.scrollTop += mRect.bottom - cRect.bottom;
+    const top = messageOffsetInContainer(container, messageEl);
+    const height = messageEl.getBoundingClientRect().height;
+    container.scrollTop = Math.max(0, top + height - container.clientHeight);
+    // Segunda pasada: en flex/overflow el primer scrollTop a veces se queda corto.
+    requestAnimationFrame(function () {
+      const residual =
+        messageEl.getBoundingClientRect().bottom - container.getBoundingClientRect().bottom;
+      if (Math.abs(residual) > 0.5) container.scrollTop += residual;
+    });
   }
 
   function scrollToFirstVisibleMessageStart() {

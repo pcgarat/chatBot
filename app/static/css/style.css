@@ -3332,9 +3332,14 @@ select.selector-control {
 .chat-illustration {
   display: block;
   max-width: 100%;
+  width: 100%;
   height: auto;
+  /* Reserva alto antes del decode: sin esto, loading=lazy + height:auto = 0px y no carga. */
+  aspect-ratio: 3 / 2;
+  min-height: 8rem;
   margin: 0;
   border-radius: 6px;
+  background: color-mix(in srgb, var(--stroke-card, #ccc) 35%, transparent);
 }
 
 .chat-illustration-frame {
