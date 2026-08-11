@@ -140,6 +140,28 @@ def _prompt_from_pending_span(span_html: str) -> str:
     return prompt
 
 
+def extract_existing_illustration_prompts(content: str) -> list[str]:
+    """
+    Prompts ya usados en el mensaje (data-prompt de img, placeholder o error).
+    Orden de aparición; sin vacíos ni duplicados consecutivos exactos.
+    """
+    from app.services.image_illustration.anchors import _ILLUSTRATION_ARTIFACT_RE
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in _ILLUSTRATION_ARTIFACT_RE.finditer(content or ""):
+        raw = match.group(0)
+        attr = _DATA_PROMPT_RE.search(raw)
+        if not attr:
+            continue
+        prompt = html.unescape(attr.group(2)).strip()
+        if not prompt or prompt in seen:
+            continue
+        seen.add(prompt)
+        out.append(prompt)
+    return out
+
+
 def _normalize_blank_lines(text: str) -> str:
     cleaned = re.sub(r"\n{3,}", "\n\n", text or "")
     return cleaned.strip()

@@ -19,6 +19,7 @@ class FakePlanner:
         self.last_already_planned = None
         self.last_coverage_block = None
         self.last_assigned_paragraphs = None
+        self.last_existing_prompts = None
 
     def plan(
         self,
@@ -27,11 +28,13 @@ class FakePlanner:
         already_planned=None,
         coverage_block=None,
         assigned_paragraphs=None,
+        existing_prompts=None,
     ):
         self.last_text = text
         self.last_already_planned = already_planned
         self.last_coverage_block = coverage_block
         self.last_assigned_paragraphs = assigned_paragraphs
+        self.last_existing_prompts = existing_prompts
         return self._scene_plan
 
 
@@ -49,6 +52,7 @@ class SequencingPlanner:
         already_planned=None,
         coverage_block=None,
         assigned_paragraphs=None,
+        existing_prompts=None,
     ):
         self.calls.append(
             {
@@ -57,6 +61,7 @@ class SequencingPlanner:
                 "text": text,
                 "coverage_block": coverage_block,
                 "assigned": list(assigned_paragraphs or []),
+                "existing_prompts": list(existing_prompts or []),
             }
         )
         if not self._plans:

@@ -70,6 +70,12 @@ def test_delete_conversation(db_session):
     ok = crud.delete_conversation(db_session, conv.id)
     assert ok is True
     assert crud.get_conversation(db_session, conv.id) is None
+    # Soft-delete: la fila sigue existiendo
+    from app.models import Conversation
+
+    row = db_session.query(Conversation).filter(Conversation.id == conv.id).first()
+    assert row is not None
+    assert row.deleted_at is not None
 
     assert crud.delete_conversation(db_session, "00000000-0000-0000-0000-000000000000") is False
 

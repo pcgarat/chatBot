@@ -56,16 +56,38 @@ def db_session(db_engine):
 
 
 @pytest.fixture
-def client(db_session):
+def client(db_session, db_engine):
+    """Cliente HTTP con la misma BD en memoria que db_session (incluye SessionLocal)."""
+    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+
     def override_get_db():
         yield db_session
+
+    from app import db as app_db
+    from app.routers import api_images
+
+    prev_db_session_local = app_db.SessionLocal
+    prev_images_session_local = api_images.SessionLocal
+    app_db.SessionLocal = TestSessionLocal
+    api_images.SessionLocal = TestSessionLocal
 
     app.dependency_overrides[get_db] = override_get_db
     try:
         with TestClient(app) as c:
+            _orig_request = c.request
+
+            def request_and_expire(*args, **kwargs):
+                response = _orig_request(*args, **kwargs)
+                # SessionLocal escribe en otra Session; invalidar identidad de db_session.
+                db_session.expire_all()
+                return response
+
+            c.request = request_and_expire  # type: ignore[method-assign]
             yield c
     finally:
         app.dependency_overrides.clear()
+        app_db.SessionLocal = prev_db_session_local
+        api_images.SessionLocal = prev_images_session_local
 
 
 # ---------------------------------------------------------------------------

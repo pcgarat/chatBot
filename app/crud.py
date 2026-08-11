@@ -77,14 +77,30 @@ def create_conversation(
     return conv
 
 
-def get_conversation(db: Session, conversation_id: str) -> Conversation | None:
-    return db.query(Conversation).filter(Conversation.id == conversation_id).first()
+def get_conversation(
+    db: Session, conversation_id: str, *, include_deleted: bool = False
+) -> Conversation | None:
+    q = db.query(Conversation).filter(Conversation.id == conversation_id)
+    if not include_deleted:
+        q = q.filter(Conversation.deleted_at.is_(None))
+    return q.first()
 
 
 def list_conversations(db: Session) -> list[Conversation]:
     return (
         db.query(Conversation)
+        .filter(Conversation.deleted_at.is_(None))
         .order_by(func.coalesce(Conversation.last_message_at, Conversation.updated_at).desc())
+        .all()
+    )
+
+
+def list_deleted_conversations(db: Session) -> list[Conversation]:
+    """Conversaciones en papelera (soft-deleted), más recientes primero."""
+    return (
+        db.query(Conversation)
+        .filter(Conversation.deleted_at.isnot(None))
+        .order_by(Conversation.deleted_at.desc())
         .all()
     )
 
@@ -140,12 +156,24 @@ def update_conversation(
 
 
 def delete_conversation(db: Session, conversation_id: str) -> bool:
+    """Soft-delete: marca deleted_at. Los mensajes y metadatos se conservan."""
     conv = get_conversation(db, conversation_id)
     if not conv:
         return False
-    db.delete(conv)
+    conv.deleted_at = datetime.utcnow()
     db.commit()
     return True
+
+
+def restore_conversation(db: Session, conversation_id: str) -> Conversation | None:
+    """Saca una conversación de la papelera."""
+    conv = get_conversation(db, conversation_id, include_deleted=True)
+    if not conv or conv.deleted_at is None:
+        return None
+    conv.deleted_at = None
+    db.commit()
+    db.refresh(conv)
+    return conv
 
 
 def get_messages(db: Session, conversation_id: str) -> list[Message]:

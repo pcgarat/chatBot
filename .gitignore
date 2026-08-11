@@ -52,3 +52,6 @@ Thumbs.db
 *.log
 logs/
 docker-neo
+# SQLite temporales
+*.db-shm
+*.db-wal

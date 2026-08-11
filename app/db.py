@@ -1,18 +1,32 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app.config import settings
 
-# SQLite necesita connect_args para permitir acceso desde múltiples hilos en FastAPI
+# SQLite: varios writers (stream NDJSON + UI) sin 'database is locked' inmediato.
+# timeout = espera del driver; busy_timeout/WAL = pragmas por conexión.
 connect_args = {}
+_SQLITE_BUSY_TIMEOUT_MS = 30_000
 if settings.database_url.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+    connect_args["timeout"] = _SQLITE_BUSY_TIMEOUT_MS / 1000.0
 
 engine = create_engine(
     settings.database_url,
     connect_args=connect_args,
     echo=False,
 )
+
+if settings.database_url.startswith("sqlite"):
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_on_connect(dbapi_conn, _connection_record):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute(f"PRAGMA busy_timeout={_SQLITE_BUSY_TIMEOUT_MS}")
+        cur.close()
+
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -102,3 +116,10 @@ def init_db():
                 conn.commit()
             except Exception:
                 conn.rollback()
+    # Soft-delete de conversaciones (papelera)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN deleted_at DATETIME"))
+            conn.commit()
+        except Exception:
+            conn.rollback()

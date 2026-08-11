@@ -123,23 +123,9 @@ def insert_scene_markers(text: str, scenes: list[SceneSpec]) -> str:
 
 
 def _resolve_insert_index(text: str, scene: SceneSpec) -> int:
-    excerpt = (scene.anchor_excerpt or "").strip()
-    if excerpt:
-        pos = text.find(excerpt)
-        if pos >= 0:
-            return pos + len(excerpt)
-    if scene.paragraph_index is not None:
-        paragraphs = text.split("\n\n")
-        if 0 <= scene.paragraph_index < len(paragraphs):
-            # índice al final del párrafo N dentro del texto original
-            # reconstruir offset
-            offset = 0
-            for i, para in enumerate(paragraphs):
-                end = offset + len(para)
-                if i == scene.paragraph_index:
-                    return end
-                offset = end + 2  # \n\n
-    return len(text)
+    from app.services.image_illustration.coverage import insert_offset_for_scene
+
+    return insert_offset_for_scene(text, scene)
 
 
 def replace_marker_with(content: str, scene_id: str, replacement: str) -> str:

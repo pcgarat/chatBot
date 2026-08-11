@@ -199,6 +199,12 @@ def list_conversations(db: Session = Depends(get_db)):
     return convs
 
 
+@router.get("/conversations/deleted", response_model=list[ConversationListItem])
+def list_deleted_conversations(db: Session = Depends(get_db)):
+    """Papelera: conversaciones soft-deleted (recuperables)."""
+    return crud.list_deleted_conversations(db)
+
+
 def _get_resolved_instructions(conv, db) -> list[dict]:
     """Devuelve system_instructions resueltas: desde instruction_ids (prioridad) o desde system_instructions legado."""
     ids = _parse_instruction_ids(getattr(conv, "instruction_ids", None))
@@ -323,11 +329,45 @@ def update_conversation(
 
 @router.delete("/conversations/{conversation_id}", status_code=204)
 def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
+    """Soft-delete: oculta la conversación; no borra mensajes ni Chroma."""
     ok = crud.delete_conversation(db, conversation_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    rag.delete_conversation_documents(conversation_id)
     return None
+
+
+@router.post("/conversations/{conversation_id}/restore", response_model=ConversationOut)
+def restore_conversation(conversation_id: str, db: Session = Depends(get_db)):
+    """Restaura una conversación de la papelera."""
+    conv = crud.restore_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada en la papelera")
+    messages = [
+        MessageInChat(
+            role=m.role,
+            content=m.content,
+            id=m.id,
+            debug_request=m.debug_request_json if m.role == "assistant" else None,
+            debug_response=m.debug_response_raw if m.role == "assistant" else None,
+        )
+        for m in crud.get_messages(db, conversation_id)
+    ]
+    resolved = _get_resolved_instructions(conv, db)
+    return ConversationOut(
+        id=conv.id,
+        title=conv.title,
+        model_id=conv.model_id,
+        provider=conv.provider,
+        system_instruction_global=conv.system_instruction_global,
+        system_instructions=resolved,
+        inject_instruction_every=conv.inject_instruction_every,
+        model_params=_parse_model_params(getattr(conv, "model_params", None)),
+        history_turns=getattr(conv, "history_turns", None),
+        instruction_override=getattr(conv, "instruction_override", None),
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
+        messages=messages,
+    )
 
 
 @router.delete("/conversations/{conversation_id}/messages/last", status_code=204)

@@ -29,8 +29,9 @@ Reglas:
 - No reescribas el relato.
 - Devuelve SOLO JSON válido, sin markdown.
 - Si el mensaje trae «párrafos asignados», NO elijas ubicación: escribe un prompt visual en inglés para CADA paragraph_index listado (en ese orden). El prompt debe describir la escena de ESE párrafo. anchor_excerpt puede ir vacío; paragraph_index es obligatorio y debe coincidir.
-- Si NO hay párrafos asignados: elige hasta max_images escenas, distribuidas, priorizando párrafos sin imagen; anchor_excerpt literal o paragraph_index.
+- Si NO hay párrafos asignados: elige hasta max_images escenas repartidas a lo largo del relato (puntos medios entre imágenes existentes); anchor_excerpt literal o paragraph_index.
 - No concentres varias escenas al inicio ni en el mismo párrafo.
+- Si el mensaje lista prompts ya usados, NO generes escenas visualmente similares (mismo sujeto, pose, vestuario, encuadre o momento). Cada prompt nuevo debe aportar una escena distinta del relato.
 """
 
 
@@ -102,25 +103,44 @@ def plan_from_dict(data: dict[str, Any], max_images: int) -> ScenePlan:
     return ScenePlan(illustrate=illustrate and bool(scenes), reason=reason, scenes=scenes)
 
 
-def _already_planned_block(already_planned: list[SceneSpec] | None) -> str:
+def _already_planned_block(
+    already_planned: list[SceneSpec] | None,
+    *,
+    existing_prompts: list[str] | None = None,
+) -> str:
     scenes = already_planned or []
-    if not scenes:
-        return ""
-    lines: list[str] = []
+    prompts = [p.strip() for p in (existing_prompts or []) if (p or "").strip()]
     for s in scenes:
-        excerpt = (s.anchor_excerpt or "").strip()
-        if excerpt:
-            lines.append(f'- id={s.id} anchor_excerpt="{excerpt[:160]}"')
-        elif s.paragraph_index is not None:
-            lines.append(f"- id={s.id} paragraph_index={s.paragraph_index}")
-        else:
-            lines.append(f"- id={s.id}")
-    return (
-        f"Ya hay {len(scenes)} escenas planificadas; NO las repitas ni reutilices las mismas anclas. "
-        "Elige solo escenas NUEVAS en otras partes del relato.\n"
-        + "\n".join(lines)
-        + "\n\n"
-    )
+        p = (s.prompt or "").strip()
+        if p and p not in prompts:
+            prompts.append(p)
+    if not scenes and not prompts:
+        return ""
+
+    lines: list[str] = []
+    if scenes:
+        lines.append(
+            f"Ya hay {len(scenes)} ubicaciones con ilustración; "
+            "NO reutilices las mismas anclas ni el mismo párrafo."
+        )
+        for s in scenes:
+            excerpt = (s.anchor_excerpt or "").strip()
+            if excerpt:
+                lines.append(f'- id={s.id} anchor_excerpt="{excerpt[:160]}"')
+            elif s.paragraph_index is not None:
+                lines.append(f"- id={s.id} paragraph_index={s.paragraph_index}")
+            else:
+                lines.append(f"- id={s.id}")
+    if prompts:
+        lines.append(
+            "Prompts visuales YA usados. NO generes imágenes similares "
+            "(mismo sujeto, pose, encuadre, vestuario o escena casi igual). "
+            "Varía momento narrativo, composición y detalles:"
+        )
+        for p in prompts:
+            clipped = p if len(p) <= 220 else p[:219] + "…"
+            lines.append(f'- "{clipped}"')
+    return "\n".join(lines) + "\n\n"
 
 
 def _assigned_paragraphs_block(paragraphs: list[ParagraphInfo]) -> str:
@@ -192,13 +212,16 @@ class LlmScenePlanner:
         already_planned: list[SceneSpec] | None = None,
         coverage_block: str | None = None,
         assigned_paragraphs: list[ParagraphInfo] | None = None,
+        existing_prompts: list[str] | None = None,
     ) -> ScenePlan:
         self.last_debug = None
         assigned = list(assigned_paragraphs or [])
         limit = len(assigned) if assigned else max_images
         if limit <= 0:
             return ScenePlan(illustrate=False, reason="max_images<=0", scenes=[])
-        already_block = _already_planned_block(already_planned)
+        already_block = _already_planned_block(
+            already_planned, existing_prompts=existing_prompts
+        )
         coverage = (coverage_block or "").strip()
         coverage_section = f"{coverage}\n" if coverage else ""
         assigned_section = _assigned_paragraphs_block(assigned) if assigned else ""

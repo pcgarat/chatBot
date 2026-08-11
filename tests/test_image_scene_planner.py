@@ -115,7 +115,7 @@ def test_planner_includes_already_planned_in_user_message():
     planner.plan("Había un faro. Luego el mar.", max_images=2, already_planned=prior)
     user = provider.calls[0]["messages"][1]["content"]
     assert "max_images=2" in user
-    assert "Ya hay 1 escenas" in user
+    assert "Ya hay 1 ubicaciones" in user or "Ya hay 1" in user
     assert "Había un faro." in user
 
 

@@ -19,15 +19,56 @@ def test_insert_after_anchor_excerpt():
     assert "Luego salió el dragón." in out
 
 
-def test_insert_paragraph_fallback():
-    text = "Párrafo uno.\n\nPárrafo dos.\n\nPárrafo tres."
+def test_insert_by_paragraph_index_skips_image_only_blocks():
+    """
+    Con imágenes en bloques propios, paragraph_index de cobertura (huecos)
+    no debe resolverse con split('\\n\\n') crudo (pegaría la ancla al <img>).
+    """
+    text = (
+        "Párrafo uno del relato.\n\n"
+        '<img src="/api/illustrated-images/a.png" class="chat-illustration" />\n\n'
+        "Párrafo dos todavía libre.\n\n"
+        "Párrafo tres también libre."
+    )
     scenes = [
-        SceneSpec(id="s2", prompt="p2", anchor_excerpt="NO EXISTE", paragraph_index=1),
+        SceneSpec(id="s10", prompt="two", paragraph_index=1, anchor_excerpt=""),
+        SceneSpec(id="s11", prompt="three", paragraph_index=2, anchor_excerpt=""),
     ]
     out = insert_scene_markers(text, scenes)
-    assert marker_for("s2") in out
-    # tras párrafo 1 (índice 1 = "Párrafo dos.")
-    assert out.index("Párrafo dos.") < out.index(marker_for("s2"))
+    img_at = out.index('<img src="/api/illustrated-images/a.png"')
+    s10 = out.index(marker_for("s10"))
+    s11 = out.index(marker_for("s11"))
+    dos = out.index("Párrafo dos todavía libre.")
+    tres = out.index("Párrafo tres también libre.")
+    assert dos < s10 < tres < s11
+    assert not (img_at < s10 < dos), "s10 no debe quedar pegada al <img> existente"
+
+
+def test_insert_prefers_paragraph_index_over_ambiguous_excerpt():
+    """Si el excerpt aparece antes (junto a imgs), manda el paragraph_index del hueco."""
+    text = (
+        "Vio la casa al fondo.\n"
+        '<img src="/api/illustrated-images/old.png" class="chat-illustration" />\n\n'
+        "Más tarde volvió a la casa.\n\n"
+        "Cierre del relato."
+    )
+    scenes = [
+        SceneSpec(
+            id="s20",
+            prompt="return home",
+            paragraph_index=1,
+            anchor_excerpt="la casa",  # también en el párrafo 0 ilustrado
+        ),
+    ]
+    out = insert_scene_markers(text, scenes)
+    img_at = out.index("<img")
+    mark = out.index(marker_for("s20"))
+    second = out.index("Más tarde volvió a la casa.")
+    assert second < mark
+    assert mark > img_at
+    # No insertar entre el primer "la casa" y su imagen
+    first_casa = out.index("Vio la casa al fondo.")
+    assert not (first_casa < mark < img_at)
 
 
 def test_insert_at_end_when_no_anchor():

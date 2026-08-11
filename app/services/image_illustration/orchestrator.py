@@ -15,6 +15,7 @@ from app.services.image_illustration.anchors import (
     strip_transient_illustration_artifacts,
     with_unique_scene_ids,
 )
+from app.services.image_illustration.content_ops import extract_existing_illustration_prompts
 from app.services.image_illustration.coverage import (
     analyze_coverage,
     bind_scenes_to_paragraphs,
@@ -33,7 +34,7 @@ from app.services.image_illustration.ports import ForgeGenerationPort, LastPaylo
 from app.services.image_illustration import status_codes as st
 
 
-def _img_tag(url: str, scene_id: str, filename: str = "") -> str:
+def _img_tag(url: str, scene_id: str, filename: str = "", prompt: str = "") -> str:
     safe_id = html.escape(scene_id)
     attrs = (
         f'src="{html.escape(url)}" alt="escena {safe_id}" '
@@ -41,6 +42,9 @@ def _img_tag(url: str, scene_id: str, filename: str = "") -> str:
     )
     if filename:
         attrs += f' data-filename="{html.escape(filename)}"'
+    prompt = (prompt or "").strip()
+    if prompt:
+        attrs += f' data-prompt="{html.escape(prompt, quote=True)}"'
     return f"<img {attrs} />"
 
 
@@ -143,7 +147,7 @@ def _run_pass(
             filename = save_image(scene.id, image_bytes)
             url = url_for_saved(filename)
             content = _replace_scene_slot(
-                content, scene.id, _img_tag(url, scene.id, filename)
+                content, scene.id, _img_tag(url, scene.id, filename, forge_prompt)
             )
             stored_params = build_stored_generation_params(
                 payload.mode,
@@ -218,6 +222,7 @@ class ImageIllustrationOrchestrator:
         prompt: str = "",
         include_prompt_debug: bool = False,
         batch_size: int = 10,
+        existing_prompts: list[str] | None = None,
     ) -> Iterator[IllustrationEvent]:
         yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración")
         batch_n = max(1, int(batch_size))
@@ -232,8 +237,17 @@ class ImageIllustrationOrchestrator:
         coverage = analyze_coverage(text)
         remaining_quota = max(0, int(max_images))
         already_planned: list[SceneSpec] = occupied_scenes_from_coverage(coverage)
+        known_prompts: list[str] = []
+        seen_prompts: set[str] = set()
+        for p in list(extract_existing_illustration_prompts(text)) + list(
+            existing_prompts or []
+        ):
+            p = (p or "").strip()
+            if p and p not in seen_prompts:
+                seen_prompts.add(p)
+                known_prompts.append(p)
         # Solo evita duplicar párrafo dentro de esta ejecución; la cobertura
-        # existente se prioriza vía illustration_count (huecos primero).
+        # existente se prioriza vía huecos entre imágenes (punto medio).
         reserved_paragraphs: set[int] = set()
         payload: LastGenerationPayload | None = None
         batch_idx = 0
@@ -287,6 +301,7 @@ class ImageIllustrationOrchestrator:
                 already_planned=already_planned or None,
                 coverage_block=coverage_block,
                 assigned_paragraphs=assigned,
+                existing_prompts=known_prompts or None,
             )
             if plan.illustrate and plan.scenes:
                 bound = bind_scenes_to_paragraphs(plan.scenes, assigned)
@@ -429,8 +444,14 @@ class ImageIllustrationOrchestrator:
             for scene in plan.scenes:
                 if scene.paragraph_index is not None:
                     reserved_paragraphs.add(scene.paragraph_index)
+                prompt = (scene.prompt or "").strip()
+                if prompt and prompt not in seen_prompts:
+                    seen_prompts.add(prompt)
+                    known_prompts.append(prompt)
             remaining_quota -= len(plan.scenes)
             any_batch = True
+            # Recalcular cobertura sobre el content ya anclado (placeholders cuentan).
+            coverage = analyze_coverage(content)
             # Si el LLM no cubrió todos los párrafos asignados, no forzar más lotes.
             if len(plan.scenes) < len(assigned):
                 break

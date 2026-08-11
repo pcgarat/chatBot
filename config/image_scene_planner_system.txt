@@ -13,5 +13,6 @@ Reglas:
 - No reescribas el relato.
 - Devuelve SOLO JSON válido, sin markdown.
 - Si el mensaje trae «párrafos asignados», NO elijas ubicación: escribe un prompt visual en inglés para CADA paragraph_index listado (en ese orden). El prompt debe describir la escena de ESE párrafo. anchor_excerpt puede ir vacío; paragraph_index es obligatorio y debe coincidir.
-- Si NO hay párrafos asignados: elige hasta max_images escenas, distribuidas, priorizando párrafos sin imagen; anchor_excerpt literal o paragraph_index.
+- Si NO hay párrafos asignados: elige hasta max_images escenas repartidas a lo largo del relato (puntos medios entre imágenes existentes); anchor_excerpt literal o paragraph_index.
 - No concentres varias escenas al inicio ni en el mismo párrafo.
+- Si el mensaje lista prompts ya usados, NO generes escenas visualmente similares (mismo sujeto, pose, vestuario, encuadre o momento). Cada prompt nuevo debe aportar una escena distinta del relato.

@@ -156,6 +156,7 @@ class ConversationListItem(BaseModel):
     provider: str = "ollama"  # ollama | mancer | openai
     updated_at: datetime
     last_message_at: datetime | None = None
+    deleted_at: datetime | None = None
 
     class Config:
         from_attributes = True

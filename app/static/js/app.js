@@ -33,6 +33,8 @@
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
+    conversationsTrash: document.getElementById("conversations-trash"),
+    conversationsTrashList: document.getElementById("conversations-trash-list"),
     conversationTitle: document.getElementById("conversation-title"),
     providerSelect: document.getElementById("provider-select"),
     modelSelect: document.getElementById("model-select"),
@@ -1021,8 +1023,63 @@
     try {
       const list = await fetchJson(`${API}/conversations`);
       renderConversationsList(list);
+      await loadDeletedConversations();
     } catch (e) {
       showError("Error al cargar conversaciones: " + e.message);
+    }
+  }
+
+  async function loadDeletedConversations() {
+    if (!el.conversationsTrash || !el.conversationsTrashList) return;
+    try {
+      const deleted = await fetchJson(`${API}/conversations/deleted`);
+      renderDeletedConversations(deleted);
+    } catch (e) {
+      el.conversationsTrash.hidden = true;
+      el.conversationsTrashList.innerHTML = "";
+    }
+  }
+
+  function renderDeletedConversations(list) {
+    if (!el.conversationsTrash || !el.conversationsTrashList) return;
+    if (!list || list.length === 0) {
+      el.conversationsTrash.hidden = true;
+      el.conversationsTrashList.innerHTML = "";
+      return;
+    }
+    el.conversationsTrash.hidden = false;
+    el.conversationsTrashList.innerHTML = list
+      .map((c) => {
+        const when = formatDate(c.deleted_at || c.last_message_at || c.updated_at);
+        return `<div class="conversation-item conversation-item-deleted" data-id="${escapeHtml(c.id)}" title="Eliminada · ${escapeHtml(when)}">
+            <div class="conv-row">
+              <span class="conv-title">${escapeHtml(c.title)}</span>
+              <button type="button" class="conv-restore-btn" data-id="${escapeHtml(c.id)}" title="Restaurar" aria-label="Restaurar conversación">Restaurar</button>
+            </div>
+          </div>`;
+      })
+      .join("");
+    el.conversationsTrashList.querySelectorAll(".conv-restore-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreConversation(btn.dataset.id);
+      });
+    });
+  }
+
+  async function restoreConversation(id) {
+    try {
+      const res = await fetch(`${API}/conversations/${id}/restore`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      await loadConversations();
+      await openConversation(id);
+      showNotice("Conversación restaurada.");
+    } catch (e) {
+      showError("Error al restaurar: " + e.message);
     }
   }
 
@@ -1098,7 +1155,7 @@
       }
       if (currentConversationId === id) setCurrentConversation(null);
       loadConversations();
-      showNotice("Conversación eliminada.");
+      showNotice("Conversación movida a la papelera.");
     } catch (e) {
       showError("Error al eliminar: " + e.message);
     }
@@ -3223,14 +3280,34 @@
     return !!(elDbg && elDbg.checked);
   }
 
+  /** Buffer del log de imágenes: se acumula aunque la ventana esté cerrada. */
+  const imagesDebugLogLines = [];
+
   function appendImagesDebugLog(line) {
+    const ts = new Date().toISOString().slice(11, 19);
+    imagesDebugLogLines.push(`[${ts}] ${line}`);
+    if (!isImagesDebugMode()) return;
     const pre = document.getElementById("images-debug-log");
     const win = document.getElementById("images-debug-window");
     if (!pre || !win) return;
     win.hidden = false;
-    const ts = new Date().toISOString().slice(11, 19);
-    pre.textContent += `[${ts}] ${line}\n`;
+    pre.textContent += imagesDebugLogLines[imagesDebugLogLines.length - 1] + "\n";
     pre.scrollTop = pre.scrollHeight;
+  }
+
+  function syncImagesDebugWindow() {
+    const pre = document.getElementById("images-debug-log");
+    const win = document.getElementById("images-debug-window");
+    if (!pre || !win) return;
+    if (isImagesDebugMode()) {
+      win.hidden = false;
+      pre.textContent = imagesDebugLogLines.length
+        ? imagesDebugLogLines.join("\n") + "\n"
+        : "";
+      pre.scrollTop = pre.scrollHeight;
+    } else {
+      win.hidden = true;
+    }
   }
 
   async function ensureImagesPromptSelects() {
@@ -3322,10 +3399,7 @@
         prompt_model: modelSel ? modelSel.value : "",
         debug: !!(dbg && dbg.checked),
       });
-      if (dbg && win) {
-        if (dbg.checked) win.hidden = false;
-        else win.hidden = true;
-      }
+      syncImagesDebugWindow();
       syncChatConfigControlsDisabled();
     }
     [enabled, useChatConfig, per, batchSize, retries, promptEl, promptSystemEl, providerSel, modelSel, dbg].forEach((node) => {
@@ -3349,6 +3423,7 @@
       });
     }
     syncChatConfigControlsDisabled();
+    syncImagesDebugWindow();
     ensureImagesPromptSelects();
   }
 
@@ -3368,11 +3443,9 @@
         appStatus.pop(cancelId);
       }, 1200);
     }
-    if (isImagesDebugMode()) {
-      appendImagesDebugLog(
-        n ? `Abortadas ${n} generación(es) de imágenes.` : "No hay generaciones activas."
-      );
-    }
+    appendImagesDebugLog(
+      n ? `Abortadas ${n} generación(es) de imágenes.` : "No hay generaciones activas."
+    );
     renderMessages();
     if (n) showNotice("Generación de imágenes abortada.");
   }
@@ -3410,7 +3483,7 @@
           : "",
         use_chat_config: useChat,
         include_prompt_debug: isShowDebugMode(),
-        debug: isImagesDebugMode(),
+        debug: true,
       },
       debugLabel: `Iniciando illustrate message=${messageId}${force ? " (manual)" : ""}`,
       doneNotice: force ? "Ilustración terminada." : null,
@@ -3429,7 +3502,7 @@
       body: {
         retries: retries ? parseInt(retries.value, 10) || 0 : 0,
         batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
-        debug: isImagesDebugMode(),
+        debug: true,
       },
       debugLabel: `Iniciando generate-remaining message=${messageId}`,
       doneNotice: "Imágenes restantes terminadas.",
@@ -3444,9 +3517,7 @@
     illustratingMessageIds.add(messageId);
     renderMessages();
     const imgStatusId = appStatus.push("images", "images.starting");
-    if (isImagesDebugMode()) {
-      appendImagesDebugLog(opts.debugLabel || `Iniciando stream message=${messageId}`);
-    }
+    appendImagesDebugLog(opts.debugLabel || `Iniciando stream message=${messageId}`);
     try {
       const res = await fetch(opts.url, {
         method: "POST",
@@ -3479,7 +3550,7 @@
             const code = (data.data && data.data.code) || "images.starting";
             appStatus.update(imgStatusId, code, data.message || "", data.data || {});
           }
-          if (data.type === "log" && isImagesDebugMode()) {
+          if (data.type === "log") {
             appendImagesDebugLog(data.message || JSON.stringify(data));
           }
           if (data.type === "llm_debug" && isShowDebugMode()) {
@@ -3510,15 +3581,15 @@
           }
         }
       }
-      if (isImagesDebugMode()) appendImagesDebugLog("Stream de ilustración terminado");
+      appendImagesDebugLog("Stream de ilustración terminado");
       if (opts.doneNotice) showNotice(opts.doneNotice);
     } catch (e) {
       if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) {
         appStatus.update(imgStatusId, "images.cancelled");
-        if (isImagesDebugMode()) appendImagesDebugLog(`Stream abortado message=${messageId}`);
+        appendImagesDebugLog(`Stream abortado message=${messageId}`);
       } else {
         appStatus.update(imgStatusId, "images.error", e.message || "");
-        if (isImagesDebugMode()) appendImagesDebugLog("Error: " + e.message);
+        appendImagesDebugLog("Error: " + e.message);
         showError((opts.errorPrefix || "Ilustración: ") + e.message);
       }
     } finally {
@@ -3559,6 +3630,40 @@
       try {
         localStorage.setItem(KEY, collapsed ? "true" : "false");
       } catch (_) {}
+    }
+
+    apply(localStorage.getItem(KEY) === "true");
+    collapseBtn.addEventListener("click", function () {
+      apply(true);
+    });
+    expandBtn.addEventListener("click", function () {
+      apply(false);
+    });
+  })();
+
+  (function initComposerCollapse() {
+    var KEY = "composerCollapsed";
+    var collapseBtn = document.getElementById("btn-collapse-composer");
+    var expandBtn = document.getElementById("btn-expand-composer");
+    var panel = document.getElementById("composer-panel");
+    if (!collapseBtn || !expandBtn || !panel) return;
+
+    function apply(collapsed) {
+      document.documentElement.setAttribute("data-composer", collapsed ? "collapsed" : "open");
+      var appEl = document.getElementById("app");
+      if (appEl) appEl.classList.toggle("composer-collapsed", collapsed);
+      panel.setAttribute("aria-hidden", collapsed ? "true" : "false");
+      collapseBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      expandBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      expandBtn.hidden = !collapsed;
+      try {
+        localStorage.setItem(KEY, collapsed ? "true" : "false");
+      } catch (_) {}
+      if (!collapsed && el.messageInput) {
+        try {
+          el.messageInput.focus();
+        } catch (_) {}
+      }
     }
 
     apply(localStorage.getItem(KEY) === "true");

@@ -491,9 +491,9 @@ def test_send_message_calls_rag_get_context_and_add(mock_get_provider, mock_rag_
 
 
 @patch("app.routers.api_conversations.rag.delete_conversation_documents")
-def test_delete_conversation_calls_rag_delete_documents(mock_rag_delete, client):
-    """Al eliminar una conversación se llama a delete_conversation_documents."""
+def test_delete_conversation_does_not_call_rag_delete_documents(mock_rag_delete, client):
+    """Soft-delete no debe borrar documentos de Chroma (recuperable)."""
     create = client.post("/api/conversations", json={"title": "Borrar RAG", "model_id": "m"})
     cid = create.json()["id"]
     client.delete(f"/api/conversations/{cid}")
-    mock_rag_delete.assert_called_once_with(cid)
+    mock_rag_delete.assert_not_called()

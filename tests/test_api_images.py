@@ -130,6 +130,25 @@ def test_get_illustrated_image_ok(client, tmp_path, monkeypatch):
     res = client.get(f"/api/illustrated-images/{name}")
     assert res.status_code == 200
     assert res.content.startswith(b"\x89PNG")
+    assert res.headers["content-type"].startswith("image/png")
+
+
+def test_get_illustrated_image_serves_jpeg_bytes_as_jpeg_even_if_png_extension(
+    client, tmp_path, monkeypatch
+):
+    """Forge a menudo devuelve JPEG guardado como *.png; el Content-Type debe oler el fichero."""
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    name = "6f9e20a6c846481bb7edbbe9cf9d6db1_s3.png"
+    # Cabecera JPEG mínima (JFIF)
+    jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 32
+    (tmp_path / name).write_bytes(jpeg)
+    res = client.get(f"/api/illustrated-images/{name}")
+    assert res.status_code == 200
+    assert res.content.startswith(b"\xff\xd8\xff")
+    assert res.headers["content-type"].startswith("image/jpeg")
 
 
 def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
@@ -140,7 +159,7 @@ def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None):
             captured["prompt"] = prompt
             captured["max_images"] = max_images
             captured["batch_size"] = batch_size

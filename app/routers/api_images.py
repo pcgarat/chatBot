@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import crud
 from app.config import settings
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.provider_params import build_extra_body
 from app.providers import get_provider
 from app.routers.api_conversations import (
@@ -30,6 +30,7 @@ from app.services.image_illustration.orchestrator import ImageIllustrationOrches
 from app.services.image_illustration.scene_planner import LlmScenePlanner
 from app.services.image_illustration.storage import (
     delete_illustrated_image,
+    media_type_for_illustrated_file,
     resolve_illustrated_path,
     save_illustrated_image,
 )
@@ -125,9 +126,41 @@ def _build_forge_orchestrator() -> ImageIllustrationOrchestrator:
     )
 
 
+def _persist_message_content(conversation_id: str, message_id: str, content: str) -> None:
+    """Sesión corta: no reutilizar Depends(get_db) dentro del StreamingResponse."""
+    db = SessionLocal()
+    try:
+        crud.update_message_content(db, conversation_id, message_id, content)
+    finally:
+        db.close()
+
+
+def _persist_illustrated_image_meta(
+    *,
+    message_id: str,
+    filename: str,
+    scene_id: str | None,
+    mode: str,
+    params: dict,
+) -> None:
+    db = SessionLocal()
+    try:
+        crud.save_illustrated_image_meta(
+            db,
+            message_id=message_id,
+            filename=filename,
+            scene_id=scene_id,
+            mode=mode,
+            params=params,
+        )
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
 def _stream_illustration_events(
     *,
-    db: Session,
     conversation_id: str,
     message_id: str,
     text: str,
@@ -135,32 +168,32 @@ def _stream_illustration_events(
     debug: bool,
     include_prompt_debug: bool = False,
 ):
-    """Persiste content en cada avance y emite NDJSON."""
+    """Persiste content en cada avance y emite NDJSON (sesiones cortas por escritura)."""
     final_content = text
     try:
         for event in events:
             if event.content is not None:
                 final_content = event.content
                 if event.type in ("placeholder", "image", "error", "done") and final_content != text:
-                    crud.update_message_content(
-                        db, conversation_id, message_id, final_content
-                    )
+                    try:
+                        _persist_message_content(
+                            conversation_id, message_id, final_content
+                        )
+                    except Exception:
+                        # El finally reintenta; no tumbar el NDJSON por un lock puntual.
+                        pass
             if event.type == "image":
                 data = event.data or {}
                 filename = data.get("filename")
                 params = data.get("params")
                 if filename and isinstance(params, dict):
-                    try:
-                        crud.save_illustrated_image_meta(
-                            db,
-                            message_id=message_id,
-                            filename=filename,
-                            scene_id=event.scene_id,
-                            mode=str(data.get("mode") or "txt2img"),
-                            params=params,
-                        )
-                    except Exception:
-                        pass
+                    _persist_illustrated_image_meta(
+                        message_id=message_id,
+                        filename=filename,
+                        scene_id=event.scene_id,
+                        mode=str(data.get("mode") or "txt2img"),
+                        params=params,
+                    )
             if event.type == "log" and not debug:
                 continue
             if event.type == "llm_debug" and not include_prompt_debug:
@@ -169,17 +202,32 @@ def _stream_illustration_events(
     finally:
         if final_content != text:
             try:
-                crud.update_message_content(db, conversation_id, message_id, final_content)
+                _persist_message_content(conversation_id, message_id, final_content)
             except Exception:
-                from app.db import SessionLocal
+                pass
 
-                persist = SessionLocal()
-                try:
-                    crud.update_message_content(
-                        persist, conversation_id, message_id, final_content
-                    )
-                finally:
-                    persist.close()
+
+def _prompts_from_message_meta(db: Session, content: str) -> list[str]:
+    """Prompts guardados en BD para imgs del mensaje (complementa data-prompt del HTML)."""
+    from app.services.image_illustration.content_ops import extract_illustrated_filenames
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in extract_illustrated_filenames(content):
+        row = crud.get_illustrated_image_meta(db, name)
+        if not row:
+            continue
+        try:
+            params = json.loads(row.params_json or "{}")
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(params, dict):
+            continue
+        prompt = str(params.get("prompt") or "").strip()
+        if prompt and prompt not in seen:
+            seen.add(prompt)
+            out.append(prompt)
+    return out
 
 
 @router.post("/conversations/{conversation_id}/messages/{message_id}/illustrate")
@@ -204,10 +252,11 @@ def illustrate_message(
 
     text = msg.content or ""
     orch = _build_orchestrator(body, conv=conv, db=db)
+    meta_prompts = _prompts_from_message_meta(db, text)
 
     def event_stream():
+        # No capturar `db` del request: Depends(get_db) se cierra al acabar/cortar el stream.
         yield from _stream_illustration_events(
-            db=db,
             conversation_id=conversation_id,
             message_id=message_id,
             text=text,
@@ -218,6 +267,7 @@ def illustrate_message(
                 prompt=body.prompt,
                 include_prompt_debug=body.include_prompt_debug,
                 batch_size=body.batch_size,
+                existing_prompts=meta_prompts or None,
             ),
             debug=body.debug,
             include_prompt_debug=body.include_prompt_debug,
@@ -245,7 +295,6 @@ def generate_remaining_images(
 
     def event_stream():
         yield from _stream_illustration_events(
-            db=db,
             conversation_id=conversation_id,
             message_id=message_id,
             text=text,
@@ -337,10 +386,4 @@ def get_illustrated_image(filename: str):
     path = resolve_illustrated_path(filename)
     if path is None:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")
-    media = "image/png"
-    suf = path.suffix.lower()
-    if suf in {".jpg", ".jpeg"}:
-        media = "image/jpeg"
-    elif suf == ".webp":
-        media = "image/webp"
-    return FileResponse(path, media_type=media)
+    return FileResponse(path, media_type=media_type_for_illustrated_file(path))

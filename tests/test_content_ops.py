@@ -92,9 +92,21 @@ def test_delete_illustrated_image_removes_file(tmp_path, monkeypatch):
         "app.services.image_illustration.storage.DEFAULT_DIR",
         tmp_path / "illustrated",
     )
-    name = save_illustrated_image("s1", b"\x89PNG")
+    name = save_illustrated_image("s1", b"\x89PNG\r\n\x1a\n")
+    assert name.endswith(".png")
     assert (tmp_path / "illustrated" / name).is_file()
     assert delete_illustrated_image(name) is True
     assert not (tmp_path / "illustrated" / name).is_file()
     assert delete_illustrated_image(name) is False
     assert delete_illustrated_image("../etc/passwd") is False
+
+
+def test_save_illustrated_image_uses_jpg_extension_for_jpeg_bytes(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.image_illustration.storage.DEFAULT_DIR",
+        tmp_path / "illustrated",
+    )
+    jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 16
+    name = save_illustrated_image("s3", jpeg)
+    assert name.endswith(".jpg")
+    assert (tmp_path / "illustrated" / name).read_bytes().startswith(b"\xff\xd8\xff")

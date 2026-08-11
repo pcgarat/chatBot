@@ -905,7 +905,7 @@ def test_e2e_save_message_to_chromadb(client, ollama_available):
 
 
 def test_e2e_delete_conversation(client, ollama_available):
-    """DELETE /api/conversations/{id} elimina la conversación."""
+    """DELETE /api/conversations/{id} soft-delete: desaparece del GET pero se puede restaurar."""
     model_name = _get_first_ollama_model(client)
     r_create = client.post(
         "/api/conversations",
@@ -917,6 +917,9 @@ def test_e2e_delete_conversation(client, ollama_available):
     assert r.status_code == 204
     r_get = client.get(f"/api/conversations/{cid}")
     assert r_get.status_code == 404
+    r_restore = client.post(f"/api/conversations/{cid}/restore")
+    assert r_restore.status_code == 200
+    assert client.get(f"/api/conversations/{cid}").status_code == 200
 
 
 def test_e2e_illustrate_rejects_non_assistant(client, ollama_available):

@@ -39,14 +39,64 @@ def test_analyze_coverage_attaches_orphan_image_to_previous_paragraph():
     assert cov.paragraphs[1].illustration_count == 0
 
 
-def test_suggest_distributed_targets_prefers_uncovered_and_spreads():
+def test_suggest_spreads_when_no_images_yet():
     text = "\n\n".join([f"Párrafo {i}." for i in range(6)])
     cov = analyze_coverage(text)
     targets = suggest_distributed_targets(cov, 3)
     assert len(targets) == 3
     assert len(set(targets)) == 3
-    # Con todo vacío, se reparte por el arco (aprox. inicio/medio/final).
     assert targets[0] < targets[1] < targets[2]
+
+
+def test_suggest_places_at_midpoint_between_existing_images():
+    """Nuevas anclas en el punto medio del hueco entre imágenes, no el vacío más cercano."""
+    paras = [f"Párrafo {i} del relato largo." for i in range(6)]
+    text = (
+        paras[0]
+        + "\n"
+        + '<img src="/api/illustrated-images/a.png" class="chat-illustration" />\n\n'
+        + "\n\n".join(paras[1:])
+    )
+    cov = analyze_coverage(text)
+    assert cov.occupied_indices() == {0}
+    targets = suggest_distributed_targets(cov, 1)
+    assert targets == [3]
+    assert 1 not in targets
+
+
+def test_suggest_second_image_splits_remaining_gap_not_old_even_spread():
+    """
+    Con una imagen al inicio, 2 nuevas: primero el centro del relato,
+    luego el centro del hueco restante (no el reparto uniforme sobre vacíos).
+    Algoritmo viejo daba [2, 6]; midpoint da [2, 4].
+    """
+    paras = [f"Párrafo {i}." for i in range(8)]
+    text = (
+        paras[0]
+        + "\n"
+        + '<img src="/api/illustrated-images/a.png" class="chat-illustration" />\n\n'
+        + "\n\n".join(paras[1:])
+    )
+    cov = analyze_coverage(text)
+    targets = suggest_distributed_targets(cov, 2)
+    assert targets == [2, 4]
+
+
+def test_suggest_fills_largest_gaps_between_images():
+    """Con imgs en extremos, la siguiente cae en el centro del hueco grande."""
+    paras = [f"Texto número {i}." for i in range(7)]
+    text = (
+        paras[0]
+        + "\n<img src=\"/api/illustrated-images/a.png\" class=\"chat-illustration\" />\n\n"
+        + "\n\n".join(paras[1:6])
+        + "\n\n"
+        + paras[6]
+        + "\n<img src=\"/api/illustrated-images/b.png\" class=\"chat-illustration\" />"
+    )
+    cov = analyze_coverage(text)
+    assert 0 in cov.occupied_indices() and 6 in cov.occupied_indices()
+    targets = suggest_distributed_targets(cov, 1)
+    assert targets == [3]
 
 
 def test_suggest_skips_occupied_paragraphs():

@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from app.services.image_illustration.anchors import _ILLUSTRATION_ARTIFACT_RE as ILLUSTRATION_ARTIFACT_RE
 from app.services.image_illustration.models import SceneSpec
 
-_ILLUS_TOKEN = "⟦ILLUS⟧"
-
 
 @dataclass(frozen=True)
 class ParagraphInfo:
@@ -18,6 +16,8 @@ class ParagraphInfo:
     index: int
     text: str
     illustration_count: int
+    # Offset en el content original tras el párrafo y su cluster de imágenes.
+    insert_offset: int = 0
 
 
 @dataclass(frozen=True)
@@ -38,24 +38,64 @@ def analyze_coverage(content: str) -> CoverageMap:
     """
     Detecta, por párrafo del relato, cuántas imágenes/anclas hay asociadas.
     Las ilustraciones entre párrafos se atribuyen al párrafo anterior.
+    Cada párrafo expone insert_offset para colocar nuevas anclas detrás de su cluster.
     """
-    marked = ILLUSTRATION_ARTIFACT_RE.sub(_ILLUS_TOKEN, content or "")
-    raw_paras = re.split(r"\n\s*\n", marked)
+    content = content or ""
+    if not content:
+        return CoverageMap(paragraphs=[])
+
+    parts = re.split(r"(\n\s*\n)", content)
     paragraphs: list[ParagraphInfo] = []
     idx = 0
-    for raw in raw_paras:
-        count = raw.count(_ILLUS_TOKEN)
-        text = raw.replace(_ILLUS_TOKEN, "")
-        text = re.sub(r"\n{3,}", "\n\n", text).strip()
-        if not text:
+    pos = 0
+    i = 0
+    while i < len(parts):
+        block = parts[i]
+        block_start = pos
+        block_end = pos + len(block)
+        imgs = list(ILLUSTRATION_ARTIFACT_RE.finditer(block))
+        count = len(imgs)
+        text_only = ILLUSTRATION_ARTIFACT_RE.sub("", block)
+        text_only = re.sub(r"\n{3,}", "\n\n", text_only).strip()
+
+        if not text_only:
             if count and paragraphs:
                 prev = paragraphs[-1]
                 paragraphs[-1] = ParagraphInfo(
-                    prev.index, prev.text, prev.illustration_count + count
+                    index=prev.index,
+                    text=prev.text,
+                    illustration_count=prev.illustration_count + count,
+                    insert_offset=block_end,
                 )
+            pos = block_end
+            if i + 1 < len(parts):
+                pos += len(parts[i + 1])
+                i += 2
+            else:
+                i += 1
             continue
-        paragraphs.append(ParagraphInfo(index=idx, text=text, illustration_count=count))
+
+        insert_offset = block_start + imgs[-1].end() if imgs else block_end
+        # Si el bloque termina en imgs + espacio, preferir el final del bloque.
+        if imgs and ILLUSTRATION_ARTIFACT_RE.sub("", block[imgs[-1].end() :]).strip() == "":
+            insert_offset = block_end
+
+        paragraphs.append(
+            ParagraphInfo(
+                index=idx,
+                text=text_only,
+                illustration_count=count,
+                insert_offset=insert_offset,
+            )
+        )
         idx += 1
+        pos = block_end
+        if i + 1 < len(parts):
+            pos += len(parts[i + 1])
+            i += 2
+        else:
+            i += 1
+
     return CoverageMap(paragraphs=paragraphs)
 
 
@@ -120,33 +160,61 @@ def suggest_distributed_targets(
     also_avoid: set[int] | None = None,
 ) -> list[int]:
     """
-    Elige hasta `count` índices de párrafo repartidos por el relato.
-    Prioriza sin imagen; si no hay huecos, usa los menos cubiertos.
-    Nunca reutiliza índices en `also_avoid` (p. ej. ya usados en este lote/run).
+    Elige hasta `count` párrafos en los puntos medios de los huecos más grandes
+    entre imágenes ya existentes (y los bordes del relato).
+
+    No elige «el vacío más cercano»: subdivide el hueco mayor entre la imagen
+    anterior y la siguiente. `also_avoid` se trata como ocupado (p. ej. este run).
     """
-    avoid = set(also_avoid or ())
-    uncovered = [
-        p.index
-        for p in coverage.paragraphs
-        if p.illustration_count == 0 and p.index not in avoid
-    ]
-    pool = list(uncovered)
-    if len(pool) < count:
-        rest = sorted(
-            (
-                p
-                for p in coverage.paragraphs
-                if p.index not in avoid and p.index not in pool
-            ),
-            key=lambda p: (p.illustration_count, p.index),
-        )
-        for p in rest:
-            pool.append(p.index)
-            if len(pool) >= max(count, 1):
-                break
-    if not pool:
+    n = len(coverage.paragraphs)
+    if n == 0 or count <= 0:
         return []
-    return _evenly_pick(pool, count)
+
+    avoid = set(also_avoid or ())
+    fences = sorted(
+        {-1, n}
+        | set(coverage.occupied_indices())
+        | {i for i in avoid if 0 <= i < n}
+    )
+    placed: list[int] = []
+
+    for _ in range(count):
+        best_choice: int | None = None
+        best_score: tuple[int, float, int] | None = None
+        for i in range(len(fences) - 1):
+            left, right = fences[i], fences[i + 1]
+            candidates = [
+                p
+                for p in range(left + 1, right)
+                if p not in avoid and p not in placed
+            ]
+            if not candidates:
+                continue
+            mid = (left + right) / 2.0
+            choice = min(candidates, key=lambda p: (abs(p - mid), p))
+            # Mayor hueco; a igualdad, más cerca del centro; luego índice menor.
+            score = (right - left, -abs(choice - mid), -choice)
+            if best_score is None or score > best_score:
+                best_score = score
+                best_choice = choice
+
+        if best_choice is None:
+            rest = sorted(
+                (
+                    p
+                    for p in coverage.paragraphs
+                    if p.index not in avoid and p.index not in placed
+                ),
+                key=lambda p: (p.illustration_count, p.index),
+            )
+            if not rest:
+                break
+            best_choice = rest[0].index
+
+        placed.append(best_choice)
+        fences = sorted(set(fences) | {best_choice})
+
+    return sorted(placed)
 
 
 def resolve_paragraph_index(scene: SceneSpec, coverage: CoverageMap) -> int | None:
@@ -229,7 +297,8 @@ def format_coverage_block(
         return ""
     lines = [
         f"El relato tiene {len(coverage.paragraphs)} párrafos. "
-        "Distribuye las escenas a lo largo del relato; prioriza párrafos SIN imagen.",
+        "Las nuevas escenas se colocan en el punto medio de los huecos más grandes "
+        "entre imágenes ya existentes (no en el vacío más cercano).",
     ]
     for para in coverage.paragraphs:
         flag = (
@@ -237,13 +306,13 @@ def format_coverage_block(
             if para.illustration_count
             else "sin imagen"
         )
-        preview = para.text.replace("\n", " ").strip()
+        preview = para.text.replace("\n", " ")
         if len(preview) > max_preview:
             preview = preview[: max_preview - 1] + "…"
-        lines.append(f'- [{para.index}] ({flag}): "{preview}"')
+        lines.append(f"[{para.index}] ({flag}) {preview}")
     if suggested:
         lines.append(
-            "Párrafos sugeridos para este lote (reparte aquí salvo mejor criterio): "
+            "Párrafos sugeridos (punto medio de huecos entre imágenes): "
             + ", ".join(str(i) for i in suggested)
         )
         lines.append(
@@ -266,6 +335,42 @@ def tail_excerpt(paragraph: str, max_len: int = 100) -> str:
     return chunk.strip()
 
 
+def insert_offset_for_scene(content: str, scene: SceneSpec) -> int:
+    """
+    Posición de inserción alineada con el mapa de cobertura.
+    Prioriza paragraph_index; el excerpt solo desambigua si no hay índice.
+    """
+    text = content or ""
+    coverage = analyze_coverage(text)
+    if not coverage.paragraphs:
+        excerpt = (scene.anchor_excerpt or "").strip()
+        if excerpt:
+            pos = text.find(excerpt)
+            if pos >= 0:
+                return pos + len(excerpt)
+        return len(text)
+
+    pidx = scene.paragraph_index
+    if pidx is not None and 0 <= pidx < len(coverage.paragraphs):
+        return coverage.paragraphs[pidx].insert_offset
+
+    excerpt = (scene.anchor_excerpt or "").strip()
+    if excerpt:
+        matches = [p for p in coverage.paragraphs if excerpt in p.text]
+        if len(matches) == 1:
+            return matches[0].insert_offset
+        if len(matches) > 1:
+            # Preferir hueco si el excerpt es ambiguo.
+            for p in matches:
+                if p.illustration_count == 0:
+                    return p.insert_offset
+            return matches[-1].insert_offset
+        pos = text.find(excerpt)
+        if pos >= 0:
+            return pos + len(excerpt)
+    return len(text)
+
+
 def _scene_on_paragraph(
     scene: SceneSpec, coverage: CoverageMap, paragraph_index: int
 ) -> SceneSpec:
@@ -276,29 +381,3 @@ def _scene_on_paragraph(
         anchor_excerpt=tail_excerpt(para.text),
         paragraph_index=paragraph_index,
     )
-
-
-def _evenly_pick(items: list[int], count: int) -> list[int]:
-    if count <= 0 or not items:
-        return []
-    if count >= len(items):
-        return list(items)
-    picks: list[int] = []
-    seen: set[int] = set()
-    n = len(items)
-    for i in range(count):
-        pos = int((i + 0.5) * n / count)
-        pos = min(n - 1, max(0, pos))
-        value = items[pos]
-        if value in seen:
-            for offset in range(1, n):
-                for candidate in (pos - offset, pos + offset):
-                    if 0 <= candidate < n and items[candidate] not in seen:
-                        value = items[candidate]
-                        break
-                if value not in seen:
-                    break
-        if value not in seen:
-            seen.add(value)
-            picks.append(value)
-    return picks
