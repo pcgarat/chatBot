@@ -412,6 +412,122 @@ body {
   background: var(--sidebar);
 }
 
+.workspace-profile-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 8px 10px;
+  border-bottom: 1px solid var(--stroke-divider);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.workspace-profile-select {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--stroke-control);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--layer-alt);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workspace-profile-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.workspace-profile-bar .icon-btn {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.workspace-profile-more-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.workspace-profile-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--stroke-divider);
+  border-radius: var(--radius-md, 6px);
+  background: var(--layer-card);
+  box-shadow: var(--elevation-8);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-profile-menu[hidden] {
+  display: none;
+}
+
+.workspace-profile-menu-item {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-profile-menu-item:hover,
+.workspace-profile-menu-item:focus-visible {
+  background: var(--accent-light);
+  outline: none;
+}
+
+.workspace-profile-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.workspace-profile-name-modal {
+  width: min(360px, 92vw);
+}
+
+.workspace-profile-name-label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--muted-foreground, var(--text-secondary));
+}
+
+.workspace-profile-name-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--stroke-control);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--input);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.workspace-profile-name-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .conversations-list-wrap {
   flex: 1;
   min-height: 0;

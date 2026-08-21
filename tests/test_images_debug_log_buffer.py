@@ -52,8 +52,12 @@ def test_opening_debug_syncs_full_buffer_to_window():
     js = _js()
     assert "syncImagesDebugWindow" in js
     # persist / change del checkbox debe sincronizar (no solo win.hidden)
-    persist_m = re.search(r"function persist\s*\(\s*\)\s*\{(.*?)\n    \}", js, re.DOTALL)
-    assert persist_m, "No se encontró persist en initImagesPanel"
+    persist_m = re.search(
+        r"function persistImagesPanel\s*\(\s*\)\s*\{(.*?)\n  \}",
+        js,
+        re.DOTALL,
+    )
+    assert persist_m, "No se encontró persistImagesPanel"
     assert "syncImagesDebugWindow" in persist_m.group(1)
 
 

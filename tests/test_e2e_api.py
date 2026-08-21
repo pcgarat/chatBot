@@ -978,3 +978,38 @@ def test_e2e_illustrated_image_meta_404(client, ollama_available):
     """GET /api/illustrated-images/{filename}/meta responde 404 si no hay registro."""
     r = client.get("/api/illustrated-images/no-such-file.png/meta")
     assert r.status_code == 404
+
+
+def test_e2e_workspace_profiles_crud(client, ollama_available):
+    """CRUD de perfiles de workspace: guarda el rig y lo recupera."""
+    model_name = _get_first_ollama_model(client)
+    payload = {
+        "name": "E2E relato",
+        "snapshot": {
+            "provider": "ollama",
+            "model_id": model_name,
+            "model_params": {"temperature": 0.2},
+            "params_excluded": ["seed"],
+            "history_turns": 4,
+            "system_instructions": [{"title": "Tono", "content": "Breve"}],
+            "images": {"enabled": True, "images_per_response": 3, "prompt": "film still"},
+        },
+    }
+    created = client.post("/api/workspace-profiles", json=payload)
+    assert created.status_code == 201
+    profile = created.json()
+    assert profile["snapshot"]["model_id"] == model_name
+    assert profile["snapshot"]["images"]["prompt"] == "film still"
+    listed = client.get("/api/workspace-profiles")
+    assert listed.status_code == 200
+    assert any(item["id"] == profile["id"] for item in listed.json())
+    got = client.get(f"/api/workspace-profiles/{profile['id']}")
+    assert got.status_code == 200
+    updated = client.put(
+        f"/api/workspace-profiles/{profile['id']}",
+        json={"snapshot": {**payload["snapshot"], "history_turns": 2}},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["snapshot"]["history_turns"] == 2
+    deleted = client.delete(f"/api/workspace-profiles/{profile['id']}")
+    assert deleted.status_code == 204

@@ -9,7 +9,14 @@ from app.db import init_db, SessionLocal
 from app.migrate_conversation_rules_to_library import migrate_all as migrate_conversation_rules_to_library
 from app.migrate_fill_instruction_ids import migrate_all as migrate_fill_instruction_ids
 from app.migrate_model_info_rules import migrate_all as migrate_model_info_rules
-from app.routers import api_conversations, api_images, api_models, api_ollama, api_rules
+from app.routers import (
+    api_conversations,
+    api_images,
+    api_models,
+    api_ollama,
+    api_rules,
+    api_workspace_profiles,
+)
 
 app = FastAPI(title="Chat IA con Ollama", version="1.0.0")
 
@@ -18,6 +25,7 @@ app.include_router(api_conversations.router)
 app.include_router(api_rules.router)
 app.include_router(api_ollama.router)
 app.include_router(api_images.router)
+app.include_router(api_workspace_profiles.router)
 
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
