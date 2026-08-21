@@ -1227,9 +1227,101 @@
       last = m.index + piece.length;
     }
     if (last < raw.length) tokens.push({ t: "text", v: raw.slice(last) });
-    return tokens
-      .map((tok) => (tok.t === "html" ? tok.v : escapeHtml(tok.v).replace(/\n/g, "<br>")))
-      .join("");
+    trimIllustrationAdjacentWhitespace(tokens);
+    if (!tokens.some((tok) => tok.t === "html")) {
+      return tokens
+        .map((tok) => (tok.t === "html" ? tok.v : escapeHtml(tok.v).replace(/\n/g, "<br>")))
+        .join("");
+    }
+    return layoutIllustratedHtml(tokens);
+  }
+
+  function splitIllustrationParagraphs(text) {
+    return String(text || "")
+      .split(/\n\s*\n+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+  }
+
+  function isWrapIllustrationHtml(html) {
+    const s = String(html || "");
+    if (/chat-illustration-error/.test(s)) return false;
+    return /chat-illustration/.test(s);
+  }
+
+  /**
+   * Párrafo previo a cada imagen: fila completa.
+   * Lo que sigue envuelve a la derecha; el previo a la siguiente imagen
+   * queda fuera de esa unidad para no meterse en el hueco que sobre.
+   */
+  function layoutIllustratedHtml(tokens) {
+    const items = [];
+    tokens.forEach((tok) => {
+      if (tok.t === "html") {
+        items.push({
+          kind: isWrapIllustrationHtml(tok.v) ? "illust" : "html",
+          v: tok.v,
+        });
+        return;
+      }
+      splitIllustrationParagraphs(tok.v).forEach((p) => {
+        items.push({ kind: "para", v: p });
+      });
+    });
+
+    const out = [];
+    let i = 0;
+    while (i < items.length) {
+      const item = items[i];
+      if (item.kind === "para") {
+        out.push(`<div class="illustration-lead">${escapeHtml(item.v).replace(/\n/g, "<br>")}</div>`);
+        i += 1;
+        continue;
+      }
+      if (item.kind === "html") {
+        out.push(item.v);
+        i += 1;
+        continue;
+      }
+
+      let nextIllust = -1;
+      for (let k = i + 1; k < items.length; k++) {
+        if (items[k].kind === "illust") {
+          nextIllust = k;
+          break;
+        }
+      }
+      const hasNext = nextIllust !== -1;
+      const limit = hasNext ? nextIllust : items.length;
+      const following = [];
+      for (let j = i + 1; j < limit; j++) {
+        if (items[j].kind !== "para") break;
+        following.push(items[j]);
+      }
+      let wrapParas = following;
+      if (hasNext && following.length) {
+        wrapParas = following.slice(0, -1);
+      }
+      const wrapHtml = wrapParas
+        .map((p) => `<div class="illustration-wrap">${escapeHtml(p.v).replace(/\n/g, "<br>")}</div>`)
+        .join("");
+      out.push(`<div class="illustration-unit">${item.v}${wrapHtml}</div>`);
+      i += 1 + wrapParas.length;
+    }
+    return out.join("");
+  }
+
+  /** Sin esto, los \n junto al <img> se vuelven <br> y dejan el hueco del float vacío. */
+  function trimIllustrationAdjacentWhitespace(tokens) {
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].t !== "html") continue;
+      if (i > 0 && tokens[i - 1].t === "text") {
+        tokens[i - 1].v = tokens[i - 1].v.replace(/(\n[ \t]*)+$/, "\n");
+      }
+      if (i + 1 < tokens.length && tokens[i + 1].t === "text") {
+        tokens[i + 1].v = tokens[i + 1].v.replace(/^[ \t]*\n+/, "");
+      }
+    }
   }
 
   /**
@@ -1475,13 +1567,13 @@
   function buildCollapsibleMessageHtml(content, key, expanded) {
     const parts = splitFirstParagraph(content);
     if (!parts.collapsible) {
-      return `<span>${formatMessageHtml(content || "")}</span>`;
+      return `<div class="message-content">${formatMessageHtml(content || "")}</div>`;
     }
     const collapsed = !expanded;
     const toggleLabel = collapsed ? "Show more" : "Show less";
     return `<div class="message-body-collapsible${collapsed ? " is-collapsed" : ""}" data-collapse-key="${escapeHtml(key)}">
-      <span class="message-content-preview">${formatMessageHtml(parts.first)}</span>
-      <span class="message-content-rest">${formatMessageHtml(parts.rest)}</span>
+      <div class="message-content-preview">${formatMessageHtml(parts.first)}</div>
+      <div class="message-content-rest">${formatMessageHtml(parts.rest)}</div>
       <button type="button" class="msg-collapse-toggle" aria-expanded="${collapsed ? "false" : "true"}">${toggleLabel}</button>
     </div>`;
   }
@@ -2000,7 +2092,7 @@
               expandedMessageKeys.has(collapseKey)
             );
           } else {
-            bodyHtml = `<span>${formatMessageHtml(m.content || "")}</span>`;
+            bodyHtml = `<div class="message-content">${formatMessageHtml(m.content || "")}</div>`;
           }
           return `<div class="${rowClass}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
             <div style="max-width: ${isUser ? "70%" : "100%"}; flex: 1; min-width: 0;">
