@@ -89,3 +89,15 @@ class IllustratedImage(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     message = relationship("Message", back_populates="illustrated_images")
+
+
+class WorkspaceProfileRecord(Base):
+    """Perfil de workspace: snapshot JSON de modelo, reglas, params e imágenes."""
+
+    __tablename__ = "workspace_profiles"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    name = Column(String(80), nullable=False, unique=True)
+    snapshot_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

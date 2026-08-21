@@ -259,3 +259,47 @@ class IllustratedImageMetaResponse(BaseModel):
     mode: str = "txt2img"
     params: dict = Field(default_factory=dict)
     created_at: Optional[str] = None
+
+
+class WorkspaceImagesSnapshot(BaseModel):
+    """Prefs del panel Imágenes (sin debug ni cromo de UI)."""
+
+    enabled: bool = False
+    use_chat_config: bool = False
+    images_per_response: int = 2
+    batch_size: int = 10
+    retries: int = 1
+    prompt: str = ""
+    prompt_system_instructions: str = ""
+    prompt_provider: str = ""
+    prompt_model: str = ""
+
+
+class WorkspaceSnapshotIn(BaseModel):
+    """Cuerpo del rig. El servicio recorta y valida."""
+
+    provider: str = "ollama"
+    model_id: str = ""
+    model_params: dict[str, Any] = Field(default_factory=dict)
+    params_excluded: list[str] = Field(default_factory=list)
+    history_turns: int = 5
+    system_instructions: list[RuleItem] = Field(default_factory=list)
+    images: WorkspaceImagesSnapshot = Field(default_factory=WorkspaceImagesSnapshot)
+
+
+class WorkspaceProfileCreate(BaseModel):
+    name: str
+    snapshot: WorkspaceSnapshotIn
+
+
+class WorkspaceProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    snapshot: Optional[WorkspaceSnapshotIn] = None
+
+
+class WorkspaceProfileOut(BaseModel):
+    id: str
+    name: str
+    snapshot: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime

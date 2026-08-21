@@ -3496,6 +3496,87 @@
     }
   }
 
+  function collectImagesSnapshot() {
+    const enabled = document.getElementById("images-enabled");
+    const useChatConfig = document.getElementById("images-use-chat-config");
+    const per = document.getElementById("images-per-response");
+    const batchSize = document.getElementById("images-batch-size");
+    const retries = document.getElementById("images-retries");
+    const promptEl = document.getElementById("images-prompt");
+    const promptSystemEl = document.getElementById("images-prompt-system");
+    const providerSel = document.getElementById("images-prompt-provider");
+    const modelSel = document.getElementById("images-prompt-model");
+    return {
+      enabled: !!(enabled && enabled.checked),
+      use_chat_config: !!(useChatConfig && useChatConfig.checked),
+      images_per_response: per ? parseInt(per.value, 10) || 2 : 2,
+      batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
+      retries: retries ? parseInt(retries.value, 10) || 0 : 0,
+      prompt: promptEl ? String(promptEl.value || "") : "",
+      prompt_system_instructions: promptSystemEl ? String(promptSystemEl.value || "") : "",
+      prompt_provider: providerSel ? providerSel.value : "",
+      prompt_model: modelSel ? modelSel.value : "",
+    };
+  }
+
+  function fillImagesPanelFromPrefs(prefs) {
+    const enabled = document.getElementById("images-enabled");
+    const useChatConfig = document.getElementById("images-use-chat-config");
+    const per = document.getElementById("images-per-response");
+    const batchSize = document.getElementById("images-batch-size");
+    const retries = document.getElementById("images-retries");
+    const promptEl = document.getElementById("images-prompt");
+    const promptSystemEl = document.getElementById("images-prompt-system");
+    const dbg = document.getElementById("images-debug-mode");
+    if (enabled) enabled.checked = !!prefs.enabled;
+    if (useChatConfig) useChatConfig.checked = !!prefs.use_chat_config;
+    if (per && prefs.images_per_response != null) per.value = prefs.images_per_response;
+    if (batchSize && prefs.batch_size != null) batchSize.value = prefs.batch_size;
+    if (retries && prefs.retries != null) retries.value = prefs.retries;
+    if (promptEl && prefs.prompt != null) promptEl.value = prefs.prompt;
+    if (promptSystemEl && prefs.prompt_system_instructions != null) {
+      promptSystemEl.value = prefs.prompt_system_instructions;
+    }
+    if (dbg && prefs.debug != null) dbg.checked = !!prefs.debug;
+  }
+
+  function syncImagesChatConfigDisabled() {
+    const useChatConfig = document.getElementById("images-use-chat-config");
+    const on = !!(useChatConfig && useChatConfig.checked);
+    document.querySelectorAll("[data-images-chat-config-control]").forEach(function (row) {
+      row.classList.toggle("is-disabled-by-chat-config", on);
+      row.querySelectorAll("input, select, textarea").forEach(function (ctrl) {
+        ctrl.disabled = on;
+      });
+    });
+  }
+
+  function persistImagesPanel() {
+    const snap = collectImagesSnapshot();
+    snap.debug = isImagesDebugMode();
+    saveImagesPrefs(snap);
+    syncImagesDebugWindow();
+    syncImagesChatConfigDisabled();
+  }
+
+  async function applyImagesSnapshot(images) {
+    const incoming = images && typeof images === "object" ? images : {};
+    const next = Object.assign({}, loadImagesPrefs(), incoming);
+    delete next.debug;
+    saveImagesPrefs(next);
+    fillImagesPanelFromPrefs(loadImagesPrefs());
+    syncImagesChatConfigDisabled();
+    await ensureImagesPromptSelects();
+    const providerSel = document.getElementById("images-prompt-provider");
+    const modelSel = document.getElementById("images-prompt-model");
+    if (providerSel && incoming.prompt_provider) {
+      providerSel.value = incoming.prompt_provider;
+      await loadImagesPromptModels();
+    }
+    if (modelSel && incoming.prompt_model) modelSel.value = incoming.prompt_model;
+    persistImagesPanel();
+  }
+
   function initImagesPanel() {
     const prefs = loadImagesPrefs();
     const enabled = document.getElementById("images-enabled");
@@ -3511,49 +3592,14 @@
     const closeBtn = document.getElementById("images-debug-close");
     const stopBtn = document.getElementById("images-debug-stop");
     const win = document.getElementById("images-debug-window");
-    if (enabled) enabled.checked = !!prefs.enabled;
-    if (useChatConfig) useChatConfig.checked = !!prefs.use_chat_config;
-    if (per && prefs.images_per_response != null) per.value = prefs.images_per_response;
-    if (batchSize && prefs.batch_size != null) batchSize.value = prefs.batch_size;
-    if (retries && prefs.retries != null) retries.value = prefs.retries;
-    if (promptEl && prefs.prompt != null) promptEl.value = prefs.prompt;
-    if (promptSystemEl && prefs.prompt_system_instructions != null) {
-      promptSystemEl.value = prefs.prompt_system_instructions;
-    }
-    if (dbg) dbg.checked = !!prefs.debug;
+    fillImagesPanelFromPrefs(prefs);
 
-    function syncChatConfigControlsDisabled() {
-      const on = !!(useChatConfig && useChatConfig.checked);
-      document.querySelectorAll("[data-images-chat-config-control]").forEach(function (row) {
-        row.classList.toggle("is-disabled-by-chat-config", on);
-        row.querySelectorAll("input, select, textarea").forEach(function (ctrl) {
-          ctrl.disabled = on;
-        });
-      });
-    }
-
-    function persist() {
-      saveImagesPrefs({
-        enabled: !!(enabled && enabled.checked),
-        use_chat_config: !!(useChatConfig && useChatConfig.checked),
-        images_per_response: per ? parseInt(per.value, 10) || 2 : 2,
-        batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
-        retries: retries ? parseInt(retries.value, 10) || 0 : 0,
-        prompt: promptEl ? String(promptEl.value || "") : "",
-        prompt_system_instructions: promptSystemEl ? String(promptSystemEl.value || "") : "",
-        prompt_provider: providerSel ? providerSel.value : "",
-        prompt_model: modelSel ? modelSel.value : "",
-        debug: !!(dbg && dbg.checked),
-      });
-      syncImagesDebugWindow();
-      syncChatConfigControlsDisabled();
-    }
     [enabled, useChatConfig, per, batchSize, retries, promptEl, promptSystemEl, providerSel, modelSel, dbg].forEach((node) => {
       if (!node) return;
       const evt = node === promptEl || node === promptSystemEl ? "input" : "change";
       node.addEventListener(evt, function () {
-        if (node === providerSel) loadImagesPromptModels().then(persist);
-        else persist();
+        if (node === providerSel) loadImagesPromptModels().then(persistImagesPanel);
+        else persistImagesPanel();
       });
     });
     if (stopBtn) {
@@ -3565,15 +3611,299 @@
       closeBtn.addEventListener("click", function () {
         win.hidden = true;
         if (dbg) dbg.checked = false;
-        persist();
+        persistImagesPanel();
       });
     }
-    syncChatConfigControlsDisabled();
+    syncImagesChatConfigDisabled();
     syncImagesDebugWindow();
     ensureImagesPromptSelects();
   }
 
   initImagesPanel();
+
+  let workspaceProfiles = [];
+  let currentWorkspaceProfileId = "";
+  let workspaceProfileSelectSilent = false;
+
+  function collectWorkspaceSnapshot() {
+    const turnsRaw = el.historyTurnsInput ? parseInt(el.historyTurnsInput.value, 10) : 5;
+    const historyTurns = Number.isFinite(turnsRaw) ? Math.min(100, Math.max(0, turnsRaw)) : 5;
+    return {
+      provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
+      model_id: (el.modelSelect && el.modelSelect.value) || "",
+      model_params: buildModelParamsRaw(),
+      params_excluded: Array.from(getParamsExcludedFromSendSet()),
+      history_turns: historyTurns,
+      system_instructions: rules.map(function (r) {
+        const item = {
+          title: (r && r.title) || "",
+          content: (r && r.content) || "",
+        };
+        if (r && r.rule_id) item.rule_id = r.rule_id;
+        return item;
+      }),
+      images: collectImagesSnapshot(),
+    };
+  }
+
+  async function persistWorkspaceToConversation() {
+    if (!currentConversationId) return;
+    const snap = collectWorkspaceSnapshot();
+    await fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        provider: snap.provider,
+        model_id: snap.model_id,
+        model_params: buildModelParams(),
+        history_turns: snap.history_turns,
+        system_instructions: snap.system_instructions,
+      }),
+    });
+  }
+
+  async function applyWorkspaceSnapshot(snapshot) {
+    const snap = snapshot && typeof snapshot === "object" ? snapshot : {};
+    const provider = snap.provider || "ollama";
+    currentProvider = provider;
+    if (el.providerSelect) el.providerSelect.value = provider;
+    await loadModels(false);
+    const modelId = snap.model_id || "";
+    if (el.modelSelect && modelId) {
+      if (![...el.modelSelect.options].some((opt) => opt.value === modelId)) {
+        const opt = document.createElement("option");
+        opt.value = modelId;
+        opt.textContent = modelId;
+        el.modelSelect.appendChild(opt);
+      }
+      el.modelSelect.value = modelId;
+      refreshModelSelectUI();
+    }
+    await loadParamsForProvider(currentProvider);
+    await ensureParamsBaselineForCurrentModel();
+    if (snap.model_params && typeof snap.model_params === "object") {
+      applyUserParamsToControls(snap.model_params);
+    }
+    const excluded = new Set(Array.isArray(snap.params_excluded) ? snap.params_excluded : []);
+    paramsExcludedFromSendByConv[currentConversationId || "_new"] = excluded;
+    paramsSource = "user";
+    rules = normalizeRulesFromApi(snap.system_instructions);
+    renderRules();
+    if (el.historyTurnsInput) {
+      const turns = snap.history_turns != null ? Number(snap.history_turns) : 5;
+      el.historyTurnsInput.value = String(Number.isFinite(turns) ? Math.min(100, Math.max(0, turns)) : 5);
+    }
+    await applyImagesSnapshot(snap.images || {});
+    renderParamsSourceLabel();
+    renderParamsToSend();
+    syncHeaderProviderModel();
+    await persistWorkspaceToConversation();
+    await loadContextLength();
+  }
+
+  function renderWorkspaceProfileSelect() {
+    const select = document.getElementById("workspace-profile-select");
+    if (!select) return;
+    const previous = currentWorkspaceProfileId;
+    workspaceProfileSelectSilent = true;
+    select.innerHTML = '<option value="">Sin perfil</option>' + workspaceProfiles.map(function (p) {
+      return `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`;
+    }).join("");
+    if (previous && workspaceProfiles.some((p) => p.id === previous)) {
+      select.value = previous;
+    } else {
+      currentWorkspaceProfileId = "";
+      select.value = "";
+    }
+    workspaceProfileSelectSilent = false;
+    syncWorkspaceProfileMenuState();
+  }
+
+  function syncWorkspaceProfileMenuState() {
+    const del = document.querySelector('#workspace-profile-menu [data-action="delete"]');
+    if (del) del.disabled = !currentWorkspaceProfileId;
+  }
+
+  async function refreshWorkspaceProfiles() {
+    try {
+      const list = await fetchJson(`${API}/workspace-profiles`);
+      workspaceProfiles = Array.isArray(list) ? list : [];
+    } catch (_) {
+      workspaceProfiles = [];
+    }
+    renderWorkspaceProfileSelect();
+  }
+
+  function closeWorkspaceProfileMenu() {
+    const menu = document.getElementById("workspace-profile-menu");
+    const btn = document.getElementById("btn-workspace-profile-more");
+    if (menu) menu.hidden = true;
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  }
+
+  function promptWorkspaceProfileName(defaultName) {
+    const modal = document.getElementById("workspace-profile-name-modal");
+    const input = document.getElementById("workspace-profile-name-input");
+    const confirmBtn = document.getElementById("workspace-profile-name-confirm");
+    const cancelBtn = document.getElementById("workspace-profile-name-cancel");
+    if (!modal || !input || !confirmBtn || !cancelBtn) {
+      return Promise.resolve(null);
+    }
+    return new Promise(function (resolve) {
+      let settled = false;
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        modal.hidden = true;
+        confirmBtn.removeEventListener("click", onConfirm);
+        cancelBtn.removeEventListener("click", onCancel);
+        input.removeEventListener("keydown", onKey);
+        resolve(value);
+      }
+      function onConfirm() {
+        finish(input.value.trim() || null);
+      }
+      function onCancel() {
+        finish(null);
+      }
+      function onKey(e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onConfirm();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          onCancel();
+        }
+      }
+      input.value = defaultName || "";
+      modal.hidden = false;
+      confirmBtn.addEventListener("click", onConfirm);
+      cancelBtn.addEventListener("click", onCancel);
+      input.addEventListener("keydown", onKey);
+      input.focus();
+      input.select();
+    });
+  }
+
+  async function saveWorkspaceProfile(asNew) {
+    const snapshot = collectWorkspaceSnapshot();
+    if (!snapshot.model_id) {
+      showError("Elige un modelo antes de guardar el perfil.");
+      return;
+    }
+    let name = "";
+    let profileId = asNew ? "" : currentWorkspaceProfileId;
+    if (profileId) {
+      const current = workspaceProfiles.find((p) => p.id === profileId);
+      name = current ? current.name : "";
+    }
+    if (!name) {
+      name = await promptWorkspaceProfileName("");
+      if (!name) return;
+      profileId = "";
+    }
+    try {
+      const saved = profileId
+        ? await fetchJson(`${API}/workspace-profiles/${encodeURIComponent(profileId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ snapshot }),
+          })
+        : await fetchJson(`${API}/workspace-profiles`, {
+            method: "POST",
+            body: JSON.stringify({ name, snapshot }),
+          });
+      currentWorkspaceProfileId = saved.id;
+      await refreshWorkspaceProfiles();
+      showNotice(profileId ? "Perfil actualizado." : "Perfil guardado.");
+    } catch (e) {
+      showError("No se pudo guardar el perfil: " + (e.message || e));
+    }
+  }
+
+  async function loadWorkspaceProfile(profileId) {
+    if (!profileId) return;
+    let profile = workspaceProfiles.find((p) => p.id === profileId);
+    if (!profile) {
+      try {
+        profile = await fetchJson(`${API}/workspace-profiles/${encodeURIComponent(profileId)}`);
+      } catch (e) {
+        showError("No se pudo cargar el perfil: " + (e.message || e));
+        return;
+      }
+    }
+    try {
+      await applyWorkspaceSnapshot(profile.snapshot || {});
+      currentWorkspaceProfileId = profile.id;
+      renderWorkspaceProfileSelect();
+      showNotice("Perfil «" + profile.name + "» cargado.");
+    } catch (e) {
+      showError("No se pudo aplicar el perfil: " + (e.message || e));
+    }
+  }
+
+  async function deleteCurrentWorkspaceProfile() {
+    if (!currentWorkspaceProfileId) return;
+    const current = workspaceProfiles.find((p) => p.id === currentWorkspaceProfileId);
+    const label = current ? current.name : "este perfil";
+    if (!window.confirm("¿Eliminar el perfil «" + label + "»?")) return;
+    try {
+      await fetchJson(`${API}/workspace-profiles/${encodeURIComponent(currentWorkspaceProfileId)}`, {
+        method: "DELETE",
+      });
+      currentWorkspaceProfileId = "";
+      await refreshWorkspaceProfiles();
+      showNotice("Perfil eliminado.");
+    } catch (e) {
+      showError("No se pudo eliminar el perfil: " + (e.message || e));
+    }
+  }
+
+  function initWorkspaceProfiles() {
+    const select = document.getElementById("workspace-profile-select");
+    const saveBtn = document.getElementById("btn-workspace-profile-save");
+    const moreBtn = document.getElementById("btn-workspace-profile-more");
+    const menu = document.getElementById("workspace-profile-menu");
+    if (select) {
+      select.addEventListener("change", function () {
+        if (workspaceProfileSelectSilent) return;
+        const id = select.value;
+        currentWorkspaceProfileId = id;
+        syncWorkspaceProfileMenuState();
+        if (id) loadWorkspaceProfile(id);
+      });
+    }
+    if (saveBtn) {
+      saveBtn.addEventListener("click", function () {
+        closeWorkspaceProfileMenu();
+        saveWorkspaceProfile(false);
+      });
+    }
+    if (moreBtn && menu) {
+      moreBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const open = menu.hidden;
+        menu.hidden = !open;
+        moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        syncWorkspaceProfileMenuState();
+      });
+      menu.addEventListener("click", function (e) {
+        const item = e.target.closest("[data-action]");
+        if (!item || item.disabled) return;
+        const action = item.getAttribute("data-action");
+        closeWorkspaceProfileMenu();
+        if (action === "save-as") saveWorkspaceProfile(true);
+        if (action === "delete") deleteCurrentWorkspaceProfile();
+      });
+    }
+    document.addEventListener("click", function (e) {
+      const wrap = document.querySelector(".workspace-profile-more-wrap");
+      if (wrap && !wrap.contains(e.target)) closeWorkspaceProfileMenu();
+    });
+    refreshWorkspaceProfiles();
+  }
+
+  initWorkspaceProfiles();
+
 
   function abortAllIllustrations() {
     const n = illustrateAbortControllers.size;
