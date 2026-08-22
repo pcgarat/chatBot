@@ -108,22 +108,14 @@
       </section>
     </main>
     <aside class="column-right sidebar-column" aria-label="Reglas y ajustes">
-      <div class="workspace-profile-bar" role="group" aria-label="Perfil de configuración">
-        <select id="workspace-profile-select" class="workspace-profile-select" aria-label="Perfil de configuración">
-          <option value="">Sin perfil</option>
-        </select>
-        <button type="button" id="btn-workspace-profile-save" class="icon-btn workspace-profile-save" title="Guardar perfil" aria-label="Guardar perfil">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        </button>
-        <div class="workspace-profile-more-wrap">
-          <button type="button" id="btn-workspace-profile-more" class="icon-btn" title="Más acciones del perfil" aria-label="Más acciones del perfil" aria-haspopup="menu" aria-expanded="false">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
-          </button>
-          <div id="workspace-profile-menu" class="workspace-profile-menu" role="menu" hidden>
-            <button type="button" class="workspace-profile-menu-item" role="menuitem" data-action="save-as">Guardar como…</button>
-            <button type="button" class="workspace-profile-menu-item" role="menuitem" data-action="delete">Eliminar perfil</button>
-          </div>
+      <div class="workspace-profile-bar" role="group" aria-label="Perfiles de configuración">
+        <div class="workspace-profile-heading">Perfiles</div>
+        <div class="workspace-profile-actions">
+          <button type="button" id="btn-workspace-profile-save" class="btn btn-secondary btn-small">Guardar</button>
+          <button type="button" id="btn-workspace-profile-save-as" class="btn btn-secondary btn-small">Guardar como</button>
         </div>
+        <ul id="workspace-profile-list" class="workspace-profile-list" aria-label="Perfiles guardados"></ul>
+        <p id="workspace-profile-empty" class="workspace-profile-empty">No hay perfiles. Guarda el actual para reutilizarlo.</p>
       </div>
       <div class="accordion-list sidebar-accordion sidebar-main-accordion" aria-label="Panel lateral">
         <div class="accordion-section is-open" data-accordion-section="reglas" id="tab-reglas">

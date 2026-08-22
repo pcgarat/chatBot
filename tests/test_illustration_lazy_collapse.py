@@ -35,6 +35,23 @@ def test_chat_illustration_css_reserves_layout_size_before_load():
     )
 
 
+def test_chat_illustration_does_not_force_a_single_aspect_ratio():
+    """
+    Las imágenes de Forge no son todas 3:2. Un aspect-ratio numérico en el
+    <img> aplasta retrato y panorama al mismo recuadro.
+    """
+    css = _css()
+    block = re.search(r"\.chat-illustration\s*\{([^}]+)\}", css)
+    assert block, "Falta regla .chat-illustration"
+    body = block.group(1)
+    assert not re.search(r"aspect-ratio\s*:\s*[\d.]+", body), (
+        ".chat-illustration no debe forzar una proporción fija "
+        "(usar la intrínseca de cada imagen; min-height basta para lazy)"
+    )
+    assert re.search(r"height\s*:\s*auto", body)
+    assert "min-height" in body
+
+
 def test_expand_collapse_kicks_lazy_illustrations():
     """Al expandir un mensaje, hay que empujar las imgs lazy ocultas en display:none."""
     js = _js()
