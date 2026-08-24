@@ -72,6 +72,14 @@ def test_normalize_profile_name_strips_and_rejects_empty():
         raise AssertionError("Nombre vacío debía fallar")
 
 
+def test_workspace_profiles_are_in_openapi(client):
+    paths = client.get("/openapi.json").json()["paths"]
+    assert "/api/workspace-profiles" in paths
+    assert "get" in paths["/api/workspace-profiles"]
+    assert "post" in paths["/api/workspace-profiles"]
+    assert "/api/workspace-profiles/{profile_id}" in paths
+
+
 def test_create_list_get_update_delete_profile(client):
     payload = {"name": "Relato faro", "snapshot": _minimal_snapshot()}
     created = client.post("/api/workspace-profiles", json=payload)

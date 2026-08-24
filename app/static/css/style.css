@@ -415,88 +415,106 @@ body {
 .workspace-profile-bar {
   flex-shrink: 0;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 8px 8px 10px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 12px;
   border-bottom: 1px solid var(--stroke-divider);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
-.workspace-profile-select {
-  flex: 1;
-  min-width: 0;
-  height: 28px;
-  margin: 0;
-  padding: 0 8px;
-  border: 1px solid var(--stroke-control);
-  border-radius: var(--radius-sm, 4px);
-  background: var(--layer-alt);
-  color: var(--foreground);
-  font: inherit;
+.workspace-profile-heading {
   font-size: 12px;
   font-weight: 600;
+  color: var(--foreground);
 }
 
-.workspace-profile-select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+.workspace-profile-actions {
+  display: flex;
+  gap: 6px;
 }
 
-.workspace-profile-bar .icon-btn {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
+.workspace-profile-actions .btn {
+  flex: 1;
+  min-width: 0;
 }
 
-.workspace-profile-more-wrap {
-  position: relative;
-  display: inline-flex;
-}
-
-.workspace-profile-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  min-width: 168px;
-  padding: 4px;
-  border: 1px solid var(--stroke-divider);
-  border-radius: var(--radius-md, 6px);
-  background: var(--layer-card);
-  box-shadow: var(--elevation-8);
-  z-index: 40;
+.workspace-profile-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 9.5rem;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-.workspace-profile-menu[hidden] {
-  display: none;
+.workspace-profile-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
 }
 
-.workspace-profile-menu-item {
-  display: block;
-  width: 100%;
+.workspace-profile-load {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  padding: 6px 10px;
+  padding: 6px 8px;
   border: none;
   border-radius: var(--radius-sm, 4px);
   background: transparent;
   color: var(--foreground);
   font: inherit;
   font-size: 12px;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.workspace-profile-menu-item:hover,
-.workspace-profile-menu-item:focus-visible {
-  background: var(--accent-light);
+.workspace-profile-load:hover,
+.workspace-profile-load:focus-visible {
+  background: var(--muted, var(--accent-light));
   outline: none;
 }
 
-.workspace-profile-menu-item:disabled {
-  opacity: 0.45;
-  cursor: default;
+.workspace-profile-item.is-active .workspace-profile-load {
+  background: var(--accent-light);
+  font-weight: 700;
+}
+
+.workspace-profile-delete {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.workspace-profile-delete:hover,
+.workspace-profile-delete:focus-visible {
+  color: var(--foreground);
+  background: var(--muted);
+  outline: none;
+}
+
+.workspace-profile-empty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted-foreground, var(--text-secondary));
+}
+
+.workspace-profile-empty[hidden] {
+  display: none;
 }
 
 .workspace-profile-name-modal {
@@ -3529,9 +3547,9 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   max-width: 100%;
   width: 100%;
   height: auto;
-  /* Reserva alto antes del decode: sin esto, loading=lazy + height:auto = 0px y no carga. */
-  aspect-ratio: 3 / 2;
+  /* min-height: lazy no dispara si el img mide 0px antes del decode. */
   min-height: 8rem;
+  object-fit: contain;
   margin: 0;
   border-radius: 6px;
   background: color-mix(in srgb, var(--stroke-card, #ccc) 35%, transparent);
