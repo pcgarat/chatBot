@@ -94,6 +94,17 @@ def _normalize_instructions(value: object) -> list[dict]:
     return items
 
 
+def _normalize_planner_instructions(value: object) -> list[dict]:
+    if isinstance(value, str):
+        text = value.strip()
+        value = [{"title": "Instrucciones", "content": text}] if text else []
+    items = _normalize_instructions(value)
+    for item in items:
+        item["content"] = (item.get("content") or "")[:PROMPT_SYSTEM_MAX_LEN]
+        item["title"] = (item.get("title") or "")[:512]
+    return items
+
+
 def _normalize_images(value: object) -> ImagesSnapshot:
     data = value if isinstance(value, dict) else {}
     return ImagesSnapshot(
@@ -103,8 +114,8 @@ def _normalize_images(value: object) -> ImagesSnapshot:
         batch_size=_clamp_int(data.get("batch_size"), 1, 50, 10),
         retries=_clamp_int(data.get("retries"), 0, 10, 1),
         prompt=_bounded_str(data.get("prompt") or "", PROMPT_MAX_LEN),
-        prompt_system_instructions=_bounded_str(
-            data.get("prompt_system_instructions") or "", PROMPT_SYSTEM_MAX_LEN
+        prompt_system_instructions=_normalize_planner_instructions(
+            data.get("prompt_system_instructions")
         ),
         prompt_provider=_bounded_str(data.get("prompt_provider") or "", 64),
         prompt_model=_bounded_str(data.get("prompt_model") or "", 128),

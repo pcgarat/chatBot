@@ -30,6 +30,8 @@
   let contextLength = null;
   /** Lista de reglas (system instructions) de la conversación actual. Se concatenan con espacio al enviar. */
   let rules = [];
+  /** Reglas del planificador de prompts (panel Imágenes). Independientes del chat. */
+  let plannerRules = [];
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
@@ -48,6 +50,12 @@
     btnAddRule: document.getElementById("btn-add-rule"),
     ruleLibrarySelect: document.getElementById("rule-library-select"),
     btnAddLibraryRule: document.getElementById("btn-add-library-rule"),
+    plannerRulesList: document.getElementById("planner-rules-list"),
+    plannerRuleLibrarySelect: document.getElementById("planner-rule-library-select"),
+    btnAddPlannerLibraryRule: document.getElementById("btn-add-planner-library-rule"),
+    plannerRuleNewTitle: document.getElementById("planner-rule-new-title"),
+    plannerRuleNewInput: document.getElementById("planner-rule-new-input"),
+    btnAddPlannerRule: document.getElementById("btn-add-planner-rule"),
     ruleEditModal: document.getElementById("rule-edit-modal"),
     ruleEditTitle: document.getElementById("rule-edit-title"),
     ruleEditContent: document.getElementById("rule-edit-content"),
@@ -1799,18 +1807,48 @@
   }
 
   function getRulesTextForSystem() {
-    return rules
+    return concatRuleContents(rules);
+  }
+
+  function concatRuleContents(items) {
+    return (items || [])
       .map(function (r) { return (r && r.content) ? r.content.trim() : ""; })
       .filter(Boolean)
       .join(" ");
   }
 
-  let ruleEditIndex = -1;
+  function getPlannerRulesTextForSystem() {
+    return concatRuleContents(plannerRules);
+  }
 
-  function openRuleEditModal(index) {
-    if (index < 0 || index >= rules.length) return;
+  function serializeRuleItems(items) {
+    return (items || []).map(function (r) {
+      const item = {
+        title: (r && r.title) || "",
+        content: (r && r.content) || "",
+      };
+      if (r && r.rule_id) item.rule_id = r.rule_id;
+      return item;
+    });
+  }
+
+  function normalizePlannerRulesFromPrefs(raw) {
+    if (typeof raw === "string") {
+      const text = raw.trim();
+      return text ? [{ title: "Instrucciones", content: text }] : [];
+    }
+    return normalizeRulesFromApi(raw);
+  }
+
+  let ruleEditIndex = -1;
+  let ruleEditKind = "chat";
+
+  function openRuleEditModal(index, kind) {
+    ruleEditKind = kind === "planner" ? "planner" : "chat";
+    const list = ruleEditKind === "planner" ? plannerRules : rules;
+    if (index < 0 || index >= list.length) return;
     ruleEditIndex = index;
-    const r = rules[index];
+    const r = list[index];
     if (el.ruleEditTitle) el.ruleEditTitle.value = (r && r.title != null ? r.title : "") || "";
     if (el.ruleEditContent) el.ruleEditContent.value = (r && r.content != null ? r.content : "") || "";
     if (el.ruleEditModal) {
@@ -1824,9 +1862,9 @@
     if (el.ruleEditModal) el.ruleEditModal.hidden = true;
   }
 
-  function renderRules() {
-    if (!el.rulesList) return;
-    el.rulesList.innerHTML = rules
+  function renderRuleTags(listEl, items) {
+    if (!listEl) return;
+    listEl.innerHTML = (items || [])
       .map((rule, index) => {
         const title = (rule && rule.title != null ? rule.title : "") || "";
         const displayTitle = title.trim() || "Sin título";
@@ -1839,79 +1877,102 @@
       .join("");
   }
 
-  /** Reordenar reglas por arrastre: dragstart en el asa, dragover/drop en la lista. */
-  if (el.rulesList) {
-    let ruleDragSourceIndex = -1;
-    el.rulesList.addEventListener("dragstart", function (e) {
+  function renderRules() {
+    renderRuleTags(el.rulesList, rules);
+  }
+
+  function renderPlannerRules() {
+    renderRuleTags(el.plannerRulesList, plannerRules);
+  }
+
+  function bindRuleTagList(listEl, kind) {
+    if (!listEl) return;
+    let dragSourceIndex = -1;
+    function getList() {
+      return kind === "planner" ? plannerRules : rules;
+    }
+    function setList(next) {
+      if (kind === "planner") plannerRules = next;
+      else rules = next;
+    }
+    function afterChange(forceImmediate) {
+      if (kind === "planner") {
+        renderPlannerRules();
+        persistImagesPanel();
+        return;
+      }
+      renderRules();
+      if (forceImmediate) {
+        if (saveRulesDebounceTimer) {
+          clearTimeout(saveRulesDebounceTimer);
+          saveRulesDebounceTimer = null;
+        }
+        saveRulesToConversation();
+      } else {
+        debouncedSaveRules();
+      }
+    }
+    listEl.addEventListener("dragstart", function (e) {
       const handle = e.target.closest(".rule-tag-drag");
       if (!handle) return;
       const tag = handle.closest(".rule-tag");
       if (!tag) return;
+      const items = getList();
       const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
-      if (Number.isNaN(idx) || idx < 0 || idx >= rules.length) return;
-      ruleDragSourceIndex = idx;
+      if (Number.isNaN(idx) || idx < 0 || idx >= items.length) return;
+      dragSourceIndex = idx;
       e.dataTransfer.setData("text/plain", String(idx));
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setDragImage(tag, 0, 0);
       tag.classList.add("rule-tag-dragging");
     });
-    el.rulesList.addEventListener("dragend", function (e) {
-      ruleDragSourceIndex = -1;
+    listEl.addEventListener("dragend", function (e) {
+      dragSourceIndex = -1;
       e.target.closest(".rule-tag")?.classList.remove("rule-tag-dragging");
-      el.rulesList.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
+      listEl.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
     });
-    el.rulesList.addEventListener("dragover", function (e) {
+    listEl.addEventListener("dragover", function (e) {
       const tag = e.target.closest(".rule-tag");
       if (!tag) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
-      el.rulesList.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
+      listEl.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
       tag.classList.add("rule-tag-drag-over");
     });
-    el.rulesList.addEventListener("dragleave", function (e) {
-      if (!el.rulesList.contains(e.relatedTarget)) {
-        el.rulesList.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
+    listEl.addEventListener("dragleave", function (e) {
+      if (!listEl.contains(e.relatedTarget)) {
+        listEl.querySelectorAll(".rule-tag-drag-over").forEach((n) => n.classList.remove("rule-tag-drag-over"));
       }
     });
-    el.rulesList.addEventListener("drop", function (e) {
+    listEl.addEventListener("drop", function (e) {
       const tag = e.target.closest(".rule-tag");
       if (!tag) return;
       e.preventDefault();
       tag.classList.remove("rule-tag-drag-over");
-      const from = ruleDragSourceIndex >= 0 ? ruleDragSourceIndex : parseInt(e.dataTransfer.getData("text/plain"), 10);
+      const items = getList();
+      const from = dragSourceIndex >= 0 ? dragSourceIndex : parseInt(e.dataTransfer.getData("text/plain"), 10);
       const to = parseInt(tag.getAttribute("data-rule-index"), 10);
-      if (Number.isNaN(from) || Number.isNaN(to) || from === to || from < 0 || from >= rules.length || to < 0 || to >= rules.length) return;
-      const arr = rules.slice();
+      if (Number.isNaN(from) || Number.isNaN(to) || from === to || from < 0 || from >= items.length || to < 0 || to >= items.length) return;
+      const arr = items.slice();
       const [item] = arr.splice(from, 1);
       const insertAt = Math.min(to, arr.length);
       arr.splice(insertAt, 0, item);
-      rules = arr;
-      renderRules();
-      debouncedSaveRules();
+      setList(arr);
+      afterChange(false);
     });
-  }
-
-  /** Delegación en la lista de reglas: eliminar por la cruz o abrir edición por el título. Así el botón × se detecta bien aunque solo quede una regla. */
-  if (el.rulesList) {
-    el.rulesList.addEventListener("click", function (e) {
+    listEl.addEventListener("click", function (e) {
       const removeBtn = e.target.closest(".rule-tag-remove");
       const tag = e.target.closest(".rule-tag");
+      const items = getList();
       if (removeBtn && tag) {
         e.preventDefault();
         e.stopPropagation();
         const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
-        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) {
-          rules.splice(idx, 1);
-          renderRules();
-          if (rules.length === 0) {
-            if (saveRulesDebounceTimer) {
-              clearTimeout(saveRulesDebounceTimer);
-              saveRulesDebounceTimer = null;
-            }
-            saveRulesToConversation();
-          } else {
-            debouncedSaveRules();
-          }
+        if (!Number.isNaN(idx) && idx >= 0 && idx < items.length) {
+          const next = items.slice();
+          next.splice(idx, 1);
+          setList(next);
+          afterChange(next.length === 0);
         }
         return;
       }
@@ -1919,20 +1980,24 @@
       if (label && tag) {
         e.preventDefault();
         const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
-        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) openRuleEditModal(idx);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < items.length) openRuleEditModal(idx, kind);
       }
     });
-    el.rulesList.addEventListener("keydown", function (e) {
+    listEl.addEventListener("keydown", function (e) {
       if (e.key !== "Enter" && e.key !== " ") return;
       const label = e.target.closest(".rule-tag-label");
       const tag = e.target.closest(".rule-tag");
+      const items = getList();
       if (label && tag) {
         e.preventDefault();
         const idx = parseInt(tag.getAttribute("data-rule-index"), 10);
-        if (!Number.isNaN(idx) && idx >= 0 && idx < rules.length) openRuleEditModal(idx);
+        if (!Number.isNaN(idx) && idx >= 0 && idx < items.length) openRuleEditModal(idx, kind);
       }
     });
   }
+
+  bindRuleTagList(el.rulesList, "chat");
+  bindRuleTagList(el.plannerRulesList, "planner");
 
   async function openConversation(id) {
     try {
@@ -2587,32 +2652,79 @@
     control.addEventListener("input", debouncedSaveParams);
   });
   let libraryRules = [];
+  let plannerLibraryRules = [];
 
-  /** Carga TODAS las reglas de la biblioteca (GET /api/rules) para el selector. No depende de la conversación actual. */
+  function fillLibrarySelect(selectEl, items) {
+    if (!selectEl) return;
+    const selected = selectEl.value;
+    const list = Array.isArray(items) ? items : [];
+    selectEl.innerHTML = "<option value=\"\">-- Elegir regla --</option>" +
+      list.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml((r.title || "").trim() || "Sin título")}</option>`).join("");
+    if (selected && list.some((r) => r.id === selected)) {
+      selectEl.value = selected;
+    } else {
+      selectEl.value = "";
+    }
+  }
+
+  function prependLibraryOption(selectEl, rule) {
+    if (!selectEl || !rule) return;
+    const opt = document.createElement("option");
+    opt.value = rule.id;
+    opt.textContent = (rule.title || "").trim() || "Sin título";
+    selectEl.insertBefore(opt, selectEl.options[1] || null);
+  }
+
   async function loadLibraryRules() {
     try {
-      libraryRules = await fetchJson(`${API}/rules`);
+      libraryRules = await fetchJson(`${API}/rules?scope=chat`);
       if (!Array.isArray(libraryRules)) libraryRules = [];
     } catch (_) {
       libraryRules = [];
     }
-    if (el.ruleLibrarySelect) {
-      const selected = el.ruleLibrarySelect.value;
-      el.ruleLibrarySelect.innerHTML = "<option value=\"\">-- Elegir regla --</option>" +
-        libraryRules.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml((r.title || "").trim() || "Sin título")}</option>`).join("");
-      // Solo restaurar la selección si esa regla sigue existiendo en la biblioteca (evita opciones fantasma).
-      if (selected && libraryRules.some((r) => r.id === selected)) {
-        el.ruleLibrarySelect.value = selected;
-      } else {
-        el.ruleLibrarySelect.value = "";
+    fillLibrarySelect(el.ruleLibrarySelect, libraryRules);
+  }
+
+  async function loadPlannerLibraryRules() {
+    try {
+      plannerLibraryRules = await fetchJson(`${API}/rules?scope=planner`);
+      if (!Array.isArray(plannerLibraryRules)) plannerLibraryRules = [];
+    } catch (_) {
+      plannerLibraryRules = [];
+    }
+    fillLibrarySelect(el.plannerRuleLibrarySelect, plannerLibraryRules);
+  }
+
+  function getEditRuleList() {
+    return ruleEditKind === "planner" ? plannerRules : rules;
+  }
+
+  function afterActiveRuleListChanged(forceImmediate) {
+    if (ruleEditKind === "planner") {
+      renderPlannerRules();
+      persistImagesPanel();
+      return;
+    }
+    renderRules();
+    if (forceImmediate) {
+      if (saveRulesDebounceTimer) {
+        clearTimeout(saveRulesDebounceTimer);
+        saveRulesDebounceTimer = null;
       }
+      saveRulesToConversation();
+    } else {
+      debouncedSaveRules();
     }
   }
 
-  /** Al abrir el selector, refrescar lista para no mostrar reglas ya eliminadas de la biblioteca. */
   if (el.ruleLibrarySelect) {
     el.ruleLibrarySelect.addEventListener("focus", function () {
       loadLibraryRules();
+    });
+  }
+  if (el.plannerRuleLibrarySelect) {
+    el.plannerRuleLibrarySelect.addEventListener("focus", function () {
+      loadPlannerLibraryRules();
     });
   }
 
@@ -2622,15 +2734,13 @@
       const title = (el.ruleNewTitle && el.ruleNewTitle.value ? el.ruleNewTitle.value.trim() : "") || "Regla " + (rules.length + 1);
       if (!content) return;
       try {
-        const newRule = await fetchJson(`${API}/rules`, { method: "POST", body: JSON.stringify({ title: title || "Regla " + (rules.length + 1), content: content }) });
+        const newRule = await fetchJson(`${API}/rules`, {
+          method: "POST",
+          body: JSON.stringify({ title: title || "Regla " + (rules.length + 1), content: content, scope: "chat" }),
+        });
         rules.push({ rule_id: newRule.id, title: newRule.title || "", content: newRule.content || "" });
         libraryRules.unshift(newRule);
-        if (el.ruleLibrarySelect) {
-          const opt = document.createElement("option");
-          opt.value = newRule.id;
-          opt.textContent = (newRule.title || "").trim() || "Sin título";
-          el.ruleLibrarySelect.insertBefore(opt, el.ruleLibrarySelect.options[1] || null);
-        }
+        prependLibraryOption(el.ruleLibrarySelect, newRule);
       } catch (_) {
         showError("Error al crear la regla en la biblioteca");
         return;
@@ -2639,6 +2749,29 @@
       el.ruleNewInput.value = "";
       renderRules();
       debouncedSaveRules();
+    });
+  }
+  if (el.btnAddPlannerRule && el.plannerRuleNewInput) {
+    el.btnAddPlannerRule.addEventListener("click", async function () {
+      const content = (el.plannerRuleNewInput.value || "").trim();
+      const title = (el.plannerRuleNewTitle && el.plannerRuleNewTitle.value ? el.plannerRuleNewTitle.value.trim() : "") || "Regla " + (plannerRules.length + 1);
+      if (!content) return;
+      try {
+        const newRule = await fetchJson(`${API}/rules`, {
+          method: "POST",
+          body: JSON.stringify({ title: title || "Regla " + (plannerRules.length + 1), content: content, scope: "planner" }),
+        });
+        plannerRules.push({ rule_id: newRule.id, title: newRule.title || "", content: newRule.content || "" });
+        plannerLibraryRules.unshift(newRule);
+        prependLibraryOption(el.plannerRuleLibrarySelect, newRule);
+      } catch (_) {
+        showError("Error al crear la regla del planificador");
+        return;
+      }
+      if (el.plannerRuleNewTitle) el.plannerRuleNewTitle.value = "";
+      el.plannerRuleNewInput.value = "";
+      renderPlannerRules();
+      persistImagesPanel();
     });
   }
   if (el.btnAddLibraryRule && el.ruleLibrarySelect) {
@@ -2659,10 +2792,29 @@
       debouncedSaveRules();
     });
   }
+  if (el.btnAddPlannerLibraryRule && el.plannerRuleLibrarySelect) {
+    el.btnAddPlannerLibraryRule.addEventListener("click", async function () {
+      const id = (el.plannerRuleLibrarySelect.value || "").trim();
+      if (!id) return;
+      let rule = plannerLibraryRules.find((r) => r.id === id);
+      if (!rule) {
+        try {
+          rule = await fetchJson(`${API}/rules/${id}`);
+        } catch (_) {
+          showError("Regla no encontrada");
+          return;
+        }
+      }
+      plannerRules.push({ rule_id: rule.id, title: rule.title || "", content: rule.content || "" });
+      renderPlannerRules();
+      persistImagesPanel();
+    });
+  }
   if (el.ruleEditBtnDelete) {
     el.ruleEditBtnDelete.addEventListener("click", async function () {
-      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
-      const r = rules[ruleEditIndex];
+      const list = getEditRuleList();
+      if (ruleEditIndex < 0 || ruleEditIndex >= list.length) return;
+      const r = list[ruleEditIndex];
       const ruleId = r && r.rule_id;
       if (ruleId) {
         try {
@@ -2672,26 +2824,18 @@
           return;
         }
       }
-      rules.splice(ruleEditIndex, 1);
-      renderRules();
-      if (rules.length === 0) {
-        if (saveRulesDebounceTimer) {
-          clearTimeout(saveRulesDebounceTimer);
-          saveRulesDebounceTimer = null;
-        }
-        saveRulesToConversation();
-      } else {
-        debouncedSaveRules();
-      }
+      list.splice(ruleEditIndex, 1);
+      afterActiveRuleListChanged(list.length === 0);
       closeRuleEditModal();
     });
   }
   if (el.ruleEditBtnSave) {
     el.ruleEditBtnSave.addEventListener("click", async function () {
-      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      const list = getEditRuleList();
+      if (ruleEditIndex < 0 || ruleEditIndex >= list.length) return;
       const title = (el.ruleEditTitle && el.ruleEditTitle.value ? el.ruleEditTitle.value.trim() : "") || "";
       const content = (el.ruleEditContent && el.ruleEditContent.value ? el.ruleEditContent.value : "") || "";
-      const r = rules[ruleEditIndex];
+      const r = list[ruleEditIndex];
       if (r.rule_id) {
         try {
           await fetchJson(`${API}/rules/${r.rule_id}`, { method: "PUT", body: JSON.stringify({ title: title || r.title, content: content || r.content }) });
@@ -2700,30 +2844,32 @@
           return;
         }
       }
-      rules[ruleEditIndex] = Object.assign({}, r, { title: title || r.title, content: content || r.content });
-      if (r.rule_id) rules[ruleEditIndex].rule_id = r.rule_id;
-      renderRules();
-      debouncedSaveRules();
+      list[ruleEditIndex] = Object.assign({}, r, { title: title || r.title, content: content || r.content });
+      if (r.rule_id) list[ruleEditIndex].rule_id = r.rule_id;
+      afterActiveRuleListChanged(false);
       closeRuleEditModal();
     });
   }
   if (el.ruleEditBtnSaveNew) {
     el.ruleEditBtnSaveNew.addEventListener("click", async function () {
-      if (ruleEditIndex < 0 || ruleEditIndex >= rules.length) return;
+      const list = getEditRuleList();
+      if (ruleEditIndex < 0 || ruleEditIndex >= list.length) return;
       const title = (el.ruleEditTitle && el.ruleEditTitle.value ? el.ruleEditTitle.value.trim() : "") || "";
       const content = (el.ruleEditContent && el.ruleEditContent.value ? el.ruleEditContent.value : "") || "";
+      const scope = ruleEditKind === "planner" ? "planner" : "chat";
       try {
-        const newRule = await fetchJson(`${API}/rules`, { method: "POST", body: JSON.stringify({ title: title || "Nueva regla", content: content || "" }) });
-        rules.splice(ruleEditIndex, 1);
-        rules.splice(ruleEditIndex, 0, { rule_id: newRule.id, title: newRule.title || "", content: newRule.content || "" });
-        renderRules();
-        debouncedSaveRules();
-        libraryRules.unshift(newRule);
-        if (el.ruleLibrarySelect) {
-          const opt = document.createElement("option");
-          opt.value = newRule.id;
-          opt.textContent = (newRule.title || "").trim() || "Sin título";
-          el.ruleLibrarySelect.insertBefore(opt, el.ruleLibrarySelect.options[1] || null);
+        const newRule = await fetchJson(`${API}/rules`, {
+          method: "POST",
+          body: JSON.stringify({ title: title || "Nueva regla", content: content || "", scope: scope }),
+        });
+        list.splice(ruleEditIndex, 1, { rule_id: newRule.id, title: newRule.title || "", content: newRule.content || "" });
+        afterActiveRuleListChanged(false);
+        if (ruleEditKind === "planner") {
+          plannerLibraryRules.unshift(newRule);
+          prependLibraryOption(el.plannerRuleLibrarySelect, newRule);
+        } else {
+          libraryRules.unshift(newRule);
+          prependLibraryOption(el.ruleLibrarySelect, newRule);
         }
       } catch (_) {
         showError("Error al crear la regla");
@@ -3402,7 +3548,10 @@
 
   function onSidebarMainSectionOpened(sectionId) {
     if (sectionId === "reglas") loadLibraryRules();
-    if (sectionId === "imagenes") ensureImagesPromptSelects();
+    if (sectionId === "imagenes") {
+      ensureImagesPromptSelects();
+      loadPlannerLibraryRules();
+    }
   }
 
   function migrateSidebarTabToAccordionState(state) {
@@ -3595,7 +3744,6 @@
     const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
     const promptEl = document.getElementById("images-prompt");
-    const promptSystemEl = document.getElementById("images-prompt-system");
     const providerSel = document.getElementById("images-prompt-provider");
     const modelSel = document.getElementById("images-prompt-model");
     return {
@@ -3605,7 +3753,7 @@
       batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
       retries: retries ? parseInt(retries.value, 10) || 0 : 0,
       prompt: promptEl ? String(promptEl.value || "") : "",
-      prompt_system_instructions: promptSystemEl ? String(promptSystemEl.value || "") : "",
+      prompt_system_instructions: serializeRuleItems(plannerRules),
       prompt_provider: providerSel ? providerSel.value : "",
       prompt_model: modelSel ? modelSel.value : "",
     };
@@ -3618,7 +3766,6 @@
     const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
     const promptEl = document.getElementById("images-prompt");
-    const promptSystemEl = document.getElementById("images-prompt-system");
     const dbg = document.getElementById("images-debug-mode");
     if (enabled) enabled.checked = !!prefs.enabled;
     if (useChatConfig) useChatConfig.checked = !!prefs.use_chat_config;
@@ -3626,9 +3773,8 @@
     if (batchSize && prefs.batch_size != null) batchSize.value = prefs.batch_size;
     if (retries && prefs.retries != null) retries.value = prefs.retries;
     if (promptEl && prefs.prompt != null) promptEl.value = prefs.prompt;
-    if (promptSystemEl && prefs.prompt_system_instructions != null) {
-      promptSystemEl.value = prefs.prompt_system_instructions;
-    }
+    plannerRules = normalizePlannerRulesFromPrefs(prefs.prompt_system_instructions);
+    renderPlannerRules();
     if (dbg && prefs.debug != null) dbg.checked = !!prefs.debug;
   }
 
@@ -3677,7 +3823,6 @@
     const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
     const promptEl = document.getElementById("images-prompt");
-    const promptSystemEl = document.getElementById("images-prompt-system");
     const providerSel = document.getElementById("images-prompt-provider");
     const modelSel = document.getElementById("images-prompt-model");
     const dbg = document.getElementById("images-debug-mode");
@@ -3686,9 +3831,9 @@
     const win = document.getElementById("images-debug-window");
     fillImagesPanelFromPrefs(prefs);
 
-    [enabled, useChatConfig, per, batchSize, retries, promptEl, promptSystemEl, providerSel, modelSel, dbg].forEach((node) => {
+    [enabled, useChatConfig, per, batchSize, retries, promptEl, providerSel, modelSel, dbg].forEach((node) => {
       if (!node) return;
-      const evt = node === promptEl || node === promptSystemEl ? "input" : "change";
+      const evt = node === promptEl ? "input" : "change";
       node.addEventListener(evt, function () {
         if (node === providerSel) loadImagesPromptModels().then(persistImagesPanel);
         else persistImagesPanel();
@@ -4012,7 +4157,6 @@
     const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
     const promptEl = document.getElementById("images-prompt");
-    const promptSystemEl = document.getElementById("images-prompt-system");
     const useChatConfig = document.getElementById("images-use-chat-config");
     const useChat = !!(useChatConfig && useChatConfig.checked);
     const promptModel = modelSel && modelSel.value;
@@ -4030,9 +4174,7 @@
         prompt_model: promptModel || "",
         retries: retries ? parseInt(retries.value, 10) || 0 : 0,
         prompt: promptEl ? String(promptEl.value || "").trim() : "",
-        prompt_system_instructions: promptSystemEl
-          ? String(promptSystemEl.value || "").trim()
-          : "",
+        prompt_system_instructions: getPlannerRulesTextForSystem(),
         use_chat_config: useChat,
         include_prompt_debug: isShowDebugMode(),
         debug: true,

@@ -242,14 +242,15 @@ def test_build_orchestrator_use_chat_config_takes_conv_model_rules_and_params(db
             use_chat_config=True,
             prompt_model="ignored-model",
             prompt_provider="ollama",
-            prompt_system_instructions="panel instructions ignored",
+            prompt_system_instructions="iluminación nocturna",
         )
         _build_orchestrator(body, conv=conv, db=db_session)
 
     assert provider_calls == ["abliteration"]
     assert captured.get("model") == "abliterated-model"
-    assert "Narración en segunda persona" in (captured.get("system_instructions") or "")
-    assert "panel instructions ignored" not in (captured.get("system_instructions") or "")
+    system = captured.get("system_instructions") or ""
+    assert "Narración en segunda persona" in system
+    assert "iluminación nocturna" in system
     assert captured.get("extra_body") == {"options": {"temperature": 0.3}}
     mock_extra.assert_called_once()
     assert mock_extra.call_args[0][0] == "abliteration"

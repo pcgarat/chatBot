@@ -38,12 +38,13 @@ class Conversation(Base):
 
 
 class Rule(Base):
-    """Regla reutilizable de la biblioteca (misma entidad para conversaciones y ficha de modelo)."""
+    """Regla reutilizable de la biblioteca. scope=chat (conversación/modelo) o planner (ilustración)."""
     __tablename__ = "rules"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     title = Column(String(512), nullable=False, default="")
     content = Column(Text, nullable=False, default="")
+    scope = Column(String(32), nullable=False, default="chat")  # chat | planner
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
