@@ -1,13 +1,12 @@
-"""API CRUD para la biblioteca de reglas (entidad unificada conversaciones + ficha modelo).
+"""API CRUD para la biblioteca de reglas.
 
-Modelo de datos:
-- Una sola entidad: Rule (tabla rules). Sin relación directa con conversaciones.
-- Las conversaciones guardan en system_instructions (JSON) una lista de ítems con
-  rule_id (referencia a rules.id) o inline {title, content}. Así una regla puede
-  estar referenciada por N conversaciones.
-- GET /rules devuelve TODAS las reglas de la biblioteca (para el selector).
-- Al cargar una conversación, sus reglas son las de system_instructions (resueltas).
+Una sola entidad Rule (tabla rules) con scope: chat | planner.
+GET /rules?scope=chat (default) lista la biblioteca del panel Reglas.
+GET /rules?scope=planner lista la del planificador de imágenes.
+Las conversaciones guardan instruction_ids hacia reglas scope=chat.
 """
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -18,14 +17,18 @@ from app.crud import list_rules as crud_list_rules
 from app.crud import update_rule as crud_update_rule
 from app.db import get_db
 from app.schemas import RuleCreate, RuleOut, RuleUpdate
+from app.services.rules.models import SCOPE_CHAT
 
 router = APIRouter(prefix="/api", tags=["rules"])
 
 
 @router.get("/rules", response_model=list[RuleOut])
-def list_rules(db: Session = Depends(get_db)):
-    """Lista todas las reglas de la biblioteca (sin filtrar por conversación)."""
-    return crud_list_rules(db)
+def list_rules(
+    scope: Literal["chat", "planner"] = SCOPE_CHAT,
+    db: Session = Depends(get_db),
+):
+    """Lista las reglas de un ámbito. Default: chat (biblioteca del panel Reglas)."""
+    return crud_list_rules(db, scope=scope)
 
 
 @router.get("/rules/{rule_id}", response_model=RuleOut)
@@ -40,7 +43,7 @@ def get_rule(rule_id: str, db: Session = Depends(get_db)):
 @router.post("/rules", response_model=RuleOut, status_code=201)
 def create_rule(body: RuleCreate, db: Session = Depends(get_db)):
     """Crea una regla en la biblioteca."""
-    rule = crud_create_rule(db, title=body.title, content=body.content)
+    rule = crud_create_rule(db, title=body.title, content=body.content, scope=body.scope)
     return rule
 
 

@@ -25,7 +25,7 @@ class ImagesSnapshot:
     batch_size: int = 10
     retries: int = 1
     prompt: str = ""
-    prompt_system_instructions: str = ""
+    prompt_system_instructions: list[dict] = field(default_factory=list)
     prompt_provider: str = ""
     prompt_model: str = ""
 

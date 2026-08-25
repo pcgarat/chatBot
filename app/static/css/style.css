@@ -2739,6 +2739,16 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   align-content: flex-start;
 }
 
+.planner-rules-panel .rules-list {
+  min-height: 1.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.planner-rules-panel .rules-add-existing,
+.planner-rules-panel .rules-create-block {
+  margin-top: 0.5rem;
+}
+
 .rule-tag {
   display: inline-flex;
   align-items: center;

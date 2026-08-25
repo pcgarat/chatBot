@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ----- Models -----
@@ -73,6 +73,7 @@ class RuleCreate(BaseModel):
     """Body para crear una regla en la biblioteca."""
     title: str = ""
     content: str = ""
+    scope: Literal["chat", "planner"] = "chat"
 
 
 class RuleUpdate(BaseModel):
@@ -86,6 +87,7 @@ class RuleOut(BaseModel):
     id: str
     title: str
     content: str
+    scope: Literal["chat", "planner"] = "chat"
     created_at: datetime
     updated_at: datetime
 
@@ -214,8 +216,8 @@ class IllustrateRequest(BaseModel):
     use_chat_config: bool = Field(
         default=False,
         description=(
-            "Si true, el planificador usa provider/modelo/reglas/params de la conversación "
-            "en lugar de los del panel."
+            "Si true, el planificador usa provider, modelo, reglas y params de la conversación; "
+            "las instrucciones del planificador se concatenan igualmente."
         ),
     )
     include_prompt_debug: bool = Field(
@@ -270,9 +272,19 @@ class WorkspaceImagesSnapshot(BaseModel):
     batch_size: int = 10
     retries: int = 1
     prompt: str = ""
-    prompt_system_instructions: str = ""
+    prompt_system_instructions: list[RuleItem] = Field(default_factory=list)
     prompt_provider: str = ""
     prompt_model: str = ""
+
+    @field_validator("prompt_system_instructions", mode="before")
+    @classmethod
+    def _coerce_prompt_system_instructions(cls, value):
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            text = value.strip()
+            return [{"title": "Instrucciones", "content": text}] if text else []
+        return value
 
 
 class WorkspaceSnapshotIn(BaseModel):

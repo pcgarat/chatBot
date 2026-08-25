@@ -315,7 +315,7 @@
                 <h3 id="images-planner-heading" class="panel-section-title">Planificador LLM</h3>
                 <div class="sidebar-option">
                   <label class="param-label" for="images-use-chat-config">Utilizar configuración del chat</label>
-                  <input type="checkbox" id="images-use-chat-config" title="Usar el mismo provider, modelo, reglas y parámetros de la conversación para el LLM de prompts" />
+                  <input type="checkbox" id="images-use-chat-config" title="Usar el mismo provider, modelo, reglas del chat y parámetros de la conversación. Las reglas del planificador se aplican igual." />
                 </div>
                 <div class="sidebar-option" data-images-chat-config-control>
                   <label class="param-label" for="images-prompt-provider">Provider LLM prompts</label>
@@ -325,9 +325,21 @@
                   <label class="param-label" for="images-prompt-model">Modelo LLM prompts</label>
                   <select id="images-prompt-model" class="param-control" aria-label="Modelo para prompts de imagen"></select>
                 </div>
-                <div class="sidebar-option" data-images-chat-config-control>
-                  <label class="param-label" for="images-prompt-system">Instrucciones de sistema</label>
-                  <textarea id="images-prompt-system" class="param-control images-prompt-textarea" rows="4" maxlength="8000" placeholder="Instrucciones adicionales para el LLM que decide escenas y escribe los prompts (se añaden al system del planificador)" aria-label="Instrucciones de sistema del planificador de imágenes"></textarea>
+                <div class="planner-rules-panel">
+                  <h3 id="planner-rules-heading" class="panel-section-title">Reglas del planificador</h3>
+                  <p class="panel-hint">Se concatenan al system del planificador. Independientes de las reglas del chat; se aplican también si usas la configuración del chat.</p>
+                  <div id="planner-rules-list" class="rules-list" role="list"></div>
+                  <div class="rules-add-existing">
+                    <select id="planner-rule-library-select" class="rule-library-select" aria-label="Seleccionar regla del planificador">
+                      <option value="">-- Elegir regla --</option>
+                    </select>
+                    <button type="button" id="btn-add-planner-library-rule" class="btn btn-secondary btn-small">Añadir</button>
+                  </div>
+                  <div class="rules-create-block">
+                    <input type="text" id="planner-rule-new-title" class="rule-new-title" placeholder="Título" aria-label="Título de la regla del planificador" />
+                    <textarea id="planner-rule-new-input" rows="2" placeholder="Contenido..." aria-label="Contenido de la regla del planificador"></textarea>
+                    <button type="button" id="btn-add-planner-rule" class="btn btn-secondary btn-small">Crear y añadir</button>
+                  </div>
                 </div>
               </section>
               <section class="panel-section" aria-labelledby="images-limits-heading">
@@ -351,7 +363,7 @@
                   <label class="param-label" for="images-prompt">Prompt</label>
                   <textarea id="images-prompt" class="param-control images-prompt-textarea" rows="3" maxlength="4000" placeholder="Se concatena al prompt de cada escena (p. ej. estilo, calidad)" aria-label="Prompt adicional para Forge"></textarea>
                 </div>
-                <p class="images-tab-hint panel-hint">Si activas «Utilizar configuración del chat», el planificador usa provider, modelo, reglas y parámetros de la conversación. «Prompt» siempre se concatena a Forge.</p>
+                <p class="images-tab-hint panel-hint">Si activas «Utilizar configuración del chat», el planificador usa provider, modelo, reglas del chat y parámetros de la conversación. Las reglas del planificador se aplican siempre. «Prompt» siempre se concatena a Forge.</p>
               </section>
             </div>
           </div>

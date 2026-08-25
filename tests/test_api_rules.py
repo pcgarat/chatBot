@@ -92,3 +92,39 @@ def test_delete_rule_404(client):
     """DELETE /api/rules/{id} con id inexistente devuelve 404."""
     r = client.delete("/api/rules/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
+
+
+def test_create_rule_defaults_to_chat_scope(db_session):
+    r = create_rule(db_session, title="Chat", content="C")
+    assert r.scope == "chat"
+
+
+def test_list_rules_default_excludes_planner_scope(client, db_session):
+    create_rule(db_session, title="Del chat", content="c", scope="chat")
+    create_rule(db_session, title="Del planificador", content="p", scope="planner")
+    data = client.get("/api/rules").json()
+    titles = [x["title"] for x in data]
+    assert "Del chat" in titles
+    assert "Del planificador" not in titles
+    planner = client.get("/api/rules", params={"scope": "planner"}).json()
+    planner_titles = [x["title"] for x in planner]
+    assert "Del planificador" in planner_titles
+    assert "Del chat" not in planner_titles
+
+
+def test_post_rule_planner_scope(client):
+    r = client.post(
+        "/api/rules",
+        json={"title": "Iluminación", "content": "Nocturna", "scope": "planner"},
+    )
+    assert r.status_code == 201
+    assert r.json()["scope"] == "planner"
+    listed = client.get("/api/rules?scope=planner").json()
+    assert any(x["id"] == r.json()["id"] for x in listed)
+    chat_listed = client.get("/api/rules").json()
+    assert all(x["id"] != r.json()["id"] for x in chat_listed)
+
+
+def test_list_rules_invalid_scope_422(client):
+    r = client.get("/api/rules", params={"scope": "other"})
+    assert r.status_code == 422

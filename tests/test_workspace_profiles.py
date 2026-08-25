@@ -48,9 +48,22 @@ def test_normalize_snapshot_keeps_rig_and_drops_chrome():
     assert out["system_instructions"][0]["rule_id"] == "r1"
     assert out["images"]["enabled"] is True
     assert out["images"]["prompt"] == "cinematic"
+    assert out["images"]["prompt_system_instructions"] == [
+        {"title": "Instrucciones", "content": "plan well"}
+    ]
     assert "debug" not in out["images"]
     assert "darkMode" not in out["images"]
     assert "font_size" not in out
+
+
+def test_normalize_snapshot_keeps_planner_rule_list():
+    raw = _minimal_snapshot()
+    raw["images"]["prompt_system_instructions"] = [
+        {"title": "Luz", "content": "Nocturna", "rule_id": "pr1"}
+    ]
+    out = normalize_snapshot(raw)
+    assert out["images"]["prompt_system_instructions"][0]["rule_id"] == "pr1"
+    assert out["images"]["prompt_system_instructions"][0]["content"] == "Nocturna"
 
 
 def test_normalize_snapshot_requires_model():

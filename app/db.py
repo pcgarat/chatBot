@@ -123,3 +123,15 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # Ámbito de reglas: chat (default) | planner
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE rules ADD COLUMN scope VARCHAR(32) DEFAULT 'chat' NOT NULL"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text("UPDATE rules SET scope = 'chat' WHERE scope IS NULL OR scope = ''"))
+            conn.commit()
+        except Exception:
+            conn.rollback()

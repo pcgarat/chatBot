@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, IllustratedImage, Message, Rule
+from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
 
 # Sentinel para "no actualizar inject_instruction_every" en update_conversation
 _INJECT_UNSET = object()
@@ -13,8 +14,10 @@ INSTRUCTION_OVERRIDE_UNSET = object()
 
 
 # ----- Rules (biblioteca) -----
-def create_rule(db: Session, title: str = "", content: str = "") -> Rule:
-    rule = Rule(title=title, content=content)
+def create_rule(db: Session, title: str = "", content: str = "", scope: str = SCOPE_CHAT) -> Rule:
+    if scope not in RULE_SCOPES:
+        raise ValueError(f"scope inválido: {scope}")
+    rule = Rule(title=title, content=content, scope=scope)
     db.add(rule)
     db.commit()
     db.refresh(rule)
@@ -25,8 +28,8 @@ def get_rule(db: Session, rule_id: str) -> Rule | None:
     return db.query(Rule).filter(Rule.id == rule_id).first()
 
 
-def list_rules(db: Session) -> list[Rule]:
-    return db.query(Rule).order_by(Rule.updated_at.desc()).all()
+def list_rules(db: Session, scope: str = SCOPE_CHAT) -> list[Rule]:
+    return db.query(Rule).filter(Rule.scope == scope).order_by(Rule.updated_at.desc()).all()
 
 
 def update_rule(db: Session, rule_id: str, title: str | None = None, content: str | None = None) -> Rule | None:

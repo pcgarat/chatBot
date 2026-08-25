@@ -525,6 +525,25 @@ def test_e2e_rules_crud(client, ollama_available):
     assert r_get_404.status_code == 404, "La regla debe desaparecer de la BD al eliminarla"
 
 
+def test_e2e_planner_rules_are_isolated_from_chat_library(client, ollama_available):
+    """E2E: una regla scope=planner no aparece en la biblioteca del chat."""
+    r_post = client.post(
+        "/api/rules",
+        json={"title": "E2E planner", "content": "Solo ilustración", "scope": "planner"},
+    )
+    assert r_post.status_code == 201
+    rule_id = r_post.json()["id"]
+    assert r_post.json()["scope"] == "planner"
+
+    chat_list = client.get("/api/rules").json()
+    assert all(item["id"] != rule_id for item in chat_list)
+
+    planner_list = client.get("/api/rules", params={"scope": "planner"}).json()
+    assert any(item["id"] == rule_id for item in planner_list)
+
+    client.delete(f"/api/rules/{rule_id}")
+
+
 def test_e2e_rule_delete_removes_from_db_and_from_all_conversations(client, ollama_available):
     """
     Al eliminar una regla de la biblioteca (DELETE /api/rules/{id}):

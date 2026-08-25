@@ -34,6 +34,7 @@ from app.services.image_illustration.storage import (
     resolve_illustrated_path,
     save_illustrated_image,
 )
+from app.services.rules.compose import concat_instruction_texts
 
 router = APIRouter(prefix="/api", tags=["images"])
 
@@ -67,13 +68,16 @@ def _build_orchestrator(
                 status_code=400,
                 detail="La conversación no tiene modelo para use_chat_config",
             )
-        system_instructions = _chat_rules_text(conv, db)
+        system_instructions = concat_instruction_texts(
+            _chat_rules_text(conv, db),
+            body.prompt_system_instructions,
+        )
         model_params = _parse_model_params(getattr(conv, "model_params", None))
         extra_body = build_extra_body(provider_name, model_params) or None
     else:
         provider_name = body.prompt_provider
         model = body.prompt_model.strip()
-        system_instructions = body.prompt_system_instructions
+        system_instructions = concat_instruction_texts(body.prompt_system_instructions)
         extra_body = None
 
     provider = get_provider(provider_name)
