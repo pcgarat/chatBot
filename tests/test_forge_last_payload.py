@@ -164,3 +164,28 @@ def test_filesystem_last_payload_falls_back_to_last_output(tmp_path: Path):
     )
     payload = src.load()
     assert "init_images:last_output" in payload.recovered_fields
+
+
+def test_load_panel_params_reads_steps_size_seed_without_options(tmp_path: Path):
+    out = tmp_path / "output" / "txt2img-images"
+    out.mkdir(parents=True)
+    (out / "last.png").write_bytes(b"\x89PNGx")
+    (tmp_path / "params.txt").write_text(SAMPLE_INFOTEXT_TXT2IMG, encoding="utf-8")
+
+    mock_http = MagicMock()
+    png_resp = MagicMock()
+    png_resp.status_code = 500
+    mock_http.post.return_value = png_resp
+
+    src = FileSystemLastPayloadSource(
+        data_path=str(tmp_path),
+        http_client=mock_http,
+    )
+    params = src.load_panel_params()
+    assert params["steps"] == 20
+    assert params["width"] == 832
+    assert params["height"] == 1216
+    assert params["seed"] == 12345
+    assert params["mode"] == "txt2img"
+    mock_http.post.assert_not_called()
+    mock_http.get.assert_not_called()

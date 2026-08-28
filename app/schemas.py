@@ -188,7 +188,34 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
-class IllustrateRequest(BaseModel):
+class ForgePanelParamFields(BaseModel):
+    """steps/width/height/seed opcionales del panel Imágenes (None = replay del último gen)."""
+
+    steps: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=150,
+        description="Override de steps en Forge; None = usar el del último gen.",
+    )
+    width: Optional[int] = Field(
+        default=None,
+        ge=64,
+        le=4096,
+        description="Override de width en Forge; None = usar el del último gen.",
+    )
+    height: Optional[int] = Field(
+        default=None,
+        ge=64,
+        le=4096,
+        description="Override de height en Forge; None = usar el del último gen.",
+    )
+    seed: Optional[int] = Field(
+        default=None,
+        description="Override de seed en Forge (-1 = aleatorio); None = usar el del último gen.",
+    )
+
+
+class IllustrateRequest(ForgePanelParamFields):
     """Opciones del panel Imágenes para POST .../illustrate."""
 
     images_per_response: int = Field(default=2, ge=1)
@@ -233,7 +260,7 @@ class IllustrateRequest(BaseModel):
         return self
 
 
-class GenerateRemainingRequest(BaseModel):
+class GenerateRemainingRequest(ForgePanelParamFields):
     """Opciones para regenerar anclas/placeholders pendientes sin re-planificar."""
 
     retries: int = Field(default=1, ge=0, le=10)
@@ -243,6 +270,18 @@ class GenerateRemainingRequest(BaseModel):
         description="Tamaño de lote al regenerar imágenes pendientes en Forge.",
     )
     debug: bool = False
+
+
+class ForgeLastGenerationParamsResponse(BaseModel):
+    """Params del último gen de Forge para autorrellenar el panel Imágenes."""
+
+    available: bool = False
+    steps: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    seed: Optional[int] = None
+    mode: Optional[str] = None
+    detail: Optional[str] = None
 
 
 class MessageContentUpdateResponse(BaseModel):
@@ -263,7 +302,7 @@ class IllustratedImageMetaResponse(BaseModel):
     created_at: Optional[str] = None
 
 
-class WorkspaceImagesSnapshot(BaseModel):
+class WorkspaceImagesSnapshot(ForgePanelParamFields):
     """Prefs del panel Imágenes (sin debug ni cromo de UI)."""
 
     enabled: bool = False

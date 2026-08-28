@@ -1032,3 +1032,13 @@ def test_e2e_workspace_profiles_crud(client, ollama_available):
     assert updated.json()["snapshot"]["history_turns"] == 2
     deleted = client.delete(f"/api/workspace-profiles/{profile['id']}")
     assert deleted.status_code == 204
+
+
+def test_e2e_forge_last_generation_params_shape(client, ollama_available):
+    """GET /api/forge/last-generation-params siempre responde 200 con available bool."""
+    r = client.get("/api/forge/last-generation-params")
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body.get("available"), bool)
+    for key in ("steps", "width", "height", "seed", "mode", "detail"):
+        assert key in body

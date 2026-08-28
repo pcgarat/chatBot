@@ -31,6 +31,10 @@ def _minimal_snapshot(**overrides):
             "prompt_model": "qwen",
             "debug": True,
             "darkMode": True,
+            "steps": 28,
+            "width": 768,
+            "height": 1024,
+            "seed": -1,
         },
         "font_size": 2,
     }
@@ -48,6 +52,10 @@ def test_normalize_snapshot_keeps_rig_and_drops_chrome():
     assert out["system_instructions"][0]["rule_id"] == "r1"
     assert out["images"]["enabled"] is True
     assert out["images"]["prompt"] == "cinematic"
+    assert out["images"]["steps"] == 28
+    assert out["images"]["width"] == 768
+    assert out["images"]["height"] == 1024
+    assert out["images"]["seed"] == -1
     assert out["images"]["prompt_system_instructions"] == [
         {"title": "Instrucciones", "content": "plan well"}
     ]

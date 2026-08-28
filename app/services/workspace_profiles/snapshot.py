@@ -62,6 +62,20 @@ def _str_list(value: object) -> list[str]:
     return out
 
 
+def _optional_int(value: object, lo: int | None = None, hi: int | None = None) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    if lo is not None and n < lo:
+        return None
+    if hi is not None and n > hi:
+        return None
+    return n
+
+
 def _clamp_int(value: object, lo: int, hi: int, default: int) -> int:
     try:
         n = int(value)
@@ -119,4 +133,8 @@ def _normalize_images(value: object) -> ImagesSnapshot:
         ),
         prompt_provider=_bounded_str(data.get("prompt_provider") or "", 64),
         prompt_model=_bounded_str(data.get("prompt_model") or "", 128),
+        steps=_optional_int(data.get("steps"), 1, 150),
+        width=_optional_int(data.get("width"), 64, 4096),
+        height=_optional_int(data.get("height"), 64, 4096),
+        seed=_optional_int(data.get("seed")),
     )

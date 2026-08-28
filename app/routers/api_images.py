@@ -18,6 +18,7 @@ from app.routers.api_conversations import (
     _parse_model_params,
 )
 from app.schemas import (
+    ForgeLastGenerationParamsResponse,
     GenerateRemainingRequest,
     IllustratedImageMetaResponse,
     IllustrateRequest,
@@ -25,7 +26,11 @@ from app.schemas import (
 )
 from app.services.image_illustration.content_ops import remove_all_photos, remove_orphan_anchors
 from app.services.image_illustration.forge_client import ForgeHttpClient
-from app.services.image_illustration.last_payload import FileSystemLastPayloadSource
+from app.services.image_illustration.forge_param_overrides import forge_overrides_from_optional
+from app.services.image_illustration.last_payload import (
+    FileSystemLastPayloadSource,
+    LastPayloadError,
+)
 from app.services.image_illustration.orchestrator import ImageIllustrationOrchestrator
 from app.services.image_illustration.scene_planner import LlmScenePlanner
 from app.services.image_illustration.storage import (
@@ -47,6 +52,25 @@ def _chat_rules_text(conv, db: Session) -> str:
         for c in (r.get("content", "") for r in instructions)
         if (c or "").strip()
     ).strip()
+
+
+def _forge_overrides_from_body(body: IllustrateRequest | GenerateRemainingRequest):
+    """Overrides del panel Imágenes (steps/width/height/seed) si el usuario los envió."""
+    return forge_overrides_from_optional(
+        steps=body.steps,
+        width=body.width,
+        height=body.height,
+        seed=body.seed,
+    )
+
+
+def _build_payload_source() -> FileSystemLastPayloadSource:
+    return FileSystemLastPayloadSource(
+        data_path=settings.forge_data_path,
+        style_init_dir=settings.forge_style_init_dir,
+        forge_base_url=settings.forge_base_url,
+        timeout_seconds=min(60.0, settings.forge_timeout_seconds),
+    )
 
 
 def _build_orchestrator(
@@ -87,12 +111,7 @@ def _build_orchestrator(
         system_instructions=system_instructions,
         extra_body=extra_body,
     )
-    payload_source = FileSystemLastPayloadSource(
-        data_path=settings.forge_data_path,
-        style_init_dir=settings.forge_style_init_dir,
-        forge_base_url=settings.forge_base_url,
-        timeout_seconds=min(60.0, settings.forge_timeout_seconds),
-    )
+    payload_source = _build_payload_source()
     forge = ForgeHttpClient(
         base_url=settings.forge_base_url,
         timeout_seconds=settings.forge_timeout_seconds,
@@ -112,12 +131,7 @@ def _build_forge_orchestrator() -> ImageIllustrationOrchestrator:
         def plan(self, text, max_images):
             raise RuntimeError("ScenePlanner no se usa en generate-remaining")
 
-    payload_source = FileSystemLastPayloadSource(
-        data_path=settings.forge_data_path,
-        style_init_dir=settings.forge_style_init_dir,
-        forge_base_url=settings.forge_base_url,
-        timeout_seconds=min(60.0, settings.forge_timeout_seconds),
-    )
+    payload_source = _build_payload_source()
     forge = ForgeHttpClient(
         base_url=settings.forge_base_url,
         timeout_seconds=settings.forge_timeout_seconds,
@@ -272,6 +286,7 @@ def illustrate_message(
                 include_prompt_debug=body.include_prompt_debug,
                 batch_size=body.batch_size,
                 existing_prompts=meta_prompts or None,
+                forge_overrides=_forge_overrides_from_body(body),
             ),
             debug=body.debug,
             include_prompt_debug=body.include_prompt_debug,
@@ -303,7 +318,10 @@ def generate_remaining_images(
             message_id=message_id,
             text=text,
             events=orch.run_remaining(
-                text, retries=body.retries, batch_size=body.batch_size
+                text,
+                retries=body.retries,
+                batch_size=body.batch_size,
+                forge_overrides=_forge_overrides_from_body(body),
             ),
             debug=body.debug,
         )
@@ -382,6 +400,37 @@ def get_illustrated_image_meta(filename: str, db: Session = Depends(get_db)):
         mode=row.mode or "txt2img",
         params=params,
         created_at=row.created_at.isoformat() if row.created_at else None,
+    )
+
+
+@router.get(
+    "/forge/last-generation-params",
+    response_model=ForgeLastGenerationParamsResponse,
+)
+def get_forge_last_generation_params():
+    """
+    Params del último gen de Forge (steps/width/height/seed) para autorrellenar el panel.
+    No falla duro: available=false si Forge/data no están listos.
+    """
+    if not (settings.forge_data_path or "").strip():
+        return ForgeLastGenerationParamsResponse(
+            available=False,
+            detail="FORGE_DATA_PATH no configurado",
+        )
+    try:
+        source = _build_payload_source()
+        data = source.load_panel_params()
+    except LastPayloadError as exc:
+        return ForgeLastGenerationParamsResponse(available=False, detail=str(exc))
+    except Exception as exc:
+        return ForgeLastGenerationParamsResponse(available=False, detail=str(exc))
+    return ForgeLastGenerationParamsResponse(
+        available=True,
+        steps=data.get("steps"),
+        width=data.get("width"),
+        height=data.get("height"),
+        seed=data.get("seed"),
+        mode=data.get("mode"),
     )
 
 
