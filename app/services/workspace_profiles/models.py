@@ -28,6 +28,10 @@ class ImagesSnapshot:
     prompt_system_instructions: list[dict] = field(default_factory=list)
     prompt_provider: str = ""
     prompt_model: str = ""
+    steps: int | None = None
+    width: int | None = None
+    height: int | None = None
+    seed: int | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -40,6 +44,10 @@ class ImagesSnapshot:
             "prompt_system_instructions": self.prompt_system_instructions,
             "prompt_provider": self.prompt_provider,
             "prompt_model": self.prompt_model,
+            "steps": self.steps,
+            "width": self.width,
+            "height": self.height,
+            "seed": self.seed,
         }
 
 

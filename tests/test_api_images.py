@@ -159,10 +159,11 @@ def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None):
             captured["prompt"] = prompt
             captured["max_images"] = max_images
             captured["batch_size"] = batch_size
+            captured["forge_overrides"] = forge_overrides
             yield IllustrationEvent(type="done", message="ok", content=text)
 
     with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
@@ -181,6 +182,98 @@ def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
     assert captured["prompt"] == "oil painting, detailed"
     assert captured["batch_size"] == 7
     assert _ndjson_lines(res)[-1]["type"] == "done"
+
+
+def test_illustrate_forwards_forge_param_overrides_to_orchestrator(client, db_session):
+    from app import crud
+    from app.services.image_illustration.models import ForgeParamOverrides
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Había un faro.")
+    captured: dict = {}
+
+    class FakeOrch:
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None):
+            captured["forge_overrides"] = forge_overrides
+            yield IllustrationEvent(type="done", message="ok", content=text)
+
+    with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
+            json={
+                "prompt_model": "llama3.2",
+                "prompt_provider": "ollama",
+                "images_per_response": 1,
+                "retries": 0,
+                "steps": 28,
+                "width": 768,
+                "height": 1024,
+                "seed": -1,
+            },
+        )
+    assert res.status_code == 200
+    ov = captured["forge_overrides"]
+    assert isinstance(ov, ForgeParamOverrides)
+    assert ov.as_dict() == {"steps": 28, "width": 768, "height": 1024, "seed": -1}
+
+
+def test_generate_remaining_forwards_forge_param_overrides(client, db_session):
+    from app import crud
+    from app.services.image_illustration.models import ForgeParamOverrides
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(
+        db_session,
+        conv.id,
+        "assistant",
+        '<span class="chat-illustration-placeholder" data-scene="s1" data-prompt="x">x</span>',
+    )
+    captured: dict = {}
+
+    class FakeOrch:
+        def run_remaining(self, text, *, retries, batch_size=10, forge_overrides=None):
+            captured["forge_overrides"] = forge_overrides
+            yield IllustrationEvent(type="done", message="ok", content=text)
+
+    with patch("app.routers.api_images._build_forge_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/generate-remaining",
+            json={"retries": 0, "steps": 12, "seed": 42},
+        )
+    assert res.status_code == 200
+    ov = captured["forge_overrides"]
+    assert isinstance(ov, ForgeParamOverrides)
+    assert ov.as_dict() == {"steps": 12, "seed": 42}
+
+
+def test_forge_last_generation_params_unavailable_without_data_path(client, monkeypatch):
+    monkeypatch.setattr("app.routers.api_images.settings.forge_data_path", "")
+    res = client.get("/api/forge/last-generation-params")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["available"] is False
+    assert "FORGE_DATA_PATH" in (body.get("detail") or "")
+
+
+def test_forge_last_generation_params_ok(client, tmp_path, monkeypatch):
+    from tests.fixtures_forge_infotext import SAMPLE_PARAMS_TXT_IMG2IMG
+
+    out = tmp_path / "output" / "txt2img-images"
+    out.mkdir(parents=True)
+    (out / "last.png").write_bytes(b"\x89PNGx")
+    (tmp_path / "params.txt").write_text(SAMPLE_PARAMS_TXT_IMG2IMG, encoding="utf-8")
+    monkeypatch.setattr("app.routers.api_images.settings.forge_data_path", str(tmp_path))
+    monkeypatch.setattr("app.routers.api_images.settings.forge_base_url", "http://127.0.0.1:9")
+
+    res = client.get("/api/forge/last-generation-params")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["available"] is True
+    assert body["steps"] == 8
+    assert body["width"] == 1024
+    assert body["height"] == 1024
+    assert body["seed"] == 3815280852
+    assert body["mode"] in ("txt2img", "img2img")
 
 
 def test_build_orchestrator_passes_prompt_system_instructions():
@@ -281,6 +374,23 @@ def test_illustrate_request_batch_size_defaults_to_10():
     assert GenerateRemainingRequest().batch_size == 10
 
 
+def test_illustrate_request_forge_param_overrides_optional():
+    from pydantic import ValidationError
+
+    from app.schemas import GenerateRemainingRequest, IllustrateRequest
+
+    req = IllustrateRequest(prompt_model="m", steps=20, width=832, height=1216, seed=-1)
+    assert req.steps == 20
+    assert req.seed == -1
+    rem = GenerateRemainingRequest(width=1024)
+    assert rem.width == 1024
+    assert rem.steps is None
+    with pytest.raises(ValidationError):
+        IllustrateRequest(prompt_model="m", steps=0)
+    with pytest.raises(ValidationError):
+        IllustrateRequest(prompt_model="m", width=32)
+
+
 def test_clear_photos_deletes_files_and_updates_content(client, db_session, tmp_path, monkeypatch):
     from app import crud
     from app.services.image_illustration import storage
@@ -352,7 +462,7 @@ def test_generate_remaining_stream_regenerates_pending(client, db_session):
     msg = crud.add_message(db_session, conv.id, "assistant", content)
 
     class FakeOrch:
-        def run_remaining(self, text, *, retries, batch_size=10):
+        def run_remaining(self, text, *, retries, batch_size=10, forge_overrides=None):
             assert retries == 0
             assert batch_size == 5
             assert "data-prompt" in text

@@ -3737,6 +3737,40 @@
     }
   }
 
+  function readOptionalIntInput(el) {
+    if (!el || el.value === "" || el.value == null) return null;
+    const n = parseInt(el.value, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function readForgePanelParams() {
+    return {
+      steps: readOptionalIntInput(document.getElementById("images-forge-steps")),
+      width: readOptionalIntInput(document.getElementById("images-forge-width")),
+      height: readOptionalIntInput(document.getElementById("images-forge-height")),
+      seed: readOptionalIntInput(document.getElementById("images-forge-seed")),
+    };
+  }
+
+  function applyForgePanelParams(params) {
+    if (!params || typeof params !== "object") return;
+    const map = [
+      ["images-forge-steps", "steps"],
+      ["images-forge-width", "width"],
+      ["images-forge-height", "height"],
+      ["images-forge-seed", "seed"],
+    ];
+    map.forEach(function ([id, key]) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (params[key] == null || params[key] === "") {
+        el.value = "";
+        return;
+      }
+      el.value = String(params[key]);
+    });
+  }
+
   function collectImagesSnapshot() {
     const enabled = document.getElementById("images-enabled");
     const useChatConfig = document.getElementById("images-use-chat-config");
@@ -3746,6 +3780,7 @@
     const promptEl = document.getElementById("images-prompt");
     const providerSel = document.getElementById("images-prompt-provider");
     const modelSel = document.getElementById("images-prompt-model");
+    const forge = readForgePanelParams();
     return {
       enabled: !!(enabled && enabled.checked),
       use_chat_config: !!(useChatConfig && useChatConfig.checked),
@@ -3756,6 +3791,10 @@
       prompt_system_instructions: serializeRuleItems(plannerRules),
       prompt_provider: providerSel ? providerSel.value : "",
       prompt_model: modelSel ? modelSel.value : "",
+      steps: forge.steps,
+      width: forge.width,
+      height: forge.height,
+      seed: forge.seed,
     };
   }
 
@@ -3776,6 +3815,14 @@
     plannerRules = normalizePlannerRulesFromPrefs(prefs.prompt_system_instructions);
     renderPlannerRules();
     if (dbg && prefs.debug != null) dbg.checked = !!prefs.debug;
+    if (
+      prefs.steps != null ||
+      prefs.width != null ||
+      prefs.height != null ||
+      prefs.seed != null
+    ) {
+      applyForgePanelParams(prefs);
+    }
   }
 
   function syncImagesChatConfigDisabled() {
@@ -3795,6 +3842,76 @@
     saveImagesPrefs(snap);
     syncImagesDebugWindow();
     syncImagesChatConfigDisabled();
+  }
+
+  async function fetchForgeLastGenerationParams() {
+    const data = await fetchJson(`${API}/forge/last-generation-params`);
+    if (!data || !data.available) {
+      const detail = (data && data.detail) || "No hay último gen disponible";
+      const err = new Error(detail);
+      err.unavailable = true;
+      throw err;
+    }
+    return data;
+  }
+
+  function persistForgePanelParamsFromDom() {
+    const forgeParams = readForgePanelParams();
+    return saveImagesPrefs({
+      steps: forgeParams.steps,
+      width: forgeParams.width,
+      height: forgeParams.height,
+      seed: forgeParams.seed,
+    });
+  }
+
+  async function reloadForgeParamsFromLastGen(options) {
+    const notify = !!(options && options.notify);
+    const btn = document.getElementById("btn-images-forge-reload-params");
+    if (btn) btn.disabled = true;
+    try {
+      const data = await fetchForgeLastGenerationParams();
+      applyForgePanelParams(data);
+      persistForgePanelParamsFromDom();
+      if (notify) {
+        const parts = [];
+        if (data.steps != null) parts.push(`steps=${data.steps}`);
+        if (data.width != null && data.height != null) {
+          parts.push(`${data.width}×${data.height}`);
+        }
+        if (data.seed != null) parts.push(`seed=${data.seed}`);
+        showNotice(
+          parts.length
+            ? `Parámetros Forge recargados (${parts.join(", ")}).`
+            : "Parámetros Forge recargados."
+        );
+      }
+      return data;
+    } catch (e) {
+      if (notify) {
+        showNotice(
+          e && e.unavailable
+            ? `No se pudo recargar desde Forge: ${e.message}`
+            : `Error al recargar params de Forge: ${(e && e.message) || e}`
+        );
+      }
+      throw e;
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function autofillForgeParamsFromLastGen(prefs) {
+    const hasStored =
+      prefs &&
+      (prefs.steps != null || prefs.width != null || prefs.height != null || prefs.seed != null);
+    if (hasStored) {
+      applyForgePanelParams(prefs);
+      return;
+    }
+    try {
+      await reloadForgeParamsFromLastGen({ notify: false });
+    } catch (_) {}
   }
 
   async function applyImagesSnapshot(images) {
@@ -3825,13 +3942,21 @@
     const promptEl = document.getElementById("images-prompt");
     const providerSel = document.getElementById("images-prompt-provider");
     const modelSel = document.getElementById("images-prompt-model");
+    const forgeSteps = document.getElementById("images-forge-steps");
+    const forgeWidth = document.getElementById("images-forge-width");
+    const forgeHeight = document.getElementById("images-forge-height");
+    const forgeSeed = document.getElementById("images-forge-seed");
+    const reloadForgeBtn = document.getElementById("btn-images-forge-reload-params");
     const dbg = document.getElementById("images-debug-mode");
     const closeBtn = document.getElementById("images-debug-close");
     const stopBtn = document.getElementById("images-debug-stop");
     const win = document.getElementById("images-debug-window");
     fillImagesPanelFromPrefs(prefs);
 
-    [enabled, useChatConfig, per, batchSize, retries, promptEl, providerSel, modelSel, dbg].forEach((node) => {
+    const forgeParamInputs = [forgeSteps, forgeWidth, forgeHeight, forgeSeed];
+    [enabled, useChatConfig, per, batchSize, retries, promptEl, providerSel, modelSel, dbg]
+      .concat(forgeParamInputs)
+      .forEach((node) => {
       if (!node) return;
       const evt = node === promptEl ? "input" : "change";
       node.addEventListener(evt, function () {
@@ -3839,6 +3964,11 @@
         else persistImagesPanel();
       });
     });
+    if (reloadForgeBtn) {
+      reloadForgeBtn.addEventListener("click", function () {
+        reloadForgeParamsFromLastGen({ notify: true }).catch(function () {});
+      });
+    }
     if (stopBtn) {
       stopBtn.addEventListener("click", function () {
         abortAllIllustrations();
@@ -3854,6 +3984,9 @@
     syncImagesChatConfigDisabled();
     syncImagesDebugWindow();
     ensureImagesPromptSelects();
+    autofillForgeParamsFromLastGen(prefs).then(function () {
+      persistImagesPanel();
+    });
   }
 
   initImagesPanel();
@@ -4178,6 +4311,7 @@
         use_chat_config: useChat,
         include_prompt_debug: isShowDebugMode(),
         debug: true,
+        ...readForgePanelParams(),
       },
       debugLabel: `Iniciando illustrate message=${messageId}${force ? " (manual)" : ""}`,
       doneNotice: force ? "Ilustración terminada." : null,
@@ -4197,6 +4331,7 @@
         retries: retries ? parseInt(retries.value, 10) || 0 : 0,
         batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
         debug: true,
+        ...readForgePanelParams(),
       },
       debugLabel: `Iniciando generate-remaining message=${messageId}`,
       doneNotice: "Imágenes restantes terminadas.",

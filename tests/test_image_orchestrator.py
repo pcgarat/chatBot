@@ -83,7 +83,7 @@ class FakeForge:
         self.calls = []
 
     def generate(self, mode, body):
-        self.calls.append({"mode": mode, "prompt": body.get("prompt")})
+        self.calls.append({"mode": mode, "body": dict(body), "prompt": body.get("prompt")})
         prompt = body.get("prompt")
         val = self.results.get(prompt)
         if isinstance(val, Exception):
@@ -544,3 +544,35 @@ def test_run_remaining_generates_in_batches():
     assert [c["prompt"] for c in forge.calls] == ["a", "b", "c"]
     done = events[-1]
     assert (done.content or "").count("chat-illustration") == 3
+
+
+def test_orchestrator_applies_forge_param_overrides_to_forge_body():
+    from app.services.image_illustration.models import ForgeParamOverrides
+
+    scenes = [SceneSpec(id="s1", prompt="faro", anchor_excerpt="Había un faro.")]
+    forge = FakeForge({"faro": b"img"})
+    orch = ImageIllustrationOrchestrator(
+        planner=FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=scenes)),
+        payload_source=FakePayloadSource(
+            LastGenerationPayload(
+                mode=ForgeMode.TXT2IMG,
+                body={"steps": 8, "width": 512, "height": 512, "seed": 1, "prompt": "old"},
+                recovered_fields=["steps", "width", "height", "seed"],
+            )
+        ),
+        forge=forge,
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    list(
+        orch.run(
+            "Había un faro.",
+            max_images=1,
+            retries=0,
+            forge_overrides=ForgeParamOverrides(steps=40, width=1024, height=768, seed=-1),
+        )
+    )
+    assert forge.calls[0]["body"]["steps"] == 40
+    assert forge.calls[0]["body"]["width"] == 1024
+    assert forge.calls[0]["body"]["height"] == 768
+    assert forge.calls[0]["body"]["seed"] == -1
+    assert forge.calls[0]["body"]["prompt"] == "faro"

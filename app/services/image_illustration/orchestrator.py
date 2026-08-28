@@ -24,6 +24,7 @@ from app.services.image_illustration.coverage import (
     suggest_distributed_targets,
 )
 from app.services.image_illustration.models import (
+    ForgeParamOverrides,
     IllustrationEvent,
     LastGenerationPayload,
     ScenePlan,
@@ -114,6 +115,7 @@ def _run_pass(
     *,
     pass_name: str,
     extra_prompt: str = "",
+    forge_overrides: ForgeParamOverrides | None = None,
 ) -> Iterator[IllustrationEvent]:
     still_failed: list[SceneSpec] = []
     total = len(scenes)
@@ -140,7 +142,7 @@ def _run_pass(
             total=total,
         )
         try:
-            body = payload.body_with_prompt(forge_prompt)
+            body = payload.body_with_prompt(forge_prompt, overrides=forge_overrides)
             t0 = time.perf_counter()
             image_bytes = forge.generate(payload.mode, body)
             generation_time_ms = (time.perf_counter() - t0) * 1000.0
@@ -223,6 +225,7 @@ class ImageIllustrationOrchestrator:
         include_prompt_debug: bool = False,
         batch_size: int = 10,
         existing_prompts: list[str] | None = None,
+        forge_overrides: ForgeParamOverrides | None = None,
     ) -> Iterator[IllustrationEvent]:
         yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración")
         batch_n = max(1, int(batch_size))
@@ -233,6 +236,7 @@ class ImageIllustrationOrchestrator:
         plan_text = strip_illustration_artifacts(text)
         content = strip_transient_illustration_artifacts(text)
         extra_prompt = (prompt or "").strip()
+        overrides = forge_overrides
 
         coverage = analyze_coverage(text)
         remaining_quota = max(0, int(max_images))
@@ -431,6 +435,7 @@ class ImageIllustrationOrchestrator:
                 content,
                 pass_name=f"lote-{batch_idx}",
                 extra_prompt=extra_prompt,
+                forge_overrides=overrides,
             )
             content, pending = yield from self._retry_failed(
                 pending,
@@ -438,6 +443,7 @@ class ImageIllustrationOrchestrator:
                 content,
                 retries=retries,
                 extra_prompt=extra_prompt,
+                forge_overrides=overrides,
             )
 
             already_planned.extend(plan.scenes)
@@ -465,6 +471,7 @@ class ImageIllustrationOrchestrator:
         *,
         retries: int,
         batch_size: int = 10,
+        forge_overrides: ForgeParamOverrides | None = None,
     ) -> Iterator[IllustrationEvent]:
         """
         Regenera anclas/placeholders/errores pendientes sin re-planificar.
@@ -480,6 +487,7 @@ class ImageIllustrationOrchestrator:
         regenerable = [s for s in pending_slots if (s.prompt or "").strip()]
         skipped = [s for s in pending_slots if not (s.prompt or "").strip()]
         batch_n = max(1, int(batch_size))
+        overrides = forge_overrides
         yield IllustrationEvent(
             type="log",
             message=(
@@ -559,9 +567,15 @@ class ImageIllustrationOrchestrator:
                 content,
                 pass_name=f"restantes-{batch_idx}",
                 extra_prompt="",
+                forge_overrides=overrides,
             )
             content, pending = yield from self._retry_failed(
-                pending, payload, content, retries=retries, extra_prompt=""
+                pending,
+                payload,
+                content,
+                retries=retries,
+                extra_prompt="",
+                forge_overrides=overrides,
             )
 
         yield st.status_event(st.IMAGES_DONE, "Imágenes restantes completadas")
@@ -590,6 +604,7 @@ class ImageIllustrationOrchestrator:
         *,
         retries: int,
         extra_prompt: str,
+        forge_overrides: ForgeParamOverrides | None = None,
     ) -> Iterator[IllustrationEvent]:
         attempt = 0
         while pending and attempt < max(0, retries):
@@ -613,5 +628,6 @@ class ImageIllustrationOrchestrator:
                 content,
                 pass_name=f"retry-{attempt}",
                 extra_prompt=extra_prompt,
+                forge_overrides=forge_overrides,
             )
         return (content, pending)

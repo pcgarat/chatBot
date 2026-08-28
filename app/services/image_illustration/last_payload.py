@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from app.services.image_illustration.forge_param_overrides import panel_params_from_fields
 from app.services.image_illustration.infotext import (
     build_api_body,
     detect_mode,
@@ -136,7 +137,8 @@ class FileSystemLastPayloadSource:
             if owns:
                 client.close()
 
-    def load(self) -> LastGenerationPayload:
+    def _read_latest_fields(self) -> tuple[Path, str, dict[str, Any]]:
+        """Última imagen + info cruda + campos parseados (sin init_images ni options)."""
         if not self.data_path:
             raise LastPayloadError("FORGE_DATA_PATH no configurado")
 
@@ -151,6 +153,25 @@ class FileSystemLastPayloadSource:
             from_txt = parse_infotext(params_txt)
             for k, v in from_txt.items():
                 fields.setdefault(k, v)
+        return latest, (info or params_txt), fields
+
+    def load_panel_params(self) -> dict[str, Any]:
+        """
+        Params del panel (steps/width/height/seed) del último gen.
+        Solo disco (params.txt + última imagen): no llama a png-info ni /options.
+        """
+        if not self.data_path:
+            raise LastPayloadError("FORGE_DATA_PATH no configurado")
+        latest = find_latest_output_image(self.data_path)
+        params_txt = read_params_txt(self.data_path)
+        fields = parse_infotext(params_txt) if params_txt else {}
+        mode = detect_mode(str(latest), fields)
+        out: dict[str, Any] = {"mode": mode.value, **panel_params_from_fields(fields)}
+        out["source_image_path"] = str(latest)
+        return out
+
+    def load(self) -> LastGenerationPayload:
+        latest, raw_info, fields = self._read_latest_fields()
 
         options = self._options()
         if "sd_model_checkpoint" not in fields and options.get("sd_model_checkpoint"):
@@ -183,7 +204,7 @@ class FileSystemLastPayloadSource:
             recovered_fields=recovered,
             omitted_notes=notes,
             source_image_path=str(latest),
-            raw_info=info or params_txt,
+            raw_info=raw_info,
             override_settings=override,
             modules=modules,
         )
