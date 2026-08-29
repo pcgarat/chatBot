@@ -144,6 +144,49 @@ def test_e2e_conversation_history_turns(client, ollama_available):
     assert r_msg.json().get("role") == "assistant"
     conv = client.get(f"/api/conversations/{cid}").json()
     assert len(conv["messages"]) >= 2
+    assert conv["messages"][0].get("parent_id") in (None, "")
+    assert conv["messages"][1].get("parent_id") == conv["messages"][0]["id"]
+    assert conv.get("active_leaf_message_id") == conv["messages"][-1]["id"]
+
+
+def test_e2e_conversation_fork(client, ollama_available):
+    """Variante por referencia: la hija no copia mensajes; el envío usa el prefijo del origen."""
+    model_name = _get_first_ollama_model(client)
+    origin_id = client.post(
+        "/api/conversations",
+        json={"title": "E2E fork origen", "model_id": model_name, "provider": "ollama"},
+    ).json()["id"]
+    r1 = client.post(
+        f"/api/conversations/{origin_id}/messages",
+        json={"content": "Di solo: uno"},
+    )
+    assert r1.status_code == 200
+    origin = client.get(f"/api/conversations/{origin_id}").json()
+    assert len(origin["messages"]) >= 2
+    ancla = origin["messages"][1]["id"]
+    r2 = client.post(
+        f"/api/conversations/{origin_id}/messages",
+        json={"content": "Di solo: dos"},
+    )
+    assert r2.status_code == 200
+    r_fork = client.post(f"/api/conversations/{origin_id}/fork", json={"message_id": ancla})
+    assert r_fork.status_code == 200
+    child = r_fork.json()
+    assert child["messages"] == []
+    inherited_ids = {m["id"] for m in child["inherited_messages"]}
+    assert ancla in inherited_ids
+    assert origin["messages"][0]["id"] in inherited_ids
+    r3 = client.post(
+        f"/api/conversations/{child['id']}/messages",
+        json={"content": "Di solo: tres"},
+    )
+    assert r3.status_code == 200
+    child2 = client.get(f"/api/conversations/{child['id']}").json()
+    assert len(child2["messages"]) >= 2
+    assert all(m["id"] not in inherited_ids for m in child2["messages"])
+    origin2 = client.get(f"/api/conversations/{origin_id}").json()
+    assert len(origin2["messages"]) >= 4
+    assert child2["messages"][0]["id"] not in {m["id"] for m in origin2["messages"]}
 
 
 def test_e2e_ollama_clear_memory(client, ollama_available):

@@ -156,6 +156,51 @@ def test_delete_last_message(db_session):
     assert crud.delete_last_message(db_session, conv.id) is False
 
 
+def test_add_message_encadena_parent_y_hoja_activa(db_session):
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    u1 = crud.add_message(db_session, conv.id, "user", "Hola")
+    a1 = crud.add_message(db_session, conv.id, "assistant", "Hola!")
+    db_session.refresh(conv)
+    assert u1.parent_id is None
+    assert a1.parent_id == u1.id
+    assert conv.active_leaf_message_id == a1.id
+
+
+def test_add_message_fork_crea_hermano_y_cambia_hoja(db_session):
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    u1 = crud.add_message(db_session, conv.id, "user", "A")
+    a1 = crud.add_message(db_session, conv.id, "assistant", "Ra")
+    u2 = crud.add_message(db_session, conv.id, "user", "B")
+    crud.add_message(db_session, conv.id, "assistant", "Rb")
+    u3 = crud.add_message(db_session, conv.id, "user", "C", parent_id=a1.id)
+    a3 = crud.add_message(db_session, conv.id, "assistant", "Rc")
+    db_session.refresh(conv)
+    assert u3.parent_id == a1.id
+    assert a3.parent_id == u3.id
+    assert conv.active_leaf_message_id == a3.id
+    path = crud.get_path_to_message(db_session, conv.id, a3.id)
+    assert [m.content for m in path] == ["A", "Ra", "C", "Rc"]
+
+
+def test_delete_message_reparenta_hijos(db_session):
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    u1 = crud.add_message(db_session, conv.id, "user", "A")
+    a1 = crud.add_message(db_session, conv.id, "assistant", "Ra")
+    u2 = crud.add_message(db_session, conv.id, "user", "B")
+    crud.delete_message(db_session, conv.id, a1.id)
+    u2 = crud.get_message(db_session, conv.id, u2.id)
+    assert u2 is not None
+    assert u2.parent_id == u1.id
+
+
+def test_clear_conversation_messages_limpia_hoja(db_session):
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    crud.add_message(db_session, conv.id, "user", "A")
+    crud.clear_conversation_messages(db_session, conv.id)
+    db_session.refresh(conv)
+    assert conv.active_leaf_message_id is None
+
+
 def test_clear_conversation_messages(db_session):
     """clear_conversation_messages elimina todos los mensajes y devuelve el count."""
     conv = crud.create_conversation(db_session, title="C", model_id="m")
@@ -175,3 +220,59 @@ def test_update_conversation_inject_instruction_every(db_session):
     assert updated.inject_instruction_every == 5
     updated2 = crud.update_conversation(db_session, conv.id, inject_instruction_every=0)
     assert updated2.inject_instruction_every is None
+
+
+def test_fork_no_copia_mensajes_y_resuelve_historial_del_origen(db_session):
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m")
+    u1 = crud.add_message(db_session, origin.id, "user", "A")
+    a1 = crud.add_message(db_session, origin.id, "assistant", "Ra")
+    crud.add_message(db_session, origin.id, "user", "B")
+    crud.add_message(db_session, origin.id, "assistant", "Rb")
+    child = crud.fork_conversation(db_session, origin.id, a1.id)
+    assert child is not None
+    assert child.id != origin.id
+    assert child.forked_from_conversation_id == origin.id
+    assert child.forked_from_message_id == a1.id
+    assert crud.get_messages(db_session, child.id) == []
+    inherited = crud.get_inherited_prefix(db_session, child)
+    assert [m.content for m in inherited] == ["A", "Ra"]
+    assert [m.id for m in inherited] == [u1.id, a1.id]
+    crud.add_message(db_session, origin.id, "user", "C")
+    crud.add_message(db_session, origin.id, "assistant", "Rc")
+    inherited_after = crud.get_inherited_prefix(db_session, child)
+    assert [m.content for m in inherited_after] == ["A", "Ra"]
+    history = crud.get_resolved_history(db_session, child, None)
+    assert [m.content for m in history] == ["A", "Ra"]
+
+
+def test_fork_refleja_edicion_del_origen_en_el_prefijo(db_session):
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m")
+    crud.add_message(db_session, origin.id, "user", "A")
+    a1 = crud.add_message(db_session, origin.id, "assistant", "Ra")
+    child = crud.fork_conversation(db_session, origin.id, a1.id)
+    crud.update_message_content(db_session, origin.id, a1.id, "Ra editado")
+    inherited = crud.get_inherited_prefix(db_session, child)
+    assert [m.content for m in inherited] == ["A", "Ra editado"]
+
+
+def test_fork_anidado_acumula_prefijo_del_origen(db_session):
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m")
+    crud.add_message(db_session, origin.id, "user", "A")
+    a1 = crud.add_message(db_session, origin.id, "assistant", "Ra")
+    child = crud.fork_conversation(db_session, origin.id, a1.id)
+    u2 = crud.add_message(db_session, child.id, "user", "B")
+    a2 = crud.add_message(db_session, child.id, "assistant", "Rb")
+    grandchild = crud.fork_conversation(db_session, child.id, a2.id)
+    assert grandchild.forked_from_conversation_id == child.id
+    inherited = crud.get_inherited_prefix(db_session, grandchild)
+    assert [m.content for m in inherited] == ["A", "Ra", "B", "Rb"]
+    from_inherited = crud.fork_conversation(db_session, child.id, a1.id)
+    assert from_inherited.forked_from_conversation_id == origin.id
+    assert [m.content for m in crud.get_inherited_prefix(db_session, from_inherited)] == ["A", "Ra"]
+    assert u2.id not in {m.id for m in crud.get_inherited_prefix(db_session, from_inherited)}
+
+
+def test_fork_ancla_inexistente_devuelve_none(db_session):
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m")
+    assert crud.fork_conversation(db_session, origin.id, "00000000-0000-0000-0000-000000000000") is None
+    assert crud.fork_conversation(db_session, "no-existe", "x") is None

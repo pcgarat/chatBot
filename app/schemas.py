@@ -112,6 +112,11 @@ class ConversationCreate(BaseModel):
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora. Las instrucciones se envían siempre.
 
 
+class ConversationFork(BaseModel):
+    """Crea una conversación vacía cuyo historial se resuelve desde un mensaje origen."""
+    message_id: str = Field(..., min_length=1)
+
+
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     model_id: Optional[str] = None
@@ -122,12 +127,14 @@ class ConversationUpdate(BaseModel):
     model_params: Optional[dict[str, Any]] = None  # Parámetros del modelo guardados por el usuario en esta conversación
     history_turns: Optional[int] = None  # Pares user+assistant a enviar en el prompt; null = default 5
     instruction_override: Optional[str] = None  # Instrucción solo para el siguiente mensaje; último valor por conversación
+    active_leaf_message_id: Optional[str] = None  # Hoja del intento visible; no reordena la lista
 
 
 class MessageInChat(BaseModel):
     role: str
     content: str
     id: Optional[str] = None
+    parent_id: Optional[str] = None
     debug_request: Optional[str] = None  # JSON enviado al LLM (solo assistant)
     debug_response: Optional[str] = None  # Raw del stream (solo assistant)
 
@@ -143,6 +150,10 @@ class ConversationOut(BaseModel):
     model_params: Optional[dict[str, Any]] = None
     history_turns: Optional[int] = None  # Pares user+assistant en el prompt; null = default 5
     instruction_override: Optional[str] = None  # Último valor de instrucción por mensaje en esta conversación
+    active_leaf_message_id: Optional[str] = None
+    forked_from_conversation_id: Optional[str] = None
+    forked_from_message_id: Optional[str] = None
+    inherited_messages: list[MessageInChat] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     messages: list[MessageInChat] = []
@@ -159,6 +170,7 @@ class ConversationListItem(BaseModel):
     updated_at: datetime
     last_message_at: datetime | None = None
     deleted_at: datetime | None = None
+    forked_from_conversation_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -171,6 +183,7 @@ SaveToChromadbKind = Literal["none", "user", "assistant", "both"]
 # ----- Messages -----
 class MessageSend(BaseModel):
     content: str = Field(..., min_length=1)
+    parent_message_id: Optional[str] = None  # Ancla del intento; null = continuar desde la hoja activa
     instruction_override: Optional[str] = None
     system_instruction_global: Optional[str] = None
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora.

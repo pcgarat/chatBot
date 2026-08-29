@@ -135,3 +135,66 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # Árbol de intentos: parent_id en messages y hoja activa en conversations
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE messages ADD COLUMN parent_id VARCHAR(36)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN active_leaf_message_id VARCHAR(36)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            conv_ids = conn.execute(
+                text(
+                    """
+                    SELECT c.id FROM conversations c
+                    WHERE EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)
+                      AND NOT EXISTS (
+                        SELECT 1 FROM messages m2
+                        WHERE m2.conversation_id = c.id AND m2.parent_id IS NOT NULL
+                      )
+                    """
+                )
+            ).fetchall()
+            for (cid,) in conv_ids:
+                rows = conn.execute(
+                    text(
+                        "SELECT id FROM messages WHERE conversation_id = :cid ORDER BY created_at, id"
+                    ),
+                    {"cid": cid},
+                ).fetchall()
+                prev = None
+                for (mid,) in rows:
+                    if prev is not None:
+                        conn.execute(
+                            text("UPDATE messages SET parent_id = :pid WHERE id = :mid"),
+                            {"pid": prev, "mid": mid},
+                        )
+                    prev = mid
+                if prev is not None:
+                    conn.execute(
+                        text(
+                            "UPDATE conversations SET active_leaf_message_id = :leaf "
+                            "WHERE id = :cid AND active_leaf_message_id IS NULL"
+                        ),
+                        {"leaf": prev, "cid": cid},
+                    )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Variante: historial resuelto desde un mensaje de otra conversación
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN forked_from_conversation_id VARCHAR(36)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN forked_from_message_id VARCHAR(36)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()

@@ -2,6 +2,7 @@
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
+APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
 STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
 
 
@@ -39,3 +40,13 @@ def test_index_serves_session_header_markup(client):
     assert 'class="chat-session-identity"' in r.text
     assert 'id="btn-clear-memory"' in r.text
     assert "chat-delete-btn" in r.text
+
+
+def test_js_persiste_titulo_al_cambiar_el_input():
+    """El título se guarda al confirmar el input; no depende de un botón Guardar ausente."""
+    js = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'id="btn-save"' not in html
+    assert "commitConversationTitle" in js
+    assert 'el.conversationTitle.addEventListener("change"' in js
+    assert "JSON.stringify({ title })" in js or "JSON.stringify({ title:" in js
