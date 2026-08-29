@@ -587,6 +587,20 @@ def test_e2e_planner_rules_are_isolated_from_chat_library(client, ollama_availab
     client.delete(f"/api/rules/{rule_id}")
 
 
+def test_e2e_planner_library_includes_builtin_flux_guide(client, ollama_available):
+    """E2E: la guía FLUX se siembra en scope=planner y no aparece en la biblioteca del chat."""
+    from app.services.rules.seed import FLUX_PROMPT_GUIDE_RULE_ID, FLUX_PROMPT_GUIDE_TITLE
+
+    planner_list = client.get("/api/rules", params={"scope": "planner"}).json()
+    match = [item for item in planner_list if item["id"] == FLUX_PROMPT_GUIDE_RULE_ID]
+    assert len(match) == 1
+    assert match[0]["title"] == FLUX_PROMPT_GUIDE_TITLE
+    assert match[0]["scope"] == "planner"
+
+    chat_list = client.get("/api/rules").json()
+    assert all(item["id"] != FLUX_PROMPT_GUIDE_RULE_ID for item in chat_list)
+
+
 def test_e2e_rule_delete_removes_from_db_and_from_all_conversations(client, ollama_available):
     """
     Al eliminar una regla de la biblioteca (DELETE /api/rules/{id}):
