@@ -1056,6 +1056,27 @@ def test_e2e_illustrated_image_meta_404(client, ollama_available):
     assert r.status_code == 404
 
 
+def test_e2e_illustrated_gallery_list_and_facets(client, ollama_available):
+    """GET /api/illustrated-images y /facets responden el esquema de galería."""
+    r = client.get("/api/illustrated-images")
+    assert r.status_code == 200
+    body = r.json()
+    assert "items" in body and "total" in body
+    assert isinstance(body["items"], list)
+    assert body["limit"] >= 1
+    r2 = client.get("/api/illustrated-images/facets")
+    assert r2.status_code == 200
+    facets = r2.json()
+    assert "prompt_models" in facets
+    assert "forge_models" in facets
+    assert "has_missing_prompt_llm" in facets
+    r3 = client.get("/api/illustrated-images", params={"conversation_id": "no-such-conv"})
+    assert r3.status_code == 200
+    assert r3.json()["total"] == 0
+    r4 = client.get("/api/illustrated-images/messages", params={"conversation_id": "no-such-conv"})
+    assert r4.status_code == 404
+
+
 def test_e2e_workspace_profiles_crud(client, ollama_available):
     """CRUD de perfiles de workspace: guarda el rig y lo recupera."""
     model_name = _get_first_ollama_model(client)

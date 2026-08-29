@@ -539,9 +539,393 @@ def test_illustrated_image_meta_roundtrip(client, db_session, tmp_path, monkeypa
     assert body["params"]["prompt"] == "storm lighthouse"
     assert body["params"]["width"] == 768
     assert body["params"]["model"] == "flux.safetensors"
+    assert body["conversation_id"] == conv.id
+    assert body["message_id"] == msg.id
 
     clear = client.post(
         f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/clear-photos"
     )
     assert clear.status_code == 200
     assert client.get(f"/api/illustrated-images/{name}/meta").status_code == 404
+
+
+def _seed_gallery_image(
+    db_session,
+    *,
+    conv,
+    msg,
+    filename: str,
+    prompt: str,
+    steps: int = 8,
+    width: int = 768,
+    height: int = 512,
+    forge_model: str = "flux.safetensors",
+    prompt_model: str | None = "llama3.2",
+    prompt_provider: str | None = "ollama",
+    mode: str = "txt2img",
+    created_at=None,
+):
+    from datetime import datetime
+
+    from app import crud
+
+    row = crud.save_illustrated_image_meta(
+        db_session,
+        message_id=msg.id,
+        filename=filename,
+        scene_id="s1",
+        mode=mode,
+        params={
+            "prompt": prompt,
+            "steps": steps,
+            "width": width,
+            "height": height,
+            "model": forge_model,
+            "sampler_name": "Euler a",
+            "seed": 1,
+        },
+        prompt_model=prompt_model,
+        prompt_provider=prompt_provider,
+    )
+    if created_at is not None:
+        row.created_at = created_at
+        db_session.commit()
+        db_session.refresh(row)
+    elif row.created_at is None:
+        row.created_at = datetime.utcnow()
+        db_session.commit()
+        db_session.refresh(row)
+    return row
+
+
+def test_illustrated_gallery_lists_newest_first(client, db_session):
+    from datetime import datetime, timedelta
+
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="faro", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "x")
+    older = datetime.utcnow() - timedelta(hours=2)
+    newer = datetime.utcnow() - timedelta(hours=1)
+    _seed_gallery_image(db_session, conv=conv, msg=msg, filename="old.png", prompt="old scene", created_at=older)
+    _seed_gallery_image(db_session, conv=conv, msg=msg, filename="new.png", prompt="new scene", created_at=newer)
+
+    res = client.get("/api/illustrated-images")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["total"] == 2
+    assert [i["filename"] for i in body["items"]] == ["new.png", "old.png"]
+    first = body["items"][0]
+    assert first["conversation_id"] == conv.id
+    assert first["conversation_title"] == "faro"
+    assert first["message_id"] == msg.id
+    assert first["prompt"] == "new scene"
+    assert first["prompt_model"] == "llama3.2"
+    assert first["forge_model"] == "flux.safetensors"
+    assert first["url"] == "/api/illustrated-images/new.png"
+
+
+def test_illustrated_gallery_filters_and_excludes_trash(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="a", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "x")
+    _seed_gallery_image(
+        db_session,
+        conv=conv,
+        msg=msg,
+        filename="match.png",
+        prompt="storm lighthouse at dusk",
+        steps=20,
+        width=832,
+        height=1216,
+        forge_model="flux.safetensors",
+        prompt_model="qwen",
+        prompt_provider="ollama",
+    )
+    _seed_gallery_image(
+        db_session,
+        conv=conv,
+        msg=msg,
+        filename="other.png",
+        prompt="cat in a kitchen",
+        steps=8,
+        width=768,
+        height=512,
+        forge_model="sdxl.safetensors",
+        prompt_model="llama3.2",
+        prompt_provider="mancer",
+        mode="img2img",
+    )
+    trashed = crud.create_conversation(db_session, title="papelera", model_id="m", provider="ollama")
+    tmsg = crud.add_message(db_session, trashed.id, "assistant", "y")
+    _seed_gallery_image(db_session, conv=trashed, msg=tmsg, filename="trashed.png", prompt="gone")
+    crud.delete_conversation(db_session, trashed.id)
+
+    listed = client.get("/api/illustrated-images").json()
+    names = {i["filename"] for i in listed["items"]}
+    assert names == {"match.png", "other.png"}
+
+    by_llm = client.get("/api/illustrated-images", params={"prompt_model": "qwen"}).json()
+    assert [i["filename"] for i in by_llm["items"]] == ["match.png"]
+
+    by_forge = client.get("/api/illustrated-images", params={"forge_model": "sdxl.safetensors"}).json()
+    assert [i["filename"] for i in by_forge["items"]] == ["other.png"]
+
+    by_steps = client.get("/api/illustrated-images", params={"steps": 20}).json()
+    assert [i["filename"] for i in by_steps["items"]] == ["match.png"]
+
+    by_size = client.get("/api/illustrated-images", params={"size": "832x1216"}).json()
+    assert [i["filename"] for i in by_size["items"]] == ["match.png"]
+
+    by_mode = client.get("/api/illustrated-images", params={"mode": "img2img"}).json()
+    assert [i["filename"] for i in by_mode["items"]] == ["other.png"]
+
+    by_prompt = client.get("/api/illustrated-images", params={"prompt_q": "lighthouse"}).json()
+    assert [i["filename"] for i in by_prompt["items"]] == ["match.png"]
+
+    paged = client.get("/api/illustrated-images", params={"limit": 1, "offset": 0}).json()
+    assert paged["total"] == 2
+    assert len(paged["items"]) == 1
+
+
+def test_illustrated_gallery_filters_missing_prompt_llm(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="a", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "x")
+    _seed_gallery_image(
+        db_session, conv=conv, msg=msg, filename="with.png", prompt="a", prompt_model="llama3.2"
+    )
+    _seed_gallery_image(
+        db_session,
+        conv=conv,
+        msg=msg,
+        filename="without.png",
+        prompt="b",
+        prompt_model=None,
+        prompt_provider=None,
+    )
+    res = client.get("/api/illustrated-images", params={"prompt_model": ""})
+    assert res.status_code == 200
+    assert [i["filename"] for i in res.json()["items"]] == ["without.png"]
+
+
+def test_illustrated_gallery_facets(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="a", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "x")
+    _seed_gallery_image(
+        db_session, conv=conv, msg=msg, filename="a.png", prompt="a", steps=8, prompt_model="llama3.2"
+    )
+    _seed_gallery_image(
+        db_session,
+        conv=conv,
+        msg=msg,
+        filename="b.png",
+        prompt="b",
+        steps=20,
+        width=832,
+        height=1216,
+        prompt_model=None,
+        prompt_provider=None,
+    )
+    res = client.get("/api/illustrated-images/facets")
+    assert res.status_code == 200
+    body = res.json()
+    assert "llama3.2" in body["prompt_models"]
+    assert body["has_missing_prompt_llm"] is True
+    assert 8 in body["steps"] and 20 in body["steps"]
+    assert "768x512" in body["sizes"]
+    assert "832x1216" in body["sizes"]
+
+
+def test_illustrated_gallery_filters_by_conversation_and_message(client, db_session):
+    from app import crud
+
+    conv_a = crud.create_conversation(db_session, title="faro", model_id="m", provider="ollama")
+    conv_b = crud.create_conversation(db_session, title="otra", model_id="m", provider="ollama")
+    msg_a1 = crud.add_message(db_session, conv_a.id, "assistant", "primer faro")
+    msg_a2 = crud.add_message(db_session, conv_a.id, "assistant", "segundo faro")
+    msg_b = crud.add_message(db_session, conv_b.id, "assistant", "otra escena")
+    _seed_gallery_image(db_session, conv=conv_a, msg=msg_a1, filename="a1.png", prompt="lighthouse one")
+    _seed_gallery_image(db_session, conv=conv_a, msg=msg_a2, filename="a2.png", prompt="lighthouse two")
+    _seed_gallery_image(db_session, conv=conv_b, msg=msg_b, filename="b.png", prompt="kitchen")
+
+    by_conv = client.get("/api/illustrated-images", params={"conversation_id": conv_a.id}).json()
+    assert {i["filename"] for i in by_conv["items"]} == {"a1.png", "a2.png"}
+    assert by_conv["total"] == 2
+
+    by_msg = client.get(
+        "/api/illustrated-images",
+        params={"conversation_id": conv_a.id, "message_id": msg_a2.id},
+    ).json()
+    assert [i["filename"] for i in by_msg["items"]] == ["a2.png"]
+
+    missing = client.get("/api/illustrated-images", params={"conversation_id": "no-such"}).json()
+    assert missing["total"] == 0
+    assert missing["items"] == []
+
+
+def test_illustrated_gallery_message_summaries_and_trash(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="faro", model_id="m", provider="ollama")
+    html_msg = crud.add_message(
+        db_session,
+        conv.id,
+        "assistant",
+        'Había un faro.\n<img src="/api/illustrated-images/a.png" class="chat-illustration" />',
+    )
+    later = crud.add_message(db_session, conv.id, "assistant", "Otra escena con el mismo faro de noche.")
+    _seed_gallery_image(db_session, conv=conv, msg=html_msg, filename="a.png", prompt="lighthouse")
+    _seed_gallery_image(db_session, conv=conv, msg=later, filename="b.png", prompt="lighthouse night")
+    _seed_gallery_image(db_session, conv=conv, msg=later, filename="c.png", prompt="lighthouse close")
+
+    res = client.get("/api/illustrated-images/messages", params={"conversation_id": conv.id})
+    assert res.status_code == 200
+    items = res.json()["items"]
+    assert [i["message_id"] for i in items] == [html_msg.id, later.id]
+    first = items[0]
+    assert first["image_count"] == 1
+    assert "faro" in first["excerpt"].lower()
+    assert "<img" not in first["excerpt"]
+    assert items[1]["image_count"] == 2
+
+    missing = client.get("/api/illustrated-images/messages", params={"conversation_id": "no-such"})
+    assert missing.status_code == 404
+
+    crud.delete_conversation(db_session, conv.id)
+    trashed = client.get("/api/illustrated-images/messages", params={"conversation_id": conv.id})
+    assert trashed.status_code == 404
+    listed = client.get("/api/illustrated-images", params={"conversation_id": conv.id}).json()
+    assert listed["total"] == 0
+
+
+def test_illustrated_gallery_facets_scoped_to_conversation(client, db_session):
+    from app import crud
+
+    conv_a = crud.create_conversation(db_session, title="a", model_id="m", provider="ollama")
+    conv_b = crud.create_conversation(db_session, title="b", model_id="m", provider="ollama")
+    msg_a = crud.add_message(db_session, conv_a.id, "assistant", "x")
+    msg_b = crud.add_message(db_session, conv_b.id, "assistant", "y")
+    _seed_gallery_image(
+        db_session, conv=conv_a, msg=msg_a, filename="a.png", prompt="a", prompt_model="qwen"
+    )
+    _seed_gallery_image(
+        db_session, conv=conv_b, msg=msg_b, filename="b.png", prompt="b", prompt_model="llama3.2"
+    )
+    scoped = client.get(
+        "/api/illustrated-images/facets", params={"conversation_id": conv_a.id}
+    ).json()
+    assert scoped["prompt_models"] == ["qwen"]
+    all_facets = client.get("/api/illustrated-images/facets").json()
+    assert set(all_facets["prompt_models"]) >= {"qwen", "llama3.2"}
+
+
+def test_illustrate_persists_prompt_llm_on_image_event(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="chat-model", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Había un faro.")
+
+    class FakeOrch:
+        def run(self, *a, **k):
+            yield IllustrationEvent(
+                type="image",
+                scene_id="s1",
+                data={
+                    "filename": "gen.png",
+                    "mode": "txt2img",
+                    "params": {"prompt": "lighthouse", "steps": 8, "model": "flux.safetensors"},
+                },
+                content="ok",
+            )
+            yield IllustrationEvent(type="done", message="ok", content="ok")
+
+    with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
+            json={"prompt_model": "planner-llm", "prompt_provider": "mancer", "images_per_response": 1},
+        )
+    assert res.status_code == 200
+    meta = client.get("/api/illustrated-images/gen.png/meta")
+    assert meta.status_code == 200
+    assert meta.json()["prompt_model"] == "planner-llm"
+    assert meta.json()["prompt_provider"] == "mancer"
+    assert meta.json()["params"]["prompt_llm_model"] == "planner-llm"
+    assert meta.json()["params"]["prompt_llm_provider"] == "mancer"
+    assert meta.json()["params"]["use_chat_config"] is False
+    assert meta.json()["params"]["model"] == "flux.safetensors"
+
+
+def test_illustrate_use_chat_config_stores_conversation_llm(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="chat-model", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "texto")
+
+    class FakeOrch:
+        def run(self, *a, **k):
+            yield IllustrationEvent(
+                type="image",
+                scene_id="s1",
+                data={"filename": "chat.png", "mode": "txt2img", "params": {"prompt": "x"}},
+                content="ok",
+            )
+            yield IllustrationEvent(type="done", message="ok", content="ok")
+
+    with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
+            json={"prompt_model": "ignored", "use_chat_config": True, "images_per_response": 1},
+        )
+    assert res.status_code == 200
+    meta = client.get("/api/illustrated-images/chat.png/meta").json()
+    assert meta["prompt_model"] == "chat-model"
+    assert meta["prompt_provider"] == "ollama"
+    assert meta["params"]["prompt_llm_model"] == "chat-model"
+    assert meta["params"]["use_chat_config"] is True
+
+
+def test_generate_remaining_inherits_prompt_llm(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(
+        db_session,
+        conv.id,
+        "assistant",
+        '<span class="chat-illustration-placeholder" data-scene="s1" data-prompt="x">x</span>',
+    )
+    crud.save_illustrated_image_meta(
+        db_session,
+        message_id=msg.id,
+        filename="prev.png",
+        scene_id="s0",
+        mode="txt2img",
+        params={"prompt": "old"},
+        prompt_model="qwen",
+        prompt_provider="ollama",
+    )
+
+    class FakeOrch:
+        def run_remaining(self, *a, **k):
+            yield IllustrationEvent(
+                type="image",
+                scene_id="s1",
+                data={"filename": "rest.png", "mode": "txt2img", "params": {"prompt": "x"}},
+                content="ok",
+            )
+            yield IllustrationEvent(type="done", message="ok", content="ok")
+
+    with patch("app.routers.api_images._build_forge_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/generate-remaining",
+            json={"retries": 0},
+        )
+    assert res.status_code == 200
+    meta = client.get("/api/illustrated-images/rest.png/meta").json()
+    assert meta["prompt_model"] == "qwen"
+    assert meta["prompt_provider"] == "ollama"

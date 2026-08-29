@@ -13,6 +13,12 @@
       if (localStorage.getItem("leftSidebarCollapsed") === "true") {
         document.documentElement.setAttribute("data-sidebar-left", "collapsed");
       }
+      if (localStorage.getItem("centerChatVisible") === "false") {
+        document.documentElement.setAttribute("data-center-chat", "off");
+      }
+      if (localStorage.getItem("centerGalleryVisible") === "true") {
+        document.documentElement.setAttribute("data-center-gallery", "on");
+      }
       if (localStorage.getItem("composerCollapsed") === "true") {
         document.documentElement.setAttribute("data-composer", "collapsed");
       }
@@ -40,6 +46,16 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span class="sidebar-add-btn-text">Nueva</span>
         </button>
+        <div class="center-panel-toggles" role="group" aria-label="Paneles centrales">
+          <button type="button" id="btn-center-chat" class="sidebar-add-btn" title="Mostrar u ocultar la conversación" aria-label="Conversación" aria-pressed="true" aria-controls="chat-column">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span class="sidebar-add-btn-text">Conversación</span>
+          </button>
+          <button type="button" id="btn-image-gallery" class="sidebar-add-btn" title="Mostrar u ocultar la galería" aria-label="Galería de imágenes" aria-pressed="false" aria-controls="image-gallery-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span class="sidebar-add-btn-text">Galería</span>
+        </button>
+        </div>
       </div>
       <div class="conversations-list-wrap">
         <div class="conversations-list" id="conversations-list"></div>
@@ -57,6 +73,7 @@
           </button>
           <div class="chat-session-identity">
             <input type="text" id="conversation-title" class="session-title conversation-title-input" placeholder="Chat de órdenes" aria-label="Título de la conversación" />
+            <h1 id="gallery-view-title" class="gallery-view-title" hidden>Galería</h1>
           </div>
           <div class="chat-session-actions">
             <button type="button" id="btn-clear-memory" class="icon-btn icon-btn-danger chat-delete-btn" title="Borrar conversación" aria-label="Borrar conversación">
@@ -65,7 +82,8 @@
           </div>
         </div>
       </header>
-      <section class="chat-column">
+      <p id="center-panels-empty" class="center-panels-empty" hidden>Activa Conversación o Galería para mostrar un panel.</p>
+      <section class="chat-column" id="chat-column">
         <div class="chat-stream-wrap">
           <div class="chat-stream-view-controls chat-font-size-corner font-size-controls" role="group" aria-label="Vista del chat">
             <button type="button" id="btn-chat-fullscreen" class="icon-btn font-size-btn" title="Pantalla completa" aria-label="Pantalla completa" aria-pressed="false">
@@ -105,6 +123,57 @@
             </div>
           </div>
         </div>
+      </section>
+      <section class="image-gallery-panel" id="image-gallery-panel" hidden aria-label="Galería de imágenes generadas">
+        <div class="image-gallery-toolbar" id="image-gallery-toolbar">
+          <label class="image-gallery-filter">
+            <span>LLM</span>
+            <select id="gallery-filter-prompt-model" class="param-control" aria-label="Filtrar por modelo LLM del prompt">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label class="image-gallery-filter">
+            <span>Provider</span>
+            <select id="gallery-filter-prompt-provider" class="param-control" aria-label="Filtrar por provider LLM">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label class="image-gallery-filter">
+            <span>Checkpoint</span>
+            <select id="gallery-filter-forge-model" class="param-control" aria-label="Filtrar por checkpoint Forge">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label class="image-gallery-filter">
+            <span>Steps</span>
+            <select id="gallery-filter-steps" class="param-control" aria-label="Filtrar por steps">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label class="image-gallery-filter">
+            <span>Tamaño</span>
+            <select id="gallery-filter-size" class="param-control" aria-label="Filtrar por tamaño">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label class="image-gallery-filter">
+            <span>Modo</span>
+            <select id="gallery-filter-mode" class="param-control" aria-label="Filtrar por modo">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label class="image-gallery-filter image-gallery-filter-prompt">
+            <span>Prompt</span>
+            <input type="search" id="gallery-filter-prompt-q" class="param-control" placeholder="Buscar en el prompt" aria-label="Buscar en el prompt" />
+          </label>
+        </div>
+        <div class="image-gallery-scope" id="image-gallery-scope">
+          <button type="button" id="gallery-scope-all" class="btn btn-secondary btn-small" aria-pressed="false">Todas las conversaciones</button>
+          <span id="gallery-scope-conv-label" class="image-gallery-scope-label" hidden></span>
+        </div>
+        <div class="image-gallery-messages" id="image-gallery-messages" hidden></div>
+        <div class="image-gallery-grid" id="image-gallery-grid"></div>
+        <div class="image-gallery-pager" id="image-gallery-pager"></div>
       </section>
     </main>
     <aside class="column-right sidebar-column" aria-label="Reglas y ajustes">
@@ -534,6 +603,22 @@
         <button type="button" id="rule-edit-btn-delete" class="btn rule-edit-btn-delete">Eliminar regla</button>
         <button type="button" id="rule-edit-btn-save" class="btn btn-primary">Guardar</button>
         <button type="button" id="rule-edit-btn-save-new" class="btn btn-secondary">Guardar nuevo</button>
+      </div>
+    </div>
+  </div>
+  <div id="image-gallery-lightbox" class="modal-overlay image-gallery-lightbox" role="dialog" aria-modal="true" aria-labelledby="image-gallery-lightbox-title" hidden>
+    <div class="modal-content image-gallery-lightbox-content">
+      <div class="image-gallery-lightbox-header">
+        <h2 id="image-gallery-lightbox-title" class="modal-title">Imagen generada</h2>
+        <button type="button" id="image-gallery-lightbox-close" class="icon-btn" title="Cerrar" aria-label="Cerrar">×</button>
+      </div>
+      <div class="image-gallery-lightbox-body">
+        <div class="image-gallery-lightbox-media">
+          <button type="button" id="image-gallery-lightbox-prev" class="image-gallery-lightbox-nav" title="Anterior" aria-label="Imagen anterior">‹</button>
+          <img id="image-gallery-lightbox-img" alt="" />
+          <button type="button" id="image-gallery-lightbox-next" class="image-gallery-lightbox-nav" title="Siguiente" aria-label="Imagen siguiente">›</button>
+        </div>
+        <div class="image-gallery-lightbox-meta" id="image-gallery-lightbox-meta"></div>
       </div>
     </div>
   </div>
