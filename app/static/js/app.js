@@ -9,6 +9,8 @@
   }
   let currentConversationId = null;
   let messages = [];
+  let allMessages = [];
+  let activeLeafId = null;
   let providers = [];
   let models = [];
   let currentProvider = "ollama";
@@ -1109,32 +1111,62 @@
     return "anteriores";
   }
 
+  function conversationActivityTs(c, childrenByParent) {
+    let t = new Date(c.last_message_at || c.updated_at || 0).getTime();
+    (childrenByParent.get(c.id) || []).forEach((ch) => {
+      t = Math.max(t, conversationActivityTs(ch, childrenByParent));
+    });
+    return t;
+  }
+
+  function buildConversationForest(list) {
+    const byId = new Map(list.map((c) => [c.id, c]));
+    const childrenByParent = new Map();
+    list.forEach((c) => {
+      const pid = c.forked_from_conversation_id;
+      if (pid && byId.has(pid)) {
+        if (!childrenByParent.has(pid)) childrenByParent.set(pid, []);
+        childrenByParent.get(pid).push(c);
+      }
+    });
+    childrenByParent.forEach((kids) => {
+      kids.sort(
+        (a, b) => conversationActivityTs(b, childrenByParent) - conversationActivityTs(a, childrenByParent)
+      );
+    });
+    const roots = list.filter(
+      (c) => !c.forked_from_conversation_id || !byId.has(c.forked_from_conversation_id)
+    );
+    return { roots, childrenByParent };
+  }
+
   function renderConversationsList(list) {
     if (!el.conversationsList) return;
+    const { roots, childrenByParent } = buildConversationForest(list || []);
     const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
-    const lastActivity = (c) => c.last_message_at || c.updated_at;
-    list.forEach((c) => {
-      const g = getConversationGroup(lastActivity(c));
+    roots.forEach((c) => {
+      const g = getConversationGroup(new Date(conversationActivityTs(c, childrenByParent)));
       groups[g].push(c);
     });
     const order = ["hoy", "ayer", "semana", "anteriores"];
-    const html = order
-      .filter((key) => groups[key].length > 0)
-      .map((key) => {
-        const header = `<div class="conv-group-label" aria-hidden="true">${escapeHtml(CONV_GROUP_LABELS[key])}</div>`;
-        const items = groups[key]
-          .map((c) => {
-            const when = formatDate(lastActivity(c));
-            const meta = `${c.provider || "ollama"}/${c.model_id} · ${when}`;
-            return `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""}" data-id="${escapeHtml(c.id)}" title="${escapeHtml(meta)}">
+    const renderItem = (c, depth) => {
+      const when = formatDate(c.last_message_at || c.updated_at);
+      const meta = `${c.provider || "ollama"}/${c.model_id} · ${when}`;
+      const kids = childrenByParent.get(c.id) || [];
+      const item = `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""} ${depth ? "conversation-item-fork" : ""}" data-id="${escapeHtml(c.id)}" data-depth="${depth}" title="${escapeHtml(meta)}" style="padding-left: ${8 + depth * 14}px">
                 <div class="conv-row">
                   <span class="conv-title">${escapeHtml(c.title)}</span>
                   <span class="conv-when">${escapeHtml(when)}</span>
                   ${c.id === currentConversationId ? `<button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>` : ""}
                 </div>
               </div>`;
-          })
-          .join("");
+      return item + kids.map((ch) => renderItem(ch, depth + 1)).join("");
+    };
+    const html = order
+      .filter((key) => groups[key].length > 0)
+      .map((key) => {
+        const header = `<div class="conv-group-label" aria-hidden="true">${escapeHtml(CONV_GROUP_LABELS[key])}</div>`;
+        const items = groups[key].map((c) => renderItem(c, 0)).join("");
         return header + items;
       })
       .join("");
@@ -1177,7 +1209,7 @@
         throw new Error(err.detail || res.statusText);
       }
       if (currentConversationId === id) {
-        messages = [];
+        resetConversationTree();
         renderMessages();
       }
       showNotice("Historial de mensajes borrado.");
@@ -1647,14 +1679,117 @@
     });
   }
 
+  function mapApiMessage(m) {
+    return {
+      role: m.role,
+      content: m.content,
+      id: m.id || null,
+      parent_id: m.parent_id || null,
+      debug_request: m.debug_request || null,
+      debug_response: m.debug_response || null,
+      ephemeral_debug: !!m.ephemeral_debug,
+    };
+  }
+
+  function pathFromMessages(list, leafId) {
+    if (!leafId) return [];
+    const byId = new Map();
+    list.forEach((m) => {
+      if (m.id) byId.set(m.id, m);
+    });
+    const path = [];
+    let current = byId.get(leafId);
+    const seen = new Set();
+    while (current && !seen.has(current.id)) {
+      path.push(current);
+      seen.add(current.id);
+      current = current.parent_id ? byId.get(current.parent_id) : null;
+    }
+    path.reverse();
+    return path;
+  }
+
+  function effectiveLeafId() {
+    if (activeLeafId && allMessages.some((m) => m.id === activeLeafId && !m.inherited)) return activeLeafId;
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      if (allMessages[i].id && !allMessages[i].ephemeral_debug && !allMessages[i].inherited) {
+        return allMessages[i].id;
+      }
+    }
+    return null;
+  }
+
+  function syncVisibleMessages() {
+    const ephemerals = messages.filter((m) => m.ephemeral_debug);
+    const inherited = allMessages.filter((m) => m.inherited && !m.ephemeral_debug);
+    const own = allMessages.filter((m) => !m.inherited && !m.ephemeral_debug);
+    messages = inherited.concat(pathFromMessages(own, effectiveLeafId())).concat(ephemerals);
+  }
+
+  function applyConversationTree(conv) {
+    const inherited = (conv.inherited_messages || []).map((m) => ({
+      ...mapApiMessage(m),
+      inherited: true,
+    }));
+    const own = (conv.messages || []).map(mapApiMessage);
+    allMessages = inherited.concat(own);
+    const ownWithId = own.filter((m) => m.id);
+    activeLeafId = conv.active_leaf_message_id || (ownWithId.length ? ownWithId[ownWithId.length - 1].id : null);
+    syncVisibleMessages();
+  }
+
+  function resetConversationTree() {
+    allMessages = [];
+    activeLeafId = null;
+    messages = [];
+  }
+
+  function updateStoredMessageContent(messageId, content) {
+    allMessages.forEach((m) => {
+      if (m.id === messageId) m.content = content;
+    });
+    messages.forEach((m) => {
+      if (m.id === messageId) m.content = content;
+    });
+  }
+
+  function ensureComposerOpen() {
+    const expandBtn = document.getElementById("btn-expand-composer");
+    if (expandBtn && !expandBtn.hidden) expandBtn.click();
+  }
+
+  async function forkConversationFromMessage(messageId) {
+    if (!messageId || !currentConversationId) return;
+    try {
+      const conv = await fetchJson(`${API}/conversations/${currentConversationId}/fork`, {
+        method: "POST",
+        body: JSON.stringify({ message_id: messageId }),
+      });
+      await setCurrentConversation(conv);
+      ensureComposerOpen();
+      if (el.messageInput) el.messageInput.focus();
+      showNotice("Conversación nueva. El historial se toma del mensaje original.");
+    } catch (e) {
+      showError("No se pudo crear la conversación: " + e.message);
+    }
+  }
+
   async function setCurrentConversation(conv) {
     const previousConvId = currentConversationId;
-    if (previousConvId && conv && conv.id !== previousConvId && el.instructionOverride) {
-      const instructionOverride = (el.instructionOverride.value || "").trim() || null;
-      fetchJson(`${API}/conversations/${previousConvId}`, {
-        method: "PUT",
-        body: JSON.stringify({ instruction_override: instructionOverride }),
-      }).catch(() => {});
+    if (previousConvId && (!conv || conv.id !== previousConvId)) {
+      const payload = {};
+      if (el.instructionOverride) {
+        payload.instruction_override = (el.instructionOverride.value || "").trim() || null;
+      }
+      if (el.conversationTitle) {
+        payload.title = el.conversationTitle.value.trim() || getDefaultConversationTitle();
+      }
+      if (Object.keys(payload).length > 0) {
+        fetchJson(`${API}/conversations/${previousConvId}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        }).catch(() => {});
+      }
     }
     currentConversationId = conv ? conv.id : null;
     saveLastConversationId(currentConversationId);
@@ -1696,13 +1831,7 @@
           paramsSource = "default";
         }
       }
-      messages = (conv.messages || []).map((m) => ({
-        role: m.role,
-        content: m.content,
-        id: m.id || null,
-        debug_request: m.debug_request || null,
-        debug_response: m.debug_response || null,
-      }));
+      applyConversationTree(conv);
       expandedMessageKeys.clear();
       const turns = conv.history_turns != null && conv.history_turns >= 0 ? conv.history_turns : 5;
       if (el.historyTurnsInput) el.historyTurnsInput.value = String(Math.min(100, Math.max(0, turns)));
@@ -1718,7 +1847,7 @@
       await loadParamsForProvider(currentProvider);
       await ensureParamsBaselineForCurrentModel();
       paramsSource = "default";
-      messages = [];
+      resetConversationTree();
       expandedMessageKeys.clear();
       if (el.historyTurnsInput) el.historyTurnsInput.value = "5";
     }
@@ -2012,10 +2141,12 @@
     try {
       const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
       const model = (el.modelSelect && el.modelSelect.value) || (models[0] || "");
+      const typedTitle = (el.conversationTitle && el.conversationTitle.value.trim()) || "";
+      const title = (!currentConversationId && typedTitle) ? typedTitle : getDefaultConversationTitle();
       const conv = await fetchJson(`${API}/conversations`, {
         method: "POST",
         body: JSON.stringify({
-          title: getDefaultConversationTitle(),
+          title: title,
           model_id: model,
           provider: provider,
           system_instructions: rules.length ? rules : null,
@@ -2024,6 +2155,22 @@
       await setCurrentConversation(conv);
     } catch (e) {
       showError("Error al crear conversación: " + e.message);
+    }
+  }
+
+  async function commitConversationTitle() {
+    if (!el.conversationTitle) return;
+    const title = el.conversationTitle.value.trim() || getDefaultConversationTitle();
+    if (el.conversationTitle.value !== title) el.conversationTitle.value = title;
+    if (!currentConversationId) return;
+    try {
+      await fetchJson(`${API}/conversations/${currentConversationId}`, {
+        method: "PUT",
+        body: JSON.stringify({ title }),
+      });
+      loadConversations();
+    } catch (e) {
+      showError("Error al guardar el título: " + e.message);
     }
   }
 
@@ -2061,7 +2208,13 @@
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || res.statusText);
       }
-      messages = messages.filter((m) => m.id !== messageId);
+      const deleted = allMessages.find((m) => m.id === messageId);
+      allMessages.forEach((m) => {
+        if (m.parent_id === messageId) m.parent_id = deleted ? deleted.parent_id : null;
+      });
+      allMessages = allMessages.filter((m) => m.id !== messageId);
+      if (activeLeafId === messageId) activeLeafId = deleted ? deleted.parent_id : null;
+      syncVisibleMessages();
       renderMessages();
       loadConversations();
       showNotice("Mensaje eliminado del historial.");
@@ -2109,32 +2262,38 @@
           const toInputBtn = hasContent && !isEphemeralDebug
             ? `<button type="button" class="msg-action-btn msg-to-input-btn" data-msg-index="${idx}" title="Enviar texto al cuadro de mensaje">${msgToInputIconSvg}</button>`
             : "";
+          const isInherited = !!m.inherited;
           const deleteCopyBtns = m.id && !isEphemeralDebug
-            ? `<button type="button" class="msg-action-btn msg-delete-btn" data-msg-id="${escapeHtml(m.id)}" title="Eliminar del historial">${msgDeleteIconSvg}</button>
+            ? `${isInherited ? "" : `<button type="button" class="msg-action-btn msg-delete-btn" data-msg-id="${escapeHtml(m.id)}" title="Eliminar del historial">${msgDeleteIconSvg}</button>`}
                 <button type="button" class="msg-action-btn msg-copy-btn" data-msg-id="${escapeHtml(m.id)}" title="Copiar">${msgCopyIconSvg}</button>`
             : "";
           const illustrating = m.id && illustratingMessageIds.has(m.id);
           const illustrateBtn =
-            !isEphemeralDebug && m.role === "assistant" && m.id && hasContent
+            !isInherited && !isEphemeralDebug && m.role === "assistant" && m.id && hasContent
               ? `<button type="button" class="msg-action-btn msg-illustrate-btn${illustrating ? " is-busy" : ""}" data-msg-id="${escapeHtml(m.id)}" title="Generar imágenes para esta respuesta" aria-label="Generar imágenes" ${illustrating ? "disabled" : ""}>${msgIllustrateIconSvg}</button>`
               : "";
           const readBtn =
             !isEphemeralDebug && m.role === "assistant" && hasContent
               ? `<button type="button" class="msg-action-btn msg-read-btn" data-msg-index="${idx}" title="Modo lectura a pantalla completa" aria-label="Modo lectura">${msgReadIconSvg}</button>`
               : "";
+          const illustrationItems =
+            !isInherited && m.role === "assistant" && hasContent
+              ? `<button type="button" class="msg-context-item" role="menuitem" data-action="clear-photos" data-msg-id="${escapeHtml(m.id)}">Borrar todas las fotos</button>
+                    <button type="button" class="msg-context-item" role="menuitem" data-action="prune-orphans" data-msg-id="${escapeHtml(m.id)}">Eliminar anclas huérfanas</button>
+                    <button type="button" class="msg-context-item" role="menuitem" data-action="generate-remaining" data-msg-id="${escapeHtml(m.id)}">Generar imágenes restantes</button>`
+              : "";
           const moreMenu =
-            !isEphemeralDebug && m.role === "assistant" && m.id && hasContent
+            !isEphemeralDebug && m.id
               ? `<div class="msg-more-wrap">
                   <button type="button" class="msg-action-btn msg-more-btn" data-msg-id="${escapeHtml(m.id)}" title="Más acciones" aria-label="Más acciones" aria-haspopup="menu" aria-expanded="false">${msgMoreIconSvg}</button>
                   <div class="msg-context-menu" role="menu" hidden>
-                    <button type="button" class="msg-context-item" role="menuitem" data-action="clear-photos" data-msg-id="${escapeHtml(m.id)}">Borrar todas las fotos</button>
-                    <button type="button" class="msg-context-item" role="menuitem" data-action="prune-orphans" data-msg-id="${escapeHtml(m.id)}">Eliminar anclas huérfanas</button>
-                    <button type="button" class="msg-context-item" role="menuitem" data-action="generate-remaining" data-msg-id="${escapeHtml(m.id)}">Generar imágenes restantes</button>
+                    <button type="button" class="msg-context-item" role="menuitem" data-action="fork-conversation" data-msg-id="${escapeHtml(m.id)}">Nueva conversación desde aquí</button>
+                    ${illustrationItems}
                   </div>
                 </div>`
               : "";
           const footerBtns = (toInputBtn || deleteCopyBtns || illustrateBtn || readBtn || moreMenu)
-            ? `<div class="message-footer">${toInputBtn}${deleteCopyBtns}${illustrateBtn}${readBtn}${moreMenu}</div>`
+            ? `<div class="message-footer"><div class="message-footer-actions">${toInputBtn}${deleteCopyBtns}${illustrateBtn}${readBtn}${moreMenu}</div></div>`
             : "";
           let debugHtml = "";
           if (showDebug && m.role === "assistant" && (m.debug_request || m.debug_response)) {
@@ -2146,7 +2305,10 @@
             }
           }
           const isUser = m.role === "user";
-          const rowClass = isUser ? "message-row user-row" : "message-row";
+          const rowClass = `${isUser ? "message-row user-row" : "message-row"}${isInherited ? " message-row-inherited" : ""}`;
+          const inheritedSplit = isInherited && (!messages[idx + 1] || messages[idx + 1].inherited !== true)
+            ? `<div class="message-inherited-split">Historial de la conversación original</div>`
+            : "";
           const bubbleClass = isUser ? "message-bubble user" : "message-bubble assistant";
           const collapseKey = messageCollapseKey(m, idx);
           let bodyHtml;
@@ -2165,7 +2327,7 @@
               ${debugHtml}
               ${footerBtns}
             </div>
-          </div>`;
+          </div>${inheritedSplit}`;
         }
       )
       .join("");
@@ -2273,6 +2435,10 @@
         const msgId = item.getAttribute("data-msg-id");
         closeAllMessageContextMenus();
         if (!action || !msgId) return;
+        if (action === "fork-conversation") {
+          forkConversationFromMessage(msgId);
+          return;
+        }
         if (action === "generate-remaining") {
           generateRemainingImages(msgId);
           return;
@@ -2298,7 +2464,7 @@
       );
       const idx = messages.findIndex((m) => m.id === messageId);
       if (idx >= 0 && data && data.content != null) {
-        messages[idx].content = data.content;
+        updateStoredMessageContent(messageId, data.content);
         renderMessages();
       }
       if (action === "clear-photos") {
@@ -2330,7 +2496,16 @@
       if (!currentConversationId) return;
     }
 
-    messages.push({ role: "user", content });
+    const parentId = (activeLeafId
+      && !String(activeLeafId).startsWith("tmp-")
+      && allMessages.some((m) => m.id === activeLeafId && !m.inherited))
+      ? activeLeafId
+      : null;
+    const tempUserId = "tmp-" + Date.now();
+    let resolvedUserId = tempUserId;
+    allMessages.push({ role: "user", content, id: tempUserId, parent_id: parentId });
+    activeLeafId = tempUserId;
+    syncVisibleMessages();
     if (el.messageInput) el.messageInput.value = "";
     // La instrucción solo para este mensaje se mantiene hasta que el usuario la borre.
     renderMessages();
@@ -2376,6 +2551,7 @@
         system_instruction_global: systemInstructionGlobal,
         save_to_chromadb: saveToChromadb,
       };
+      if (parentId) bodyPayload.parent_message_id = parentId;
       if (Object.keys(modelParams).length > 0) bodyPayload.model_params = modelParams;
       const res = await fetch(`${API}/conversations/${currentConversationId}/messages/stream`, {
         method: "POST",
@@ -2428,8 +2604,15 @@
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
               appStatus.update(chatStatusId, "chat.error");
             }
-            if (data.user_message_id && messages.length > 0) {
-              messages[messages.length - 1].id = data.user_message_id;
+            if (data.user_message_id) {
+              allMessages.forEach((m) => {
+                if (m.id === resolvedUserId) m.id = data.user_message_id;
+              });
+              messages.forEach((m) => {
+                if (m.id === resolvedUserId) m.id = data.user_message_id;
+              });
+              resolvedUserId = data.user_message_id;
+              activeLeafId = data.user_message_id;
             }
             if (data.content !== undefined) {
               clearAnalyzingDots();
@@ -2458,10 +2641,13 @@
                 role: "assistant",
                 content: fullContent,
                 id: data.id || null,
+                parent_id: resolvedUserId,
                 debug_request: debugRequest || null,
                 debug_response: debugMetaLines.length > 0 ? debugMetaLines.join("\n") : null,
               };
-              messages.push(assistantMsg);
+              allMessages.push(assistantMsg);
+              if (assistantMsg.id) activeLeafId = assistantMsg.id;
+              syncVisibleMessages();
               renderMessages();
               loadConversations();
               if (assistantMsg.id) {
@@ -2486,7 +2672,10 @@
       currentStreamingDebugEl = null;
       if (e.name === "AbortError") {
         appStatus.update(chatStatusId, "chat.cancelled");
-        messages.push({ role: "assistant", content: "Cancelado" });
+        allMessages = allMessages.filter((m) => m.id !== tempUserId && m.id !== resolvedUserId);
+        activeLeafId = parentId || null;
+        syncVisibleMessages();
+        messages.push({ role: "assistant", content: "Cancelado", ephemeral_debug: true });
         renderMessages();
         if (currentConversationId) {
           fetch(`${API}/conversations/${currentConversationId}/messages/last`, { method: "DELETE" }).catch(() => {});
@@ -2494,7 +2683,10 @@
         showNotice("Mensaje anulado.");
       } else {
         appStatus.update(chatStatusId, "chat.error");
-        messages.push({ role: "assistant", content: "Error al enviar: " + e.message });
+        allMessages = allMessages.filter((m) => m.id !== tempUserId && m.id !== resolvedUserId);
+        activeLeafId = parentId || null;
+        syncVisibleMessages();
+        messages.push({ role: "assistant", content: "Error al enviar: " + e.message, ephemeral_debug: true });
         renderMessages();
         showError("Error al enviar: " + e.message);
       }
@@ -2585,6 +2777,15 @@
 
   if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
+  if (el.conversationTitle) {
+    el.conversationTitle.addEventListener("change", commitConversationTitle);
+    el.conversationTitle.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        el.conversationTitle.blur();
+      }
+    });
+  }
   if (el.btnSend) el.btnSend.addEventListener("click", onComposerPrimaryClick);
   function onShowDebugModeChange(checked) {
     if (currentAbortController && currentStreamingDebugEl) {
@@ -2976,7 +3177,6 @@
       }
     });
   }
-
   /** Ayuda de parámetros: JSON por control id y tooltip tras 2s de hover */
   let paramsHelpData = null;
   let paramHelpTimeout = null;
@@ -4400,10 +4600,10 @@
             renderMessages();
             scrollToBottomIfEnabled();
           }
-          if (data.content != null) {
+            if (data.content != null) {
             const idx = messages.findIndex((m) => m.id === messageId);
             if (idx >= 0) {
-              messages[idx].content = data.content;
+              updateStoredMessageContent(messageId, data.content);
               renderMessages();
               scrollToBottomIfEnabled();
             }

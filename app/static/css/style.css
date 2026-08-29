@@ -1200,6 +1200,14 @@ body {
   font-weight: 700;
 }
 
+.conversation-item-fork {
+  opacity: 0.96;
+}
+
+.conversation-item-fork .conv-title {
+  font-weight: 500;
+}
+
 .conv-row {
   display: flex;
   align-items: center;
@@ -3018,9 +3026,42 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
 .message-footer {
   margin-top: 4px;
   display: flex;
-  justify-content: flex-end;
-  gap: 0.1rem;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
   position: relative;
+}
+
+.message-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.1rem;
+  margin-left: auto;
+}
+
+.message-row-inherited .message-bubble {
+  opacity: 0.82;
+}
+
+.message-inherited-split {
+  margin: 0.35rem 0 0.7rem;
+  padding: 0.2rem 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.message-inherited-split::before,
+.message-inherited-split::after {
+  content: "";
+  display: inline-block;
+  width: 2.5rem;
+  height: 1px;
+  margin: 0 0.5rem;
+  vertical-align: middle;
+  background: var(--separator, var(--border));
 }
 
 .msg-more-wrap {

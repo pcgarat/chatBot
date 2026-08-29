@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, IllustratedImage, Message, Rule
+from app.services.conversation_tree import path_from_messages
 from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
 
 # Sentinel para "no actualizar inject_instruction_every" en update_conversation
@@ -64,6 +65,8 @@ def create_conversation(
     instruction_ids: list | None = None,
     inject_instruction_every: int | None = None,
     history_turns: int | None = 5,
+    forked_from_conversation_id: str | None = None,
+    forked_from_message_id: str | None = None,
 ) -> Conversation:
     conv = Conversation(
         title=title,
@@ -73,6 +76,8 @@ def create_conversation(
         instruction_ids=json.dumps(instruction_ids) if instruction_ids is not None else None,
         inject_instruction_every=inject_instruction_every if inject_instruction_every and inject_instruction_every > 0 else None,
         history_turns=history_turns if history_turns and history_turns > 0 else 5,
+        forked_from_conversation_id=forked_from_conversation_id,
+        forked_from_message_id=forked_from_message_id,
     )
     db.add(conv)
     db.commit()
@@ -120,6 +125,7 @@ def update_conversation(
     model_params: dict | None = None,
     history_turns: int | None = None,
     instruction_override: str | None = INSTRUCTION_OVERRIDE_UNSET,
+    active_leaf_message_id: str | None = None,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
@@ -143,6 +149,11 @@ def update_conversation(
         conv.history_turns = history_turns if history_turns >= 0 else None
     if instruction_override is not INSTRUCTION_OVERRIDE_UNSET:
         conv.instruction_override = instruction_override.strip() if instruction_override and instruction_override.strip() else None
+    if active_leaf_message_id is not None:
+        leaf = get_message(db, conversation_id, active_leaf_message_id)
+        if not leaf:
+            return None
+        conv.active_leaf_message_id = active_leaf_message_id
     # No actualizar updated_at si solo cambió instruction_override (al hacer click en otra conversación no debe reordenar la lista)
     affects_order = any([
         title is not None, model_id is not None, provider is not None,
@@ -188,6 +199,94 @@ def get_messages(db: Session, conversation_id: str) -> list[Message]:
     )
 
 
+def get_path_to_message(db: Session, conversation_id: str, message_id: str | None) -> list[Message]:
+    """Camino raíz → message_id (inclusive) dentro de la conversación."""
+    return path_from_messages(get_messages(db, conversation_id), message_id)
+
+
+def get_inherited_prefix(db: Session, conv: Conversation, _seen: set[str] | None = None) -> list[Message]:
+    """Mensajes del origen hasta el ancla (recursivo si el origen también es variante)."""
+    origin_id = getattr(conv, "forked_from_conversation_id", None)
+    anchor_id = getattr(conv, "forked_from_message_id", None)
+    if not origin_id or not anchor_id:
+        return []
+    seen = set(_seen or ())
+    if origin_id in seen or len(seen) > 32:
+        return []
+    seen.add(origin_id)
+    origin = get_conversation(db, origin_id, include_deleted=True)
+    if not origin:
+        return []
+    return get_resolved_history(db, origin, anchor_id, _seen=seen)
+
+
+def get_resolved_history(
+    db: Session,
+    conv: Conversation,
+    parent_id: str | None,
+    _seen: set[str] | None = None,
+) -> list[Message]:
+    """Prefijo heredado + camino propio hasta parent_id (o la hoja activa si parent_id es None)."""
+    prefix = get_inherited_prefix(db, conv, _seen=_seen)
+    own = get_messages(db, conv.id)
+    target = parent_id if parent_id is not None else getattr(conv, "active_leaf_message_id", None)
+    if target:
+        own_path = path_from_messages(own, target)
+        if own_path:
+            return prefix + own_path
+        for i, msg in enumerate(prefix):
+            if msg.id == target:
+                return prefix[: i + 1]
+        return prefix
+    return prefix
+
+
+def resolve_fork_anchor(db: Session, view_conv: Conversation, message_id: str) -> tuple[str, str] | None:
+    """(conversation_id dueña del mensaje, message_id) para colgar el historial."""
+    if get_message(db, view_conv.id, message_id):
+        return view_conv.id, message_id
+    for msg in get_inherited_prefix(db, view_conv):
+        if msg.id == message_id:
+            return msg.conversation_id, message_id
+    return None
+
+
+def fork_conversation(db: Session, view_conversation_id: str, message_id: str) -> Conversation | None:
+    """Conversación nueva, sin copiar mensajes; el historial se resuelve desde el ancla."""
+    view = get_conversation(db, view_conversation_id)
+    if not view:
+        return None
+    anchor = resolve_fork_anchor(db, view, message_id)
+    if not anchor:
+        return None
+    owner_id, anchor_id = anchor
+    instruction_ids = None
+    if view.instruction_ids:
+        try:
+            parsed = json.loads(view.instruction_ids)
+            if isinstance(parsed, list):
+                instruction_ids = [str(x) for x in parsed if x]
+        except (TypeError, ValueError):
+            instruction_ids = None
+    child = create_conversation(
+        db,
+        title=view.title or "Nueva conversación",
+        model_id=view.model_id,
+        provider=view.provider or "ollama",
+        system_instruction_global=view.system_instruction_global,
+        instruction_ids=instruction_ids,
+        history_turns=view.history_turns if view.history_turns is not None else 5,
+        forked_from_conversation_id=owner_id,
+        forked_from_message_id=anchor_id,
+    )
+    child.model_params = view.model_params
+    child.instruction_override = view.instruction_override
+    child.last_message_at = datetime.utcnow()
+    db.commit()
+    db.refresh(child)
+    return child
+
+
 def get_message(db: Session, conversation_id: str, message_id: str) -> Message | None:
     """Obtiene un mensaje por id dentro de una conversación."""
     return (
@@ -219,7 +318,14 @@ def add_message(
     instruction_override: str | None = None,
     debug_request_json: str | None = None,
     debug_response_raw: str | None = None,
+    parent_id: str | None = None,
 ) -> Message:
+    conv = get_conversation(db, conversation_id)
+    resolved_parent = parent_id if parent_id is not None else (
+        getattr(conv, "active_leaf_message_id", None) if conv else None
+    )
+    if resolved_parent and not get_message(db, conversation_id, resolved_parent):
+        resolved_parent = None
     msg = Message(
         conversation_id=conversation_id,
         role=role,
@@ -227,12 +333,13 @@ def add_message(
         instruction_override=instruction_override,
         debug_request_json=debug_request_json,
         debug_response_raw=debug_response_raw,
+        parent_id=resolved_parent,
     )
     db.add(msg)
     db.flush()
-    conv = get_conversation(db, conversation_id)
     if conv:
         conv.last_message_at = datetime.utcnow()
+        conv.active_leaf_message_id = msg.id
     db.commit()
     db.refresh(msg)
     return msg
@@ -246,39 +353,44 @@ def touch_conversation(db: Session, conversation_id: str) -> None:
 
 
 def delete_message(db: Session, conversation_id: str, message_id: str) -> bool:
-    """Elimina un mensaje por id dentro de la conversación. Devuelve True si existía y se eliminó."""
+    """Elimina un mensaje y reparenta sus hijos al padre del borrado."""
     msg = get_message(db, conversation_id, message_id)
     if not msg:
         return False
+    conv = get_conversation(db, conversation_id)
+    parent_id = msg.parent_id
+    children = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id, Message.parent_id == message_id)
+        .all()
+    )
+    for child in children:
+        child.parent_id = parent_id
+    if conv and getattr(conv, "active_leaf_message_id", None) == message_id:
+        conv.active_leaf_message_id = parent_id
     db.delete(msg)
     db.commit()
     return True
 
 
 def delete_last_message(db: Session, conversation_id: str) -> bool:
-    """Elimina el último mensaje de la conversación (el más reciente). Devuelve True si se eliminó uno."""
+    """Elimina la hoja activa (el mensaje actual del intento). False si no hay mensajes."""
+    conv = get_conversation(db, conversation_id)
+    leaf_id = getattr(conv, "active_leaf_message_id", None) if conv else None
+    if leaf_id:
+        return delete_message(db, conversation_id, leaf_id)
     msgs = get_messages(db, conversation_id)
     if not msgs:
         return False
-    last = msgs[-1]
-    db.delete(last)
-    db.commit()
-    return True
-
-
-def delete_message(db: Session, conversation_id: str, message_id: str) -> bool:
-    """Elimina un mensaje por id. Devuelve True si existía y se eliminó."""
-    msg = get_message(db, conversation_id, message_id)
-    if not msg:
-        return False
-    db.delete(msg)
-    db.commit()
-    return True
+    return delete_message(db, conversation_id, msgs[-1].id)
 
 
 def clear_conversation_messages(db: Session, conversation_id: str) -> int:
     """Elimina todos los mensajes de una conversación. Devuelve el número de mensajes eliminados."""
+    conv = get_conversation(db, conversation_id)
     count = db.query(Message).filter(Message.conversation_id == conversation_id).delete()
+    if conv:
+        conv.active_leaf_message_id = None
     db.commit()
     return count
 

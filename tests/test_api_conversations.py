@@ -497,3 +497,163 @@ def test_delete_conversation_does_not_call_rag_delete_documents(mock_rag_delete,
     cid = create.json()["id"]
     client.delete(f"/api/conversations/{cid}")
     mock_rag_delete.assert_not_called()
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_send_message_linear_expone_parent_y_hoja(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Ra"
+    mock_get_provider.return_value = mock_provider
+    cid = client.post("/api/conversations", json={"title": "Árbol", "model_id": "m"}).json()["id"]
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "A"})
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert conv["active_leaf_message_id"] == conv["messages"][1]["id"]
+    assert conv["messages"][0]["parent_id"] is None
+    assert conv["messages"][1]["parent_id"] == conv["messages"][0]["id"]
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_nuevo_intento_no_manda_la_otra_rama_al_llm(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.side_effect = ["Ra", "Rb", "Rc"]
+    mock_get_provider.return_value = mock_provider
+    cid = client.post("/api/conversations", json={"title": "Intentos", "model_id": "m"}).json()["id"]
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "A"})
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "B"})
+    conv = client.get(f"/api/conversations/{cid}").json()
+    by_content = {m["content"]: m for m in conv["messages"]}
+    ancla = by_content["Ra"]["id"]
+    client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "C", "parent_message_id": ancla},
+    )
+    third_call_messages = mock_provider.chat.call_args_list[2][0][1]
+    contents = [m["content"] for m in third_call_messages if m["role"] in ("user", "assistant")]
+    assert "A" in contents
+    assert "Ra" in contents
+    assert "C" in contents
+    assert "B" not in contents
+    assert "Rb" not in contents
+    conv2 = client.get(f"/api/conversations/{cid}").json()
+    assert len(conv2["messages"]) == 6
+    by_content = {m["content"]: m for m in conv2["messages"]}
+    assert by_content["C"]["parent_id"] == ancla
+    assert conv2["active_leaf_message_id"] == by_content["Rc"]["id"]
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_cambiar_hoja_activa_persiste(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.side_effect = ["Ra", "Rb", "Rc"]
+    mock_get_provider.return_value = mock_provider
+    cid = client.post("/api/conversations", json={"title": "Switch", "model_id": "m"}).json()["id"]
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "A"})
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "B"})
+    conv = client.get(f"/api/conversations/{cid}").json()
+    ancla = next(m for m in conv["messages"] if m["content"] == "Ra")["id"]
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "C", "parent_message_id": ancla})
+    conv = client.get(f"/api/conversations/{cid}").json()
+    leaf_intento1 = next(m for m in conv["messages"] if m["content"] == "Rb")["id"]
+    r = client.put(f"/api/conversations/{cid}", json={"active_leaf_message_id": leaf_intento1})
+    assert r.status_code == 200
+    assert r.json()["active_leaf_message_id"] == leaf_intento1
+    assert client.get(f"/api/conversations/{cid}").json()["active_leaf_message_id"] == leaf_intento1
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_parent_message_id_inexistente_se_ignora(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Ok"
+    mock_get_provider.return_value = mock_provider
+    cid = client.post("/api/conversations", json={"title": "Ancla huérfana", "model_id": "m"}).json()["id"]
+    r = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Hola", "parent_message_id": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert r.status_code == 200
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert conv["messages"][0]["parent_id"] is None
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_enviar_en_variante_con_origen_en_papelera(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.side_effect = ["Ra", "Rb"]
+    mock_get_provider.return_value = mock_provider
+    origin_id = client.post("/api/conversations", json={"title": "Origen", "model_id": "m"}).json()["id"]
+    client.post(f"/api/conversations/{origin_id}/messages", json={"content": "A"})
+    origin = client.get(f"/api/conversations/{origin_id}").json()
+    ancla = origin["messages"][1]["id"]
+    child_id = client.post(f"/api/conversations/{origin_id}/fork", json={"message_id": ancla}).json()["id"]
+    assert client.delete(f"/api/conversations/{origin_id}").status_code == 204
+    child = client.get(f"/api/conversations/{child_id}").json()
+    assert [m["content"] for m in child["inherited_messages"]] == ["A", "Ra"]
+    r = client.post(f"/api/conversations/{child_id}/messages", json={"content": "B"})
+    assert r.status_code == 200
+    contents = [m["content"] for m in mock_provider.chat.call_args_list[1][0][1] if m["role"] in ("user", "assistant")]
+    assert contents == ["A", "Ra", "B"]
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_fork_no_copia_mensajes_y_el_llm_usa_prefijo_del_origen(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.side_effect = ["Ra", "Rb", "Rc", "Rd"]
+    mock_get_provider.return_value = mock_provider
+    origin_id = client.post("/api/conversations", json={"title": "Origen", "model_id": "m"}).json()["id"]
+    client.post(f"/api/conversations/{origin_id}/messages", json={"content": "A"})
+    client.post(f"/api/conversations/{origin_id}/messages", json={"content": "B"})
+    origin = client.get(f"/api/conversations/{origin_id}").json()
+    ancla = next(m for m in origin["messages"] if m["content"] == "Ra")["id"]
+    r_fork = client.post(f"/api/conversations/{origin_id}/fork", json={"message_id": ancla})
+    assert r_fork.status_code == 200
+    child = r_fork.json()
+    assert child["id"] != origin_id
+    assert child["forked_from_conversation_id"] == origin_id
+    assert child["forked_from_message_id"] == ancla
+    assert child["messages"] == []
+    assert [m["content"] for m in child["inherited_messages"]] == ["A", "Ra"]
+    listed = client.get("/api/conversations").json()
+    child_item = next(c for c in listed if c["id"] == child["id"])
+    assert child_item["forked_from_conversation_id"] == origin_id
+    client.post(f"/api/conversations/{origin_id}/messages", json={"content": "C"})
+    child_after = client.get(f"/api/conversations/{child['id']}").json()
+    assert child_after["messages"] == []
+    assert [m["content"] for m in child_after["inherited_messages"]] == ["A", "Ra"]
+    client.post(f"/api/conversations/{child['id']}/messages", json={"content": "D"})
+    fourth = mock_provider.chat.call_args_list[3][0][1]
+    contents = [m["content"] for m in fourth if m["role"] in ("user", "assistant")]
+    assert contents == ["A", "Ra", "D"]
+    sent = client.get(f"/api/conversations/{child['id']}").json()
+    assert [m["content"] for m in sent["messages"]] == ["D", "Rd"]
+    assert sent["messages"][0]["parent_id"] is None
+    origin_final = client.get(f"/api/conversations/{origin_id}").json()
+    assert [m["content"] for m in origin_final["messages"]] == ["A", "Ra", "B", "Rb", "C", "Rc"]
+
+
+def test_fork_ancla_inexistente_404(client):
+    cid = client.post("/api/conversations", json={"title": "Origen", "model_id": "m"}).json()["id"]
+    r = client.post(
+        f"/api/conversations/{cid}/fork",
+        json={"message_id": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert r.status_code == 404
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_fork_parent_heredado_en_envio_no_404(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.side_effect = ["Ra", "Rb"]
+    mock_get_provider.return_value = mock_provider
+    origin_id = client.post("/api/conversations", json={"title": "Origen", "model_id": "m"}).json()["id"]
+    client.post(f"/api/conversations/{origin_id}/messages", json={"content": "A"})
+    origin = client.get(f"/api/conversations/{origin_id}").json()
+    ancla = origin["messages"][1]["id"]
+    child_id = client.post(f"/api/conversations/{origin_id}/fork", json={"message_id": ancla}).json()["id"]
+    r = client.post(
+        f"/api/conversations/{child_id}/messages",
+        json={"content": "B", "parent_message_id": ancla},
+    )
+    assert r.status_code == 200
+    second = mock_provider.chat.call_args_list[1][0][1]
+    contents = [m["content"] for m in second if m["role"] in ("user", "assistant")]
+    assert contents == ["A", "Ra", "B"]

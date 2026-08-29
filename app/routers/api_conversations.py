@@ -15,6 +15,7 @@ from app.crud import create_rule as crud_create_rule
 from app.crud import get_rule as crud_get_rule
 from app.schemas import (
     ConversationCreate,
+    ConversationFork,
     ConversationListItem,
     ConversationOut,
     ConversationUpdate,
@@ -193,6 +194,49 @@ def _normalize_stream_metadata_usage(metadata: dict | None) -> dict:
     return out
 
 
+def _message_in_chat(m) -> MessageInChat:
+    return MessageInChat(
+        role=m.role,
+        content=m.content,
+        id=m.id,
+        parent_id=getattr(m, "parent_id", None),
+        debug_request=m.debug_request_json if m.role == "assistant" else None,
+        debug_response=m.debug_response_raw if m.role == "assistant" else None,
+    )
+
+
+def _conversation_out(conv, db, messages=None) -> ConversationOut:
+    if messages is None:
+        messages = list(conv.messages)
+    resolved = _get_resolved_instructions(conv, db)
+    return ConversationOut(
+        id=conv.id,
+        title=conv.title,
+        model_id=conv.model_id,
+        provider=conv.provider,
+        system_instruction_global=conv.system_instruction_global,
+        system_instructions=resolved,
+        inject_instruction_every=conv.inject_instruction_every,
+        model_params=_parse_model_params(getattr(conv, "model_params", None)),
+        history_turns=getattr(conv, "history_turns", None),
+        instruction_override=getattr(conv, "instruction_override", None),
+        active_leaf_message_id=getattr(conv, "active_leaf_message_id", None),
+        forked_from_conversation_id=getattr(conv, "forked_from_conversation_id", None),
+        forked_from_message_id=getattr(conv, "forked_from_message_id", None),
+        inherited_messages=[_message_in_chat(m) for m in crud.get_inherited_prefix(db, conv)],
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
+        messages=[_message_in_chat(m) for m in messages],
+    )
+
+
+def _resolve_send_parent(db, conv, requested_parent_id: str | None) -> str | None:
+    """Padre propio del turno. Ids heredados, temporales o huérfanos se ignoran."""
+    if requested_parent_id and crud.get_message(db, conv.id, requested_parent_id):
+        return requested_parent_id
+    return getattr(conv, "active_leaf_message_id", None)
+
+
 @router.get("/conversations", response_model=list[ConversationListItem])
 def list_conversations(db: Session = Depends(get_db)):
     convs = crud.list_conversations(db)
@@ -228,20 +272,16 @@ def create_conversation(body: ConversationCreate, db: Session = Depends(get_db))
         instruction_ids=instruction_ids,
         inject_instruction_every=body.inject_instruction_every,
     )
-    resolved = _get_resolved_instructions(conv, db)
-    return ConversationOut(
-        id=conv.id,
-        title=conv.title,
-        model_id=conv.model_id,
-        provider=conv.provider,
-        system_instruction_global=conv.system_instruction_global,
-        system_instructions=resolved,
-        inject_instruction_every=conv.inject_instruction_every,
-        model_params=_parse_model_params(getattr(conv, "model_params", None)),
-        created_at=conv.created_at,
-        updated_at=conv.updated_at,
-        messages=[],
-    )
+    return _conversation_out(conv, db)
+
+
+@router.post("/conversations/{conversation_id}/fork", response_model=ConversationOut)
+def fork_conversation(conversation_id: str, body: ConversationFork, db: Session = Depends(get_db)):
+    """Nueva conversación independiente; el historial se lee del mensaje origen, no se copia."""
+    conv = crud.fork_conversation(db, conversation_id, body.message_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación o mensaje de anclaje no encontrado")
+    return _conversation_out(conv, db, messages=[])
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationOut)
@@ -249,32 +289,7 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    messages = [
-        MessageInChat(
-            role=m.role,
-            content=m.content,
-            id=m.id,
-            debug_request=m.debug_request_json if m.role == "assistant" else None,
-            debug_response=m.debug_response_raw if m.role == "assistant" else None,
-        )
-        for m in conv.messages
-    ]
-    resolved = _get_resolved_instructions(conv, db)
-    return ConversationOut(
-        id=conv.id,
-        title=conv.title,
-        model_id=conv.model_id,
-        provider=conv.provider,
-        system_instruction_global=conv.system_instruction_global,
-        system_instructions=resolved,
-        inject_instruction_every=conv.inject_instruction_every,
-        model_params=_parse_model_params(getattr(conv, "model_params", None)),
-        history_turns=getattr(conv, "history_turns", None),
-        instruction_override=getattr(conv, "instruction_override", None),
-        created_at=conv.created_at,
-        updated_at=conv.updated_at,
-        messages=messages,
-    )
+    return _conversation_out(conv, db)
 
 
 @router.put("/conversations/{conversation_id}", response_model=ConversationOut)
@@ -282,6 +297,9 @@ def update_conversation(
     conversation_id: str, body: ConversationUpdate, db: Session = Depends(get_db)
 ):
     body_set = body.model_dump(exclude_unset=True)
+    if "active_leaf_message_id" in body_set and body.active_leaf_message_id:
+        if not crud.get_message(db, conversation_id, body.active_leaf_message_id):
+            raise HTTPException(status_code=404, detail="Mensaje de intento no encontrado")
     instruction_ids = _instructions_to_ids(body.system_instructions, db) if body.system_instructions is not None else None
     instruction_override_arg = body.instruction_override if "instruction_override" in body_set else crud.INSTRUCTION_OVERRIDE_UNSET
     conv = crud.update_conversation(
@@ -296,35 +314,11 @@ def update_conversation(
         model_params=body.model_params,
         history_turns=body.history_turns,
         instruction_override=instruction_override_arg,
+        active_leaf_message_id=body.active_leaf_message_id if "active_leaf_message_id" in body_set else None,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    messages = [
-        MessageInChat(
-            role=m.role,
-            content=m.content,
-            id=m.id,
-            debug_request=m.debug_request_json if m.role == "assistant" else None,
-            debug_response=m.debug_response_raw if m.role == "assistant" else None,
-        )
-        for m in conv.messages
-    ]
-    resolved = _get_resolved_instructions(conv, db)
-    return ConversationOut(
-        id=conv.id,
-        title=conv.title,
-        model_id=conv.model_id,
-        provider=conv.provider,
-        system_instruction_global=conv.system_instruction_global,
-        system_instructions=resolved,
-        inject_instruction_every=conv.inject_instruction_every,
-        model_params=_parse_model_params(getattr(conv, "model_params", None)),
-        history_turns=getattr(conv, "history_turns", None),
-        instruction_override=getattr(conv, "instruction_override", None),
-        created_at=conv.created_at,
-        updated_at=conv.updated_at,
-        messages=messages,
-    )
+    return _conversation_out(conv, db)
 
 
 @router.delete("/conversations/{conversation_id}", status_code=204)
@@ -342,32 +336,7 @@ def restore_conversation(conversation_id: str, db: Session = Depends(get_db)):
     conv = crud.restore_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada en la papelera")
-    messages = [
-        MessageInChat(
-            role=m.role,
-            content=m.content,
-            id=m.id,
-            debug_request=m.debug_request_json if m.role == "assistant" else None,
-            debug_response=m.debug_response_raw if m.role == "assistant" else None,
-        )
-        for m in crud.get_messages(db, conversation_id)
-    ]
-    resolved = _get_resolved_instructions(conv, db)
-    return ConversationOut(
-        id=conv.id,
-        title=conv.title,
-        model_id=conv.model_id,
-        provider=conv.provider,
-        system_instruction_global=conv.system_instruction_global,
-        system_instructions=resolved,
-        inject_instruction_every=conv.inject_instruction_every,
-        model_params=_parse_model_params(getattr(conv, "model_params", None)),
-        history_turns=getattr(conv, "history_turns", None),
-        instruction_override=getattr(conv, "instruction_override", None),
-        created_at=conv.created_at,
-        updated_at=conv.updated_at,
-        messages=messages,
-    )
+    return _conversation_out(conv, db, messages=crud.get_messages(db, conversation_id))
 
 
 @router.delete("/conversations/{conversation_id}/messages/last", status_code=204)
@@ -528,6 +497,7 @@ async def _stream_generator_async(
                     content=f"[Error: Proveedor '{provider_name}' no disponible]",
                     debug_request_json=debug_request_json,
                     debug_response_raw="\n".join(meta_lines),
+                    parent_id=user_message_id,
                 )
                 crud.touch_conversation(db, conversation_id)
                 return msg.id
@@ -565,6 +535,7 @@ async def _stream_generator_async(
                                 db, conversation_id, role="assistant", content=err_content,
                                 debug_request_json=debug_request_json,
                                 debug_response_raw=debug_response_raw,
+                                parent_id=user_message_id,
                             )
                             crud.touch_conversation(db, conversation_id)
                             return msg.id
@@ -601,6 +572,7 @@ async def _stream_generator_async(
                     db, conversation_id, role="assistant", content=err_content,
                     debug_request_json=debug_request_json,
                     debug_response_raw=debug_response_raw,
+                    parent_id=user_message_id,
                 )
                 crud.touch_conversation(db, conversation_id)
                 return msg.id
@@ -623,6 +595,7 @@ async def _stream_generator_async(
                 content="".join(full_content),
                 debug_request_json=debug_request_json,
                 debug_response_raw=debug_response_raw,
+                parent_id=user_message_id,
             )
             crud.touch_conversation(db, conversation_id)
             if save_to_chromadb in ("assistant", "both"):
@@ -654,8 +627,19 @@ async def send_message_stream(
 
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
-    existing = crud.get_messages(db, conversation_id)
-    rag_context = rag.get_relevant_context(conversation_id, user_content)
+        conv = crud.get_conversation(db, conversation_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    parent_id = _resolve_send_parent(db, conv, body.parent_message_id)
+    existing = crud.get_resolved_history(db, conv, parent_id)
+    rag_ids = {m.conversation_id for m in existing}
+    rag_ids.add(conversation_id)
+    rag_context = rag.get_relevant_context(
+        conversation_id,
+        user_content,
+        allowed_message_ids={m.id for m in existing},
+        conversation_ids=rag_ids,
+    )
     if settings.verbose:
         import sys
         n_ctx = len(rag_context or "")
@@ -676,6 +660,7 @@ async def send_message_stream(
         role="user",
         content=user_content,
         instruction_override=body.instruction_override,
+        parent_id=parent_id,
     )
     crud.update_conversation(db, conversation_id, instruction_override=body.instruction_override)
     save_to_chromadb = (body.save_to_chromadb or "user").strip().lower()
@@ -728,9 +713,20 @@ def send_message(
 
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
+        conv = crud.get_conversation(db, conversation_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversación no encontrada")
 
-    existing = crud.get_messages(db, conversation_id)
-    rag_context = rag.get_relevant_context(conversation_id, user_content)
+    parent_id = _resolve_send_parent(db, conv, body.parent_message_id)
+    existing = crud.get_resolved_history(db, conv, parent_id)
+    rag_ids = {m.conversation_id for m in existing}
+    rag_ids.add(conversation_id)
+    rag_context = rag.get_relevant_context(
+        conversation_id,
+        user_content,
+        allowed_message_ids={m.id for m in existing},
+        conversation_ids=rag_ids,
+    )
     if settings.verbose:
         import sys
         n_ctx = len(rag_context or "")
@@ -772,6 +768,7 @@ def send_message(
         role="user",
         content=user_content,
         instruction_override=body.instruction_override,
+        parent_id=parent_id,
     )
     crud.update_conversation(db, conversation_id, instruction_override=body.instruction_override)
     save_to_chromadb = (body.save_to_chromadb or "user").strip().lower()
@@ -779,7 +776,9 @@ def send_message(
         save_to_chromadb = "user"
     if save_to_chromadb in ("user", "both"):
         rag.add_message(conversation_id, user_msg.id, "user", user_content, user_msg.created_at)
-    assistant_msg = crud.add_message(db, conversation_id, role="assistant", content=assistant_content)
+    assistant_msg = crud.add_message(
+        db, conversation_id, role="assistant", content=assistant_content, parent_id=user_msg.id
+    )
     crud.touch_conversation(db, conversation_id)
     if save_to_chromadb in ("assistant", "both"):
         rag.add_message(conversation_id, assistant_msg.id, "assistant", assistant_msg.content, assistant_msg.created_at)

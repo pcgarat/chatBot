@@ -45,6 +45,7 @@ def test_rag_add_message_llama_add(mock_get_coll):
     assert "Hola" in call.kwargs["documents"][0] and "user" in call.kwargs["documents"][0]
     assert call.kwargs["metadatas"][0]["conversation_id"] == "c1"
     assert call.kwargs["metadatas"][0]["role"] == "user"
+    assert call.kwargs["metadatas"][0]["message_id"] == "m1"
     rag._chroma_available = None
 
 
@@ -73,4 +74,46 @@ def test_rag_delete_conversation_documents_llama_delete(mock_get_coll):
         rag._chroma_available = True
         rag.delete_conversation_documents("c1")
     mock_coll.delete.assert_called_once_with(where={"conversation_id": "c1"})
+    rag._chroma_available = None
+
+
+@patch("app.rag._get_collection")
+def test_rag_get_relevant_context_filtra_por_camino(mock_get_coll):
+    mock_coll = MagicMock()
+    mock_coll.query.return_value = {
+        "ids": [["m-rama", "m-camino"]],
+        "documents": [["otra rama", "este intento"]],
+    }
+    mock_get_coll.return_value = mock_coll
+    with patch.object(rag, "settings", MagicMock(openai_api_key="key", chroma_host="http://localhost:8001")):
+        rag._chroma_available = True
+        out = rag.get_relevant_context("c1", "pregunta", allowed_message_ids={"m-camino"})
+    assert out == "este intento"
+    rag._chroma_available = None
+
+
+@patch("app.rag._get_collection")
+def test_rag_get_relevant_context_consulta_varios_conversation_id(mock_get_coll):
+    mock_coll = MagicMock()
+    mock_coll.query.return_value = {"documents": [["doc origen"]]}
+    mock_get_coll.return_value = mock_coll
+    with patch.object(rag, "settings", MagicMock(openai_api_key="key", chroma_host="http://localhost:8001")):
+        rag._chroma_available = True
+        out = rag.get_relevant_context("c-hija", "pregunta", conversation_ids={"c-origen", "c-hija"})
+    where = mock_coll.query.call_args.kwargs["where"]
+    ids = {item["conversation_id"] for item in where["$or"]}
+    assert ids == {"c-origen", "c-hija"}
+    assert out == "doc origen"
+    rag._chroma_available = None
+
+
+@patch("app.rag._get_collection")
+def test_rag_get_relevant_context_camino_vacio_no_consulta(mock_get_coll):
+    mock_coll = MagicMock()
+    mock_get_coll.return_value = mock_coll
+    with patch.object(rag, "settings", MagicMock(openai_api_key="key", chroma_host="http://localhost:8001")):
+        rag._chroma_available = True
+        out = rag.get_relevant_context("c1", "pregunta", allowed_message_ids=set())
+    mock_coll.query.assert_not_called()
+    assert out == ""
     rag._chroma_available = None

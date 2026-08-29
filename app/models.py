@@ -24,6 +24,9 @@ class Conversation(Base):
     model_params = Column(Text, nullable=True)  # JSON: param_id -> value (parámetros guardados por el usuario en esta conversación)
     history_turns = Column(Integer, nullable=True)  # Número de pares user+assistant a enviar en el prompt; null/0 = usar default 5
     instruction_override = Column(Text, nullable=True)  # Instrucción solo para el siguiente mensaje; último valor por conversación
+    active_leaf_message_id = Column(String(36), nullable=True)  # Hoja del camino de intento que se está viendo
+    forked_from_conversation_id = Column(String(36), nullable=True, index=True)
+    forked_from_message_id = Column(String(36), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_message_at = Column(DateTime, nullable=True)
@@ -54,6 +57,7 @@ class Message(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     conversation_id = Column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
+    parent_id = Column(String(36), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
     role = Column(String(32), nullable=False)  # user | assistant
     content = Column(Text, nullable=False)
     instruction_override = Column(Text, nullable=True)

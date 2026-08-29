@@ -128,6 +128,7 @@ def add_message(
         document = f"{role}: {content.strip()}"
         meta = {
             "conversation_id": conversation_id,
+            "message_id": msg_id_str,
             "role": role,
             "created_at": created,
         }
@@ -152,12 +153,30 @@ def add_message(
             traceback.print_exc(file=sys.stderr)
 
 
-def get_relevant_context(conversation_id: str, query: str, n_results: int = RAG_TOP_N) -> str:
+def _chroma_conversation_where(conversation_id: str, conversation_ids: set[str] | None) -> dict:
+    ids = [str(x) for x in conversation_ids if x] if conversation_ids else []
+    if not ids:
+        ids = [str(conversation_id)]
+    uniq = list(dict.fromkeys(ids))
+    if len(uniq) == 1:
+        return {"conversation_id": uniq[0]}
+    return {"$or": [{"conversation_id": i} for i in uniq]}
+
+
+def get_relevant_context(
+    conversation_id: str,
+    query: str,
+    n_results: int = RAG_TOP_N,
+    allowed_message_ids: set[str] | None = None,
+    conversation_ids: set[str] | None = None,
+) -> str:
     """
     Consulta Chroma por similitud con query, filtrado por conversation_id.
     Devuelve un único string con el contenido de los documentos recuperados
     (sin el mensaje actual), para inyectar como "Contexto relevante del historial".
     Si RAG no está disponible o no hay resultados, devuelve "".
+    allowed_message_ids: si se indica, solo se usan documentos de esos mensajes
+    (camino del intento activo). Vacío = sin contexto.
     """
     if settings.verbose:
         q_preview = (query.strip()[:50] + "…") if len(query.strip()) > 50 else (query.strip() or "(vacía)")
@@ -173,6 +192,11 @@ def get_relevant_context(conversation_id: str, query: str, n_results: int = RAG_
             print("  → query vacía, no se consulta", file=sys.stderr)
             print("--- fin ChromaDB ---", file=sys.stderr)
         return ""
+    if allowed_message_ids is not None and not allowed_message_ids:
+        if settings.verbose:
+            print("  → camino de intento vacío, no se consulta RAG", file=sys.stderr)
+            print("--- fin ChromaDB ---", file=sys.stderr)
+        return ""
     try:
         coll = _get_collection()
         if coll is None:
@@ -182,10 +206,13 @@ def get_relevant_context(conversation_id: str, query: str, n_results: int = RAG_
             return ""
         if settings.verbose:
             print("  → generando embedding de la query (Ollama) y buscando...", file=sys.stderr)
+        fetch_n = n_results
+        if allowed_message_ids is not None:
+            fetch_n = max(n_results * 4, 20)
         results = coll.query(
             query_texts=[query.strip()],
-            n_results=n_results,
-            where={"conversation_id": conversation_id},
+            n_results=fetch_n,
+            where=_chroma_conversation_where(conversation_id, conversation_ids),
         )
         if not results or not results.get("documents") or not results["documents"][0]:
             if settings.verbose:
@@ -193,6 +220,16 @@ def get_relevant_context(conversation_id: str, query: str, n_results: int = RAG_
                 print("--- fin ChromaDB ---", file=sys.stderr)
             return ""
         docs = results["documents"][0]
+        result_ids = (results.get("ids") or [[]])[0]
+        if allowed_message_ids is not None:
+            allowed = {str(x) for x in allowed_message_ids}
+            docs = [d for i, d in zip(result_ids, docs) if i in allowed]
+            docs = docs[:n_results]
+        if not docs:
+            if settings.verbose:
+                print("  → 0 documentos del camino activo (contexto no inyectado)", file=sys.stderr)
+                print("--- fin ChromaDB ---", file=sys.stderr)
+            return ""
         context = "\n\n".join(docs).strip()
         if settings.verbose:
             n = len(docs)
