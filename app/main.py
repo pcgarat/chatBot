@@ -4,11 +4,12 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app import db as app_db
 from app.config import sync_env_to_dotenv
-from app.db import init_db, SessionLocal
 from app.migrate_conversation_rules_to_library import migrate_all as migrate_conversation_rules_to_library
 from app.migrate_fill_instruction_ids import migrate_all as migrate_fill_instruction_ids
 from app.migrate_model_info_rules import migrate_all as migrate_model_info_rules
+from app.services.rules.seed import seed_builtin_rules
 from app.routers import (
     api_conversations,
     api_images,
@@ -35,13 +36,14 @@ if static_dir.exists():
 @app.on_event("startup")
 def startup():
     sync_env_to_dotenv()
-    init_db()
-    db = SessionLocal()
+    app_db.init_db()
+    db = app_db.SessionLocal()
     try:
         migrate_model_info_rules(db)
         migrate_conversation_rules_to_library(db)
         # Rellenar instruction_ids desde system_instructions legado (solo referencias a rules)
         migrate_fill_instruction_ids(db)
+        seed_builtin_rules(db)
     finally:
         db.close()
 
