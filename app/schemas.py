@@ -313,6 +313,63 @@ class IllustratedImageMetaResponse(BaseModel):
     mode: str = "txt2img"
     params: dict = Field(default_factory=dict)
     created_at: Optional[str] = None
+    prompt_model: Optional[str] = None
+    prompt_provider: Optional[str] = None
+    conversation_id: Optional[str] = None
+    conversation_title: Optional[str] = None
+    message_id: Optional[str] = None
+
+
+class IllustratedImageListItem(BaseModel):
+    """Ítem de la galería: miniatura + params clave + enlace al chat."""
+
+    filename: str
+    url: str
+    scene_id: Optional[str] = None
+    mode: str = "txt2img"
+    prompt: str = ""
+    steps: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    seed: Optional[int] = None
+    sampler_name: Optional[str] = None
+    forge_model: Optional[str] = None
+    prompt_model: Optional[str] = None
+    prompt_provider: Optional[str] = None
+    conversation_id: str
+    conversation_title: str
+    message_id: str
+    created_at: Optional[str] = None
+    params: dict = Field(default_factory=dict)
+
+
+class IllustratedImageListResponse(BaseModel):
+    items: list[IllustratedImageListItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class IllustratedImageFacetsResponse(BaseModel):
+    prompt_providers: list[str] = Field(default_factory=list)
+    prompt_models: list[str] = Field(default_factory=list)
+    forge_models: list[str] = Field(default_factory=list)
+    steps: list[int] = Field(default_factory=list)
+    sizes: list[str] = Field(default_factory=list)
+    modes: list[str] = Field(default_factory=list)
+    has_missing_prompt_llm: bool = False
+
+
+class IllustratedImageMessageSummary(BaseModel):
+    message_id: str
+    role: str = "assistant"
+    created_at: Optional[str] = None
+    excerpt: str = ""
+    image_count: int = 0
+
+
+class IllustratedImageMessageListResponse(BaseModel):
+    items: list[IllustratedImageMessageSummary] = Field(default_factory=list)
 
 
 class WorkspaceImagesSnapshot(ForgePanelParamFields):

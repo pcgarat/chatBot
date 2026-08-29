@@ -91,6 +91,8 @@ class IllustratedImage(Base):
     scene_id = Column(String(64), nullable=True)
     mode = Column(String(32), nullable=False, default="txt2img")
     params_json = Column(Text, nullable=False, default="{}")
+    prompt_model = Column(String(128), nullable=True)
+    prompt_provider = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     message = relationship("Message", back_populates="illustrated_images")

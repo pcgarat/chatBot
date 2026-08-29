@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,10 @@ from app.routers.api_conversations import (
 from app.schemas import (
     ForgeLastGenerationParamsResponse,
     GenerateRemainingRequest,
+    IllustratedImageFacetsResponse,
+    IllustratedImageListItem,
+    IllustratedImageListResponse,
+    IllustratedImageMessageListResponse,
     IllustratedImageMetaResponse,
     IllustrateRequest,
     MessageContentUpdateResponse,
@@ -42,6 +47,7 @@ from app.services.image_illustration.storage import (
 from app.services.rules.compose import concat_instruction_texts
 
 router = APIRouter(prefix="/api", tags=["images"])
+logger = logging.getLogger(__name__)
 
 
 def _chat_rules_text(conv, db: Session) -> str:
@@ -160,6 +166,9 @@ def _persist_illustrated_image_meta(
     scene_id: str | None,
     mode: str,
     params: dict,
+    prompt_model: str | None = None,
+    prompt_provider: str | None = None,
+    use_chat_config: bool | None = None,
 ) -> None:
     db = SessionLocal()
     try:
@@ -170,9 +179,12 @@ def _persist_illustrated_image_meta(
             scene_id=scene_id,
             mode=mode,
             params=params,
+            prompt_model=prompt_model,
+            prompt_provider=prompt_provider,
+            use_chat_config=use_chat_config,
         )
     except Exception:
-        pass
+        logger.exception("No se pudieron guardar metadatos de la imagen %s", filename)
     finally:
         db.close()
 
@@ -185,6 +197,9 @@ def _stream_illustration_events(
     events,
     debug: bool,
     include_prompt_debug: bool = False,
+    prompt_model: str | None = None,
+    prompt_provider: str | None = None,
+    use_chat_config: bool | None = None,
 ):
     """Persiste content en cada avance y emite NDJSON (sesiones cortas por escritura)."""
     final_content = text
@@ -211,6 +226,9 @@ def _stream_illustration_events(
                         scene_id=event.scene_id,
                         mode=str(data.get("mode") or "txt2img"),
                         params=params,
+                        prompt_model=prompt_model,
+                        prompt_provider=prompt_provider,
+                        use_chat_config=use_chat_config,
                     )
             if event.type == "log" and not debug:
                 continue
@@ -223,6 +241,17 @@ def _stream_illustration_events(
                 _persist_message_content(conversation_id, message_id, final_content)
             except Exception:
                 pass
+
+
+def _planner_llm_from_request(body: IllustrateRequest, conv) -> tuple[str | None, str | None]:
+    """LLM efectivo del planificador: el de la conversación si use_chat_config."""
+    if body.use_chat_config:
+        provider = (getattr(conv, "provider", None) or "").strip() or None
+        model = (getattr(conv, "model_id", None) or "").strip() or None
+        return provider, model
+    provider = (body.prompt_provider or "").strip() or None
+    model = (body.prompt_model or "").strip() or None
+    return provider, model
 
 
 def _prompts_from_message_meta(db: Session, content: str) -> list[str]:
@@ -271,6 +300,7 @@ def illustrate_message(
     text = msg.content or ""
     orch = _build_orchestrator(body, conv=conv, db=db)
     meta_prompts = _prompts_from_message_meta(db, text)
+    prompt_provider, prompt_model = _planner_llm_from_request(body, conv)
 
     def event_stream():
         # No capturar `db` del request: Depends(get_db) se cierra al acabar/cortar el stream.
@@ -290,6 +320,9 @@ def illustrate_message(
             ),
             debug=body.debug,
             include_prompt_debug=body.include_prompt_debug,
+            prompt_model=prompt_model,
+            prompt_provider=prompt_provider,
+            use_chat_config=body.use_chat_config,
         )
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
@@ -311,6 +344,7 @@ def generate_remaining_images(
     msg = _require_assistant_message(db, conversation_id, message_id)
     text = msg.content or ""
     orch = _build_forge_orchestrator()
+    prompt_provider, prompt_model = crud.get_latest_prompt_llm_for_message(db, message_id)
 
     def event_stream():
         yield from _stream_illustration_events(
@@ -324,6 +358,8 @@ def generate_remaining_images(
                 forge_overrides=_forge_overrides_from_body(body),
             ),
             debug=body.debug,
+            prompt_model=prompt_model,
+            prompt_provider=prompt_provider,
         )
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
@@ -379,6 +415,150 @@ def prune_orphan_anchors(conversation_id: str, message_id: str, db: Session = De
     )
 
 
+def _params_dict(params_json: str | None) -> dict:
+    try:
+        params = json.loads(params_json or "{}")
+    except json.JSONDecodeError:
+        params = {}
+    return params if isinstance(params, dict) else {}
+
+
+def _optional_int(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_size_query(size: str | None) -> tuple[int | None, int | None]:
+    if not size:
+        return None, None
+    parts = size.lower().split("x", 1)
+    if len(parts) != 2:
+        raise HTTPException(status_code=422, detail="size debe ser WIDTHxHEIGHT")
+    width, height = _optional_int(parts[0]), _optional_int(parts[1])
+    if width is None or height is None:
+        raise HTTPException(status_code=422, detail="size debe ser WIDTHxHEIGHT")
+    return width, height
+
+
+def _prompt_llm_fields(row, params: dict) -> tuple[str | None, str | None]:
+    model = (getattr(row, "prompt_model", None) or "").strip() or str(
+        params.get("prompt_llm_model") or ""
+    ).strip() or None
+    provider = (getattr(row, "prompt_provider", None) or "").strip() or str(
+        params.get("prompt_llm_provider") or ""
+    ).strip() or None
+    return provider, model
+
+
+def _list_item(row, msg, conv) -> IllustratedImageListItem:
+    params = _params_dict(row.params_json)
+    prompt_provider, prompt_model = _prompt_llm_fields(row, params)
+    return IllustratedImageListItem(
+        filename=row.filename,
+        url=f"/api/illustrated-images/{row.filename}",
+        scene_id=row.scene_id,
+        mode=row.mode or "txt2img",
+        prompt=str(params.get("prompt") or ""),
+        steps=_optional_int(params.get("steps")),
+        width=_optional_int(params.get("width")),
+        height=_optional_int(params.get("height")),
+        seed=_optional_int(params.get("seed")),
+        sampler_name=(str(params["sampler_name"]) if params.get("sampler_name") else None),
+        forge_model=(str(params["model"]).strip() if params.get("model") else None) or None,
+        prompt_model=prompt_model,
+        prompt_provider=prompt_provider,
+        conversation_id=conv.id,
+        conversation_title=conv.title or "",
+        message_id=msg.id,
+        created_at=row.created_at.isoformat() if row.created_at else None,
+        params=params,
+    )
+
+
+@router.get(
+    "/illustrated-images",
+    response_model=IllustratedImageListResponse,
+)
+def list_illustrated_images(
+    prompt_provider: str | None = Query(default=None),
+    prompt_model: str | None = Query(default=None),
+    forge_model: str | None = Query(default=None),
+    steps: int | None = Query(default=None, ge=1),
+    size: str | None = Query(default=None, description="WIDTHxHEIGHT, p. ej. 768x512"),
+    mode: str | None = Query(default=None),
+    prompt_q: str | None = Query(default=None, max_length=200),
+    conversation_id: str | None = Query(default=None),
+    message_id: str | None = Query(default=None),
+    limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Galería: imágenes de conversaciones activas, created_at desc, filtros cerrados."""
+    width, height = _parse_size_query(size)
+    conv_id = (conversation_id or "").strip() or None
+    msg_id = (message_id or "").strip() or None
+    rows, total = crud.list_illustrated_images(
+        db,
+        prompt_provider=prompt_provider,
+        prompt_model=prompt_model,
+        forge_model=(forge_model or "").strip() or None,
+        steps=steps,
+        width=width,
+        height=height,
+        mode=(mode or "").strip() or None,
+        prompt_q=(prompt_q or "").strip() or None,
+        conversation_id=conv_id,
+        message_id=msg_id,
+        limit=limit,
+        offset=offset,
+    )
+    return IllustratedImageListResponse(
+        items=[_list_item(row, msg, conv) for row, msg, conv in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/illustrated-images/facets",
+    response_model=IllustratedImageFacetsResponse,
+)
+def get_illustrated_image_facets(
+    conversation_id: str | None = Query(default=None),
+    message_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Valores distintos para rellenar los filtros de la galería."""
+    return IllustratedImageFacetsResponse(
+        **crud.illustrated_image_facets(
+            db,
+            conversation_id=(conversation_id or "").strip() or None,
+            message_id=(message_id or "").strip() or None,
+        )
+    )
+
+
+@router.get(
+    "/illustrated-images/messages",
+    response_model=IllustratedImageMessageListResponse,
+)
+def list_illustrated_image_messages(
+    conversation_id: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    """Mensajes con imágenes de una conversación, para el selector de la galería."""
+    conv = crud.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    items = crud.list_illustrated_message_summaries(db, conversation_id)
+    return IllustratedImageMessageListResponse(items=items)
+
+
 @router.get(
     "/illustrated-images/{filename}/meta",
     response_model=IllustratedImageMetaResponse,
@@ -388,18 +568,21 @@ def get_illustrated_image_meta(filename: str, db: Session = Depends(get_db)):
     row = crud.get_illustrated_image_meta(db, filename)
     if not row:
         raise HTTPException(status_code=404, detail="Metadatos no encontrados")
-    try:
-        params = json.loads(row.params_json or "{}")
-    except json.JSONDecodeError:
-        params = {}
-    if not isinstance(params, dict):
-        params = {}
+    params = _params_dict(row.params_json)
+    msg = row.message
+    conv = msg.conversation if msg else None
+    prompt_provider, prompt_model = _prompt_llm_fields(row, params)
     return IllustratedImageMetaResponse(
         filename=row.filename,
         scene_id=row.scene_id,
         mode=row.mode or "txt2img",
         params=params,
         created_at=row.created_at.isoformat() if row.created_at else None,
+        prompt_model=prompt_model,
+        prompt_provider=prompt_provider,
+        conversation_id=msg.conversation_id if msg else None,
+        conversation_title=conv.title if conv else None,
+        message_id=msg.id if msg else None,
     )
 
 

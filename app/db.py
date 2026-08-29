@@ -198,3 +198,15 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # LLM que planificó el prompt de cada imagen ilustrada
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE illustrated_images ADD COLUMN prompt_model VARCHAR(128)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text("ALTER TABLE illustrated_images ADD COLUMN prompt_provider VARCHAR(64)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()

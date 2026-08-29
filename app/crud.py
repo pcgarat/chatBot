@@ -1,7 +1,8 @@
 import json
+import re
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, IllustratedImage, Message, Rule
@@ -403,19 +404,33 @@ def save_illustrated_image_meta(
     scene_id: str | None,
     mode: str,
     params: dict,
+    prompt_model: str | None = None,
+    prompt_provider: str | None = None,
+    use_chat_config: bool | None = None,
 ) -> IllustratedImage:
-    """Upsert por filename: guarda params de generación Forge para una imagen."""
+    """Upsert por filename: params Forge + LLM del planificador (columnas y params_json)."""
+    model = (prompt_model or "").strip() or None
+    provider = (prompt_provider or "").strip() or None
+    stored = dict(params or {})
+    if model:
+        stored["prompt_llm_model"] = model
+    if provider:
+        stored["prompt_llm_provider"] = provider
+    if use_chat_config is not None:
+        stored["use_chat_config"] = bool(use_chat_config)
     row = (
         db.query(IllustratedImage)
         .filter(IllustratedImage.filename == filename)
         .first()
     )
-    payload = json.dumps(params or {}, ensure_ascii=False, default=str)
+    payload = json.dumps(stored, ensure_ascii=False, default=str)
     if row:
         row.message_id = message_id
         row.scene_id = scene_id
         row.mode = mode or row.mode
         row.params_json = payload
+        row.prompt_model = model
+        row.prompt_provider = provider
     else:
         row = IllustratedImage(
             message_id=message_id,
@@ -423,6 +438,8 @@ def save_illustrated_image_meta(
             scene_id=scene_id,
             mode=mode or "txt2img",
             params_json=payload,
+            prompt_model=model,
+            prompt_provider=provider,
         )
         db.add(row)
     db.commit()
@@ -438,6 +455,259 @@ def get_illustrated_image_meta(db: Session, filename: str) -> IllustratedImage |
         .filter(IllustratedImage.filename == filename)
         .first()
     )
+
+
+def get_latest_prompt_llm_for_message(
+    db: Session, message_id: str
+) -> tuple[str | None, str | None]:
+    """Provider y modelo LLM del prompt más reciente del mensaje, si existen."""
+    if not message_id:
+        return None, None
+    row = (
+        db.query(IllustratedImage)
+        .filter(IllustratedImage.message_id == message_id)
+        .filter(IllustratedImage.prompt_model.isnot(None))
+        .filter(IllustratedImage.prompt_model != "")
+        .order_by(IllustratedImage.created_at.desc())
+        .first()
+    )
+    if not row:
+        return None, None
+    return row.prompt_provider, row.prompt_model
+
+
+def _escape_like(term: str) -> str:
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _illustrated_gallery_base_query(db: Session):
+    return (
+        db.query(IllustratedImage, Message, Conversation)
+        .join(Message, IllustratedImage.message_id == Message.id)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(Conversation.deleted_at.is_(None))
+    )
+
+
+def _apply_illustrated_gallery_filters(
+    q,
+    *,
+    prompt_provider: str | None,
+    prompt_model: str | None,
+    forge_model: str | None,
+    steps: int | None,
+    width: int | None,
+    height: int | None,
+    mode: str | None,
+    prompt_q: str | None,
+    conversation_id: str | None = None,
+    message_id: str | None = None,
+):
+    if message_id:
+        q = q.filter(IllustratedImage.message_id == message_id)
+    if conversation_id:
+        q = q.filter(Message.conversation_id == conversation_id)
+    if prompt_provider is not None:
+        if prompt_provider == "":
+            q = q.filter(
+                or_(
+                    IllustratedImage.prompt_provider.is_(None),
+                    IllustratedImage.prompt_provider == "",
+                )
+            )
+        else:
+            q = q.filter(IllustratedImage.prompt_provider == prompt_provider)
+    if prompt_model is not None:
+        if prompt_model == "":
+            q = q.filter(
+                or_(
+                    IllustratedImage.prompt_model.is_(None),
+                    IllustratedImage.prompt_model == "",
+                )
+            )
+        else:
+            q = q.filter(IllustratedImage.prompt_model == prompt_model)
+    if forge_model:
+        q = q.filter(
+            func.json_extract(IllustratedImage.params_json, "$.model") == forge_model
+        )
+    if steps is not None:
+        q = q.filter(
+            func.json_extract(IllustratedImage.params_json, "$.steps") == steps
+        )
+    if width is not None:
+        q = q.filter(
+            func.json_extract(IllustratedImage.params_json, "$.width") == width
+        )
+    if height is not None:
+        q = q.filter(
+            func.json_extract(IllustratedImage.params_json, "$.height") == height
+        )
+    if mode:
+        q = q.filter(IllustratedImage.mode == mode)
+    if prompt_q:
+        like = f"%{_escape_like(prompt_q.strip())}%"
+        q = q.filter(
+            func.json_extract(IllustratedImage.params_json, "$.prompt").like(
+                like, escape="\\"
+            )
+        )
+    return q
+
+
+def list_illustrated_images(
+    db: Session,
+    *,
+    prompt_provider: str | None = None,
+    prompt_model: str | None = None,
+    forge_model: str | None = None,
+    steps: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    mode: str | None = None,
+    prompt_q: str | None = None,
+    conversation_id: str | None = None,
+    message_id: str | None = None,
+    limit: int = 24,
+    offset: int = 0,
+) -> tuple[list[tuple[IllustratedImage, Message, Conversation]], int]:
+    """Galería: imágenes de conversaciones activas, más recientes primero."""
+    q = _apply_illustrated_gallery_filters(
+        _illustrated_gallery_base_query(db),
+        prompt_provider=prompt_provider,
+        prompt_model=prompt_model,
+        forge_model=forge_model,
+        steps=steps,
+        width=width,
+        height=height,
+        mode=mode,
+        prompt_q=prompt_q,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    total = q.count()
+    rows = (
+        q.order_by(IllustratedImage.created_at.desc(), IllustratedImage.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return rows, total
+
+
+def illustrated_image_facets(
+    db: Session,
+    *,
+    conversation_id: str | None = None,
+    message_id: str | None = None,
+) -> dict:
+    """Valores distintos para los filtros cerrados de la galería."""
+    q = (
+        db.query(IllustratedImage)
+        .join(Message, IllustratedImage.message_id == Message.id)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(Conversation.deleted_at.is_(None))
+    )
+    q = _apply_illustrated_gallery_filters(
+        q,
+        prompt_provider=None,
+        prompt_model=None,
+        forge_model=None,
+        steps=None,
+        width=None,
+        height=None,
+        mode=None,
+        prompt_q=None,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    rows = q.all()
+    providers: set[str] = set()
+    models: set[str] = set()
+    forge_models: set[str] = set()
+    steps_vals: set[int] = set()
+    sizes: set[str] = set()
+    modes: set[str] = set()
+    missing_llm = False
+    for row in rows:
+        if (row.prompt_provider or "").strip():
+            providers.add(row.prompt_provider.strip())
+        if (row.prompt_model or "").strip():
+            models.add(row.prompt_model.strip())
+        else:
+            missing_llm = True
+        if (row.mode or "").strip():
+            modes.add(row.mode.strip())
+        try:
+            params = json.loads(row.params_json or "{}")
+        except json.JSONDecodeError:
+            params = {}
+        if not isinstance(params, dict):
+            continue
+        forge = str(params.get("model") or "").strip()
+        if forge:
+            forge_models.add(forge)
+        if params.get("steps") is not None:
+            try:
+                steps_vals.add(int(params["steps"]))
+            except (TypeError, ValueError):
+                pass
+        w, h = params.get("width"), params.get("height")
+        if w is not None and h is not None:
+            try:
+                sizes.add(f"{int(w)}x{int(h)}")
+            except (TypeError, ValueError):
+                pass
+    return {
+        "prompt_providers": sorted(providers),
+        "prompt_models": sorted(models),
+        "forge_models": sorted(forge_models),
+        "steps": sorted(steps_vals),
+        "sizes": sorted(sizes, key=lambda s: [int(p) for p in s.split("x")]),
+        "modes": sorted(modes),
+        "has_missing_prompt_llm": missing_llm,
+    }
+
+
+def _message_excerpt(content: str, limit: int = 88) -> str:
+    text = re.sub(r"<[^>]+>", " ", content or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > limit:
+        return text[: limit - 1] + "…"
+    return text
+
+
+def list_illustrated_message_summaries(db: Session, conversation_id: str) -> list[dict]:
+    """Mensajes de una conversación activa que tienen al menos una imagen."""
+    conv = get_conversation(db, conversation_id)
+    if not conv:
+        return []
+    counts = (
+        db.query(IllustratedImage.message_id, func.count(IllustratedImage.id))
+        .join(Message, IllustratedImage.message_id == Message.id)
+        .filter(Message.conversation_id == conversation_id)
+        .group_by(IllustratedImage.message_id)
+        .all()
+    )
+    if not counts:
+        return []
+    by_id = {mid: n for mid, n in counts}
+    messages = (
+        db.query(Message)
+        .filter(Message.id.in_(list(by_id.keys())))
+        .order_by(Message.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "message_id": msg.id,
+            "role": msg.role,
+            "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            "excerpt": _message_excerpt(msg.content or ""),
+            "image_count": int(by_id.get(msg.id) or 0),
+        }
+        for msg in messages
+    ]
 
 
 def delete_illustrated_images_by_filenames(db: Session, filenames: list[str]) -> int:
