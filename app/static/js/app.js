@@ -2919,6 +2919,26 @@
       plannerLibraryRules = [];
     }
     fillLibrarySelect(el.plannerRuleLibrarySelect, plannerLibraryRules);
+    if (hydratePlannerRulesFromLibrary()) {
+      renderPlannerRules();
+      persistImagesPanel();
+    }
+  }
+
+  function hydratePlannerRulesFromLibrary() {
+    if (!Array.isArray(plannerLibraryRules) || !plannerLibraryRules.length) return false;
+    let changed = false;
+    plannerRules = (plannerRules || []).map(function (item) {
+      if (!item || !item.rule_id) return item;
+      const lib = plannerLibraryRules.find(function (r) { return r.id === item.rule_id; });
+      if (!lib) return item;
+      const title = lib.title || "";
+      const content = lib.content || "";
+      if ((item.title || "") === title && (item.content || "") === content) return item;
+      changed = true;
+      return Object.assign({}, item, { title: title, content: content });
+    });
+    return changed;
   }
 
   function getEditRuleList() {
@@ -4782,6 +4802,7 @@
     syncImagesChatConfigDisabled();
     syncImagesDebugWindow();
     ensureImagesPromptSelects();
+    loadPlannerLibraryRules();
     autofillForgeParamsFromLastGen(prefs).then(function () {
       persistImagesPanel();
     });

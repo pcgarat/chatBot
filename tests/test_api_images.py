@@ -435,6 +435,39 @@ def test_illustrate_request_batch_size_defaults_to_10():
     assert GenerateRemainingRequest().batch_size == 10
 
 
+def test_illustrate_accepts_concatenated_builtin_planner_guides(client, db_session):
+    """El botón de ilustrar envía las reglas del planificador concatenadas; no debe 422."""
+    from app import crud
+    from app.services.rules.compose import concat_instruction_texts
+    from app.services.rules.seed import FLUX_PROMPT_GUIDE_PATH, KREA2_POV_GUIDE_PATH
+
+    extra = concat_instruction_texts(
+        FLUX_PROMPT_GUIDE_PATH.read_text(encoding="utf-8"),
+        KREA2_POV_GUIDE_PATH.read_text(encoding="utf-8"),
+    )
+    assert "Guía de prompts visuales (FLUX)" in extra
+    assert "Empieza cada prompt con `POV.`" in extra
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Había un faro al anochecer.")
+
+    class FakeOrch:
+        def run(self, *a, **k):
+            yield IllustrationEvent(type="done", message="ok", content="Había un faro al anochecer.")
+
+    with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
+            json={
+                "prompt_model": "llama3.2",
+                "prompt_provider": "ollama",
+                "images_per_response": 1,
+                "prompt_system_instructions": extra,
+            },
+        )
+    assert res.status_code == 200, res.text
+
+
 def test_illustrate_request_forge_param_overrides_optional():
     from pydantic import ValidationError
 

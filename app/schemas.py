@@ -250,7 +250,7 @@ class IllustrateRequest(ForgePanelParamFields):
     )
     prompt_system_instructions: str = Field(
         default="",
-        max_length=8000,
+        max_length=64_000,
         description="Instrucciones adicionales de sistema para el LLM que planifica escenas/prompts.",
     )
     use_chat_config: bool = Field(

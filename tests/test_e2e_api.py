@@ -637,7 +637,8 @@ def test_e2e_planner_library_includes_builtin_krea2_pov_guide(client, ollama_ava
     assert len(match) == 1
     assert match[0]["title"] == KREA2_POV_GUIDE_TITLE
     assert match[0]["scope"] == "planner"
-    assert "First-person POV from Paco's eyes:" in match[0]["content"]
+    assert "filling the view" in match[0]["content"]
+    assert "looks into the viewer's eyes" in match[0]["content"]
 
     chat_list = client.get("/api/rules").json()
     assert all(item["id"] != KREA2_POV_GUIDE_RULE_ID for item in chat_list)

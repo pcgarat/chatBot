@@ -30,6 +30,13 @@ def test_js_loads_planner_rules_with_isolated_scope():
     assert 'scope: "planner"' in js or '"scope": "planner"' in js or "scope: 'planner'" in js
 
 
+def test_js_hydrates_planner_chips_from_library():
+    js = APP_JS.read_text(encoding="utf-8")
+    assert "hydratePlannerRulesFromLibrary" in js
+    init = js.split("function initImagesPanel")[1].split("initImageGallery")[0]
+    assert "loadPlannerLibraryRules" in init
+
+
 def test_js_concatenates_planner_rules_on_illustrate():
     js = APP_JS.read_text(encoding="utf-8")
     illustrate = js.split("async function maybeIllustrateAssistantMessage")[1].split("async function generateRemainingImages")[0]
