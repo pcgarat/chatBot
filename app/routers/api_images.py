@@ -291,13 +291,14 @@ def illustrate_message(
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    msg = crud.get_message(db, conversation_id, message_id)
+    msg = crud.get_visible_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
     if msg.role != "assistant":
         raise HTTPException(status_code=400, detail="Solo se ilustran mensajes assistant")
 
     text = msg.content or ""
+    owner_conversation_id = msg.conversation_id
     orch = _build_orchestrator(body, conv=conv, db=db)
     meta_prompts = _prompts_from_message_meta(db, text)
     prompt_provider, prompt_model = _planner_llm_from_request(body, conv)
@@ -305,7 +306,7 @@ def illustrate_message(
     def event_stream():
         # No capturar `db` del request: Depends(get_db) se cierra al acabar/cortar el stream.
         yield from _stream_illustration_events(
-            conversation_id=conversation_id,
+            conversation_id=owner_conversation_id,
             message_id=message_id,
             text=text,
             events=orch.run(
@@ -343,12 +344,13 @@ def generate_remaining_images(
     """
     msg = _require_assistant_message(db, conversation_id, message_id)
     text = msg.content or ""
+    owner_conversation_id = msg.conversation_id
     orch = _build_forge_orchestrator()
     prompt_provider, prompt_model = crud.get_latest_prompt_llm_for_message(db, message_id)
 
     def event_stream():
         yield from _stream_illustration_events(
-            conversation_id=conversation_id,
+            conversation_id=owner_conversation_id,
             message_id=message_id,
             text=text,
             events=orch.run_remaining(
@@ -369,7 +371,7 @@ def _require_assistant_message(db: Session, conversation_id: str, message_id: st
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    msg = crud.get_message(db, conversation_id, message_id)
+    msg = crud.get_visible_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
     if msg.role != "assistant":
@@ -391,7 +393,7 @@ def clear_message_photos(conversation_id: str, message_id: str, db: Session = De
             deleted += 1
     if filenames:
         crud.delete_illustrated_images_by_filenames(db, filenames)
-    updated = crud.update_message_content(db, conversation_id, message_id, new_content)
+    updated = crud.update_message_content(db, msg.conversation_id, message_id, new_content)
     return MessageContentUpdateResponse(
         id=updated.id if updated else message_id,
         content=new_content,
@@ -407,7 +409,7 @@ def prune_orphan_anchors(conversation_id: str, message_id: str, db: Session = De
     """Elimina anclas huérfanas (marcadores, placeholders y errores sin imagen)."""
     msg = _require_assistant_message(db, conversation_id, message_id)
     new_content = remove_orphan_anchors(msg.content or "")
-    updated = crud.update_message_content(db, conversation_id, message_id, new_content)
+    updated = crud.update_message_content(db, msg.conversation_id, message_id, new_content)
     return MessageContentUpdateResponse(
         id=updated.id if updated else message_id,
         content=new_content,

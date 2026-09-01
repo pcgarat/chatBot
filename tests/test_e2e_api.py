@@ -189,6 +189,33 @@ def test_e2e_conversation_fork(client, ollama_available):
     assert child2["messages"][0]["id"] not in {m["id"] for m in origin2["messages"]}
 
 
+def test_e2e_fork_inherited_content_mutations(client, ollama_available):
+    """Mutaciones de ilustración sobre un mensaje heredado se aplican a la fila del origen."""
+    model_name = _get_first_ollama_model(client)
+    origin_id = client.post(
+        "/api/conversations",
+        json={"title": "E2E fork mutación heredada", "model_id": model_name, "provider": "ollama"},
+    ).json()["id"]
+    r1 = client.post(
+        f"/api/conversations/{origin_id}/messages",
+        json={"content": "Di solo: uno"},
+    )
+    assert r1.status_code == 200
+    origin = client.get(f"/api/conversations/{origin_id}").json()
+    assistant = next(m for m in origin["messages"] if m["role"] == "assistant")
+    child_id = client.post(
+        f"/api/conversations/{origin_id}/fork", json={"message_id": assistant["id"]}
+    ).json()["id"]
+    for action in ("clear-photos", "prune-orphans"):
+        r = client.post(
+            f"/api/conversations/{child_id}/messages/{assistant['id']}/illustrations/{action}"
+        )
+        assert r.status_code == 200, action
+        assert "content" in r.json()
+    origin_after = client.get(f"/api/conversations/{origin_id}").json()
+    assert any(m["id"] == assistant["id"] for m in origin_after["messages"])
+
+
 def test_e2e_ollama_clear_memory(client, ollama_available):
     """POST /api/ollama/clear-memory devuelve 200 y un objeto con 'unloaded' (lista)."""
     r = client.post("/api/ollama/clear-memory")

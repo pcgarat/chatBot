@@ -276,3 +276,40 @@ def test_fork_ancla_inexistente_devuelve_none(db_session):
     origin = crud.create_conversation(db_session, title="Origen", model_id="m")
     assert crud.fork_conversation(db_session, origin.id, "00000000-0000-0000-0000-000000000000") is None
     assert crud.fork_conversation(db_session, "no-existe", "x") is None
+
+
+def test_get_visible_message_propio_y_heredado(db_session):
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m")
+    u1 = crud.add_message(db_session, origin.id, "user", "A")
+    a1 = crud.add_message(db_session, origin.id, "assistant", "Ra")
+    after = crud.add_message(db_session, origin.id, "user", "despues del ancla")
+    child = crud.fork_conversation(db_session, origin.id, a1.id)
+    own = crud.add_message(db_session, child.id, "user", "B")
+
+    assert crud.get_visible_message(db_session, origin.id, a1.id).id == a1.id
+    found = crud.get_visible_message(db_session, child.id, a1.id)
+    assert found is not None
+    assert found.id == a1.id
+    assert found.conversation_id == origin.id
+    assert crud.get_visible_message(db_session, child.id, u1.id).id == u1.id
+    assert crud.get_visible_message(db_session, child.id, own.id).id == own.id
+    assert crud.get_visible_message(db_session, child.id, after.id) is None
+    assert crud.get_visible_message(db_session, child.id, "00000000-0000-0000-0000-000000000000") is None
+    assert crud.get_visible_message(db_session, "no-existe", a1.id) is None
+
+
+def test_get_visible_message_en_fork_anidado(db_session):
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m")
+    crud.add_message(db_session, origin.id, "user", "A")
+    a1 = crud.add_message(db_session, origin.id, "assistant", "Ra")
+    child = crud.fork_conversation(db_session, origin.id, a1.id)
+    crud.add_message(db_session, child.id, "user", "B")
+    a2 = crud.add_message(db_session, child.id, "assistant", "Rb")
+    grandchild = crud.fork_conversation(db_session, child.id, a2.id)
+
+    from_origin = crud.get_visible_message(db_session, grandchild.id, a1.id)
+    assert from_origin is not None
+    assert from_origin.conversation_id == origin.id
+    from_child = crud.get_visible_message(db_session, grandchild.id, a2.id)
+    assert from_child is not None
+    assert from_child.conversation_id == child.id

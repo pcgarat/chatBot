@@ -29,6 +29,17 @@ def test_js_menu_nueva_conversacion_desde_aqui():
     assert "msg-attempt-switcher" not in js
 
 
+def test_js_mutaciones_contenido_disponibles_en_heredados():
+    """Ilustrar/fotos actúan sobre la fila canónica; borrar sigue oculto en heredados."""
+    js = APP_JS.read_text(encoding="utf-8")
+    assert '!isInherited && !isEphemeralDebug && m.role === "assistant"' not in js
+    assert "!isInherited && m.role === \"assistant\" && hasContent" not in js
+    assert "msg-illustrate-btn" in js
+    assert 'data-action="clear-photos"' in js
+    assert "isInherited ? \"\" :" in js
+    assert "msg-delete-btn" in js
+
+
 def test_css_variante_anidada_e_historial_heredado():
     css = STYLE_CSS.read_text(encoding="utf-8")
     assert ".conversation-item-fork" in css
