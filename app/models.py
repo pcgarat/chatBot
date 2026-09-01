@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -15,6 +15,7 @@ class Conversation(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     title = Column(String(512), nullable=False, default="Nueva conversación")
+    auto_title = Column(Boolean, nullable=False, default=False)
     model_id = Column(String(128), nullable=False, default="llama3.2")
     provider = Column(String(64), nullable=False, default="ollama")  # ollama | mancer
     system_instruction_global = Column(Text, nullable=True)  # Legado: una sola instrucción

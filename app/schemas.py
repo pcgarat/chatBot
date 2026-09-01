@@ -105,6 +105,7 @@ class RuleItem(BaseModel):
 
 class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"
+    auto_title: bool = False
     model_id: str = "llama3.2"
     provider: str = "ollama"  # ollama | mancer | openai
     system_instruction_global: Optional[str] = None
@@ -119,6 +120,7 @@ class ConversationFork(BaseModel):
 
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
+    auto_title: Optional[bool] = None
     model_id: Optional[str] = None
     provider: Optional[str] = None  # ollama | mancer | openai
     system_instruction_global: Optional[str] = None
@@ -142,6 +144,7 @@ class MessageInChat(BaseModel):
 class ConversationOut(BaseModel):
     id: str
     title: str
+    auto_title: bool = False
     model_id: str
     provider: str = "ollama"  # ollama | mancer | openai
     system_instruction_global: Optional[str] = None
@@ -165,6 +168,7 @@ class ConversationOut(BaseModel):
 class ConversationListItem(BaseModel):
     id: str
     title: str
+    auto_title: bool = False
     model_id: str
     provider: str = "ollama"  # ollama | mancer | openai
     updated_at: datetime

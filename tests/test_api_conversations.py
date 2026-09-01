@@ -156,6 +156,7 @@ def test_create_conversation_defaults(client):
     assert data["title"] == "Nueva conversación"
     assert data["model_id"] == "llama3.2"
     assert data["system_instruction_global"] is None
+    assert data["auto_title"] is False
 
 
 def test_list_conversations_empty(client):
@@ -716,3 +717,59 @@ def test_delete_mensaje_heredado_desde_fork_sigue_404(mock_get_provider, client)
     assert r.status_code == 404
     origin_after = client.get(f"/api/conversations/{origin_id}").json()
     assert any(m["id"] == ancla for m in origin_after["messages"])
+
+
+def test_create_conversation_acepta_auto_title(client):
+    data = client.post("/api/conversations", json={"title": "Manual", "auto_title": True}).json()
+    assert data["auto_title"] is True
+    assert data["title"] == "Manual"
+    listed = client.get("/api/conversations").json()
+    assert listed[0]["auto_title"] is True
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_auto_title_usa_primera_frase_del_ultimo_mensaje(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Respuesta del modelo. Segunda frase."
+    mock_get_provider.return_value = mock_provider
+    cid = client.post(
+        "/api/conversations", json={"title": "Manual", "model_id": "m"}
+    ).json()["id"]
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "Hola, mundo. Extra."})
+    before = client.get(f"/api/conversations/{cid}").json()
+    assert before["title"] == "Manual"
+    r = client.put(f"/api/conversations/{cid}", json={"auto_title": True})
+    assert r.status_code == 200
+    assert r.json()["auto_title"] is True
+    assert r.json()["title"] == "Respuesta del modelo"
+    ignored = client.put(f"/api/conversations/{cid}", json={"title": "No pises esto"})
+    assert ignored.json()["title"] == "Respuesta del modelo"
+    mock_provider.chat.return_value = "¿Otra cosa pasa?"
+    client.post(f"/api/conversations/{cid}/messages", json={"content": "Siguiente"})
+    after = client.get(f"/api/conversations/{cid}").json()
+    assert after["title"] == "Otra cosa pasa"
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_auto_title_en_fork_usa_el_ancla_no_el_origen_posterior(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.side_effect = ["Ancla heredada.", "Después del corte.", "Solo del fork."]
+    mock_get_provider.return_value = mock_provider
+    origin_id = client.post(
+        "/api/conversations", json={"title": "Origen", "model_id": "m", "auto_title": True}
+    ).json()["id"]
+    client.post(f"/api/conversations/{origin_id}/messages", json={"content": "A"})
+    origin = client.get(f"/api/conversations/{origin_id}").json()
+    assert origin["title"] == "Ancla heredada"
+    ancla = origin["messages"][1]["id"]
+    client.post(f"/api/conversations/{origin_id}/messages", json={"content": "B"})
+    origin_after = client.get(f"/api/conversations/{origin_id}").json()
+    assert origin_after["title"] == "Después del corte"
+    child = client.post(
+        f"/api/conversations/{origin_id}/fork", json={"message_id": ancla}
+    ).json()
+    assert child["auto_title"] is True
+    assert child["title"] == "Ancla heredada"
+    client.post(f"/api/conversations/{child['id']}/messages", json={"content": "D"})
+    child_after = client.get(f"/api/conversations/{child['id']}").json()
+    assert child_after["title"] == "Solo del fork"

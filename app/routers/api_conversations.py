@@ -213,6 +213,7 @@ def _conversation_out(conv, db, messages=None) -> ConversationOut:
     return ConversationOut(
         id=conv.id,
         title=conv.title,
+        auto_title=bool(getattr(conv, "auto_title", False)),
         model_id=conv.model_id,
         provider=conv.provider,
         system_instruction_global=conv.system_instruction_global,
@@ -267,6 +268,7 @@ def create_conversation(body: ConversationCreate, db: Session = Depends(get_db))
     conv = crud.create_conversation(
         db,
         title=body.title,
+        auto_title=body.auto_title,
         model_id=body.model_id,
         provider=body.provider,
         system_instruction_global=body.system_instruction_global,
@@ -316,6 +318,7 @@ def update_conversation(
         history_turns=body.history_turns,
         instruction_override=instruction_override_arg,
         active_leaf_message_id=body.active_leaf_message_id if "active_leaf_message_id" in body_set else None,
+        auto_title=body.auto_title if "auto_title" in body_set else crud.AUTO_TITLE_UNSET,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")

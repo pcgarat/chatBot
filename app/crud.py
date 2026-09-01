@@ -6,6 +6,7 @@ from sqlalchemy import false, func, or_
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, IllustratedImage, Message, Rule
+from app.services.conversation_title import derive_auto_title
 from app.services.conversation_tree import path_from_messages
 from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
 
@@ -13,6 +14,7 @@ from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
 _INJECT_UNSET = object()
 # Sentinel para "no actualizar instruction_override" (omitido en el body); None = borrar
 INSTRUCTION_OVERRIDE_UNSET = object()
+AUTO_TITLE_UNSET = object()
 
 
 # ----- Rules (biblioteca) -----
@@ -57,6 +59,22 @@ def delete_rule(db: Session, rule_id: str) -> bool:
     return True
 
 
+def apply_auto_title(db: Session, conv: Conversation) -> bool:
+    """Recalcula title desde el último mensaje visible. No hace commit."""
+    if not getattr(conv, "auto_title", False):
+        return False
+    history = get_resolved_history(db, conv, None)
+    if not history:
+        history = get_messages(db, conv.id)
+    if not history:
+        return False
+    derived = derive_auto_title(history[-1].content)
+    if not derived or conv.title == derived:
+        return False
+    conv.title = derived
+    return True
+
+
 def create_conversation(
     db: Session,
     title: str = "Nueva conversación",
@@ -68,9 +86,11 @@ def create_conversation(
     history_turns: int | None = 5,
     forked_from_conversation_id: str | None = None,
     forked_from_message_id: str | None = None,
+    auto_title: bool = False,
 ) -> Conversation:
     conv = Conversation(
         title=title,
+        auto_title=bool(auto_title),
         model_id=model_id,
         provider=provider,
         system_instruction_global=system_instruction_global,
@@ -127,12 +147,15 @@ def update_conversation(
     history_turns: int | None = None,
     instruction_override: str | None = INSTRUCTION_OVERRIDE_UNSET,
     active_leaf_message_id: str | None = None,
+    auto_title: bool | object = AUTO_TITLE_UNSET,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
         return None
     updated_at_before = conv.updated_at
-    if title is not None:
+    if auto_title is not AUTO_TITLE_UNSET:
+        conv.auto_title = bool(auto_title)
+    if title is not None and not conv.auto_title:
         conv.title = title
     if model_id is not None:
         conv.model_id = model_id
@@ -155,9 +178,11 @@ def update_conversation(
         if not leaf:
             return None
         conv.active_leaf_message_id = active_leaf_message_id
+    if conv.auto_title:
+        apply_auto_title(db, conv)
     # No actualizar updated_at si solo cambió instruction_override (al hacer click en otra conversación no debe reordenar la lista)
     affects_order = any([
-        title is not None, model_id is not None, provider is not None,
+        title is not None and not conv.auto_title, model_id is not None, provider is not None,
         system_instruction_global is not None, instruction_ids is not None,
         inject_instruction_every is not _INJECT_UNSET, model_params is not None, history_turns is not None,
     ])
@@ -295,10 +320,12 @@ def fork_conversation(db: Session, view_conversation_id: str, message_id: str) -
         history_turns=view.history_turns if view.history_turns is not None else 5,
         forked_from_conversation_id=owner_id,
         forked_from_message_id=anchor_id,
+        auto_title=bool(getattr(view, "auto_title", False)),
     )
     child.model_params = view.model_params
     child.instruction_override = view.instruction_override
     child.last_message_at = datetime.utcnow()
+    apply_auto_title(db, child)
     db.commit()
     db.refresh(child)
     return child
@@ -357,6 +384,7 @@ def add_message(
     if conv:
         conv.last_message_at = datetime.utcnow()
         conv.active_leaf_message_id = msg.id
+        apply_auto_title(db, conv)
     db.commit()
     db.refresh(msg)
     return msg
@@ -386,6 +414,8 @@ def delete_message(db: Session, conversation_id: str, message_id: str) -> bool:
     if conv and getattr(conv, "active_leaf_message_id", None) == message_id:
         conv.active_leaf_message_id = parent_id
     db.delete(msg)
+    if conv:
+        apply_auto_title(db, conv)
     db.commit()
     return True
 
