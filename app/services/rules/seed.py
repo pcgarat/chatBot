@@ -1,4 +1,4 @@
-"""Reglas builtin de la biblioteca (idempotentes, no pisan ediciones)."""
+"""Reglas builtin de la biblioteca. FLUX no se pisa; la guía POV se reescribe desde fichero."""
 
 from __future__ import annotations
 
@@ -22,21 +22,22 @@ FLUX_PROMPT_GUIDE_PATH = _SEED_DIR / "planner_flux_prompts.md"
 KREA2_POV_GUIDE_PATH = _SEED_DIR / "planner_krea2_pov_prompts.md"
 
 _BUILTIN_PLANNER_RULES = (
-    (FLUX_PROMPT_GUIDE_RULE_ID, FLUX_PROMPT_GUIDE_TITLE, FLUX_PROMPT_GUIDE_PATH),
-    (KREA2_POV_GUIDE_RULE_ID, KREA2_POV_GUIDE_TITLE, KREA2_POV_GUIDE_PATH),
+    (FLUX_PROMPT_GUIDE_RULE_ID, FLUX_PROMPT_GUIDE_TITLE, FLUX_PROMPT_GUIDE_PATH, False),
+    (KREA2_POV_GUIDE_RULE_ID, KREA2_POV_GUIDE_TITLE, KREA2_POV_GUIDE_PATH, True),
 )
 
 
 def seed_builtin_rules(db: Session) -> int:
-    """Crea reglas builtin que aún no existen. No actualiza contenido ya presente."""
+    """Crea reglas builtin que aún no existen. La guía POV se reescribe desde fichero."""
     created = 0
-    for rule_id, title, path in _BUILTIN_PLANNER_RULES:
+    for rule_id, title, path, update_existing in _BUILTIN_PLANNER_RULES:
         created += ensure_rule_from_file(
             db,
             rule_id=rule_id,
             title=title,
             path=path,
             scope=SCOPE_PLANNER,
+            update_existing=update_existing,
         )
     return created
 
@@ -48,10 +49,11 @@ def ensure_rule_from_file(
     title: str,
     path: Path,
     scope: str,
+    update_existing: bool = False,
 ) -> int:
-    """Inserta una regla si falta el id. 1 si creó, 0 si ya estaba o no hay fichero."""
+    """Inserta una regla si falta el id. 1 si creó, 0 si ya estaba, faltaba fichero o solo actualizó."""
     existing = db.query(Rule).filter(Rule.id == rule_id).first()
-    if existing is not None:
+    if existing is not None and not update_existing:
         return 0
     if not path.is_file():
         logger.warning("Seed de regla omitido: no existe %s", path)
@@ -59,6 +61,12 @@ def ensure_rule_from_file(
     content = path.read_text(encoding="utf-8").strip()
     if not content:
         logger.warning("Seed de regla omitido: fichero vacío %s", path)
+        return 0
+    if existing is not None:
+        if existing.content != content or existing.title != title:
+            existing.content = content
+            existing.title = title
+            db.commit()
         return 0
     db.add(Rule(id=rule_id, title=title, content=content, scope=scope))
     db.commit()

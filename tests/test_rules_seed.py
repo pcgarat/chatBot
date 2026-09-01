@@ -37,11 +37,19 @@ def test_seed_file_is_planner_contract_not_raw_download():
 def test_krea2_pov_seed_file_is_planner_contract():
     text = _KREA2_SEED.read_text(encoding="utf-8")
     _assert_planner_prompt_contract(text)
-    assert "First-person POV from Paco's eyes:" in text
     assert "Krea 2" in text
-    assert "looking at the camera" in text
+    assert "Describe las imágenes así" in text
+    assert "Empieza cada prompt con `POV.`" in text
+    assert "ahead" in text
+    assert "filling the view" in text
+    assert "looks into the viewer's eyes" in text
+    assert "shot of Paco" not in text
+    assert "No uses:" not in text
+    assert "Cómo se describe" not in text
+    assert "No basta" not in text
     assert "moodboard" not in text.lower()
     assert "style reference" not in text.lower()
+    assert len(text) < 4000
 
 
 def test_seed_creates_planner_rule_when_missing(db_session):
@@ -70,6 +78,15 @@ def test_seed_is_idempotent_and_does_not_overwrite(db_session):
     rule = get_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID)
     assert rule.content == "editado por el usuario"
     assert rule.title == FLUX_PROMPT_GUIDE_TITLE
+
+
+def test_seed_refreshes_krea2_pov_guide_from_file(db_session):
+    seed_builtin_rules(db_session)
+    update_rule(db_session, KREA2_POV_GUIDE_RULE_ID, content="texto viejo y largo de POV")
+    assert seed_builtin_rules(db_session) == 0
+    krea = get_rule(db_session, KREA2_POV_GUIDE_RULE_ID)
+    assert krea.content == KREA2_POV_GUIDE_PATH.read_text(encoding="utf-8").strip()
+    assert "filling the view" in krea.content
 
 
 def test_seed_recreates_after_delete(db_session):
