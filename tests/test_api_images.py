@@ -117,6 +117,67 @@ def test_illustrate_emits_logs_when_debug(client, db_session):
     assert "chat-illustration" in refreshed.content
 
 
+def test_persist_illustrated_image_meta_retries_on_lock(client, db_session, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    from app import crud
+    from app.routers import api_images
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "texto")
+    attempts = {"n": 0}
+    real = crud.save_illustrated_image_meta
+
+    def flaky(db, **kwargs):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise OperationalError("database is locked", {}, None)
+        return real(db, **kwargs)
+
+    monkeypatch.setattr(api_images.crud, "save_illustrated_image_meta", flaky)
+    api_images._persist_illustrated_image_meta(
+        message_id=msg.id,
+        filename="retry.jpg",
+        scene_id="s1",
+        mode="txt2img",
+        params={"prompt": "faro"},
+    )
+    assert attempts["n"] == 3
+    row = crud.get_illustrated_image_meta(db_session, "retry.jpg")
+    assert row is not None
+    assert row.filename == "retry.jpg"
+
+
+def test_illustrate_strips_missing_files_before_orchestrator(client, db_session, tmp_path, monkeypatch):
+    from app import crud
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    content = (
+        'A\n<img src="/api/illustrated-images/fake_s1.jpg" class="chat-illustration" />\nB'
+    )
+    msg = crud.add_message(db_session, conv.id, "assistant", content)
+    captured = {}
+
+    class FakeOrch:
+        def run(self, text, *a, **k):
+            captured["text"] = text
+            yield IllustrationEvent(type="done", content=text)
+
+    with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
+            json={"prompt_model": "m", "images_per_response": 1, "debug": True},
+        )
+    assert res.status_code == 200
+    assert "<img" not in captured["text"]
+    assert "A" in captured["text"] and "B" in captured["text"]
+    refreshed = crud.get_message(db_session, conv.id, msg.id)
+    assert refreshed is not None
+    assert "<img" not in (refreshed.content or "")
+
+
 def test_get_illustrated_image_404(client):
     res = client.get("/api/illustrated-images/no-such.png")
     assert res.status_code == 404
@@ -418,12 +479,15 @@ def test_clear_photos_deletes_files_and_updates_content(client, db_session, tmp_
     assert refreshed.content == body["content"]
 
 
-def test_prune_orphans_keeps_photos(client, db_session):
+def test_prune_orphans_keeps_photos(client, db_session, tmp_path, monkeypatch):
     from app import crud
+    from app.services.image_illustration import storage
 
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    name = storage.save_illustrated_image("keep", b"\x89PNG\r\n\x1a\n")
     conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
     content = (
-        'A\n<img src="/api/illustrated-images/keep.png" class="chat-illustration" />\n'
+        f'A\n<img src="/api/illustrated-images/{name}" class="chat-illustration" />\n'
         "⟦img:s1⟧\n"
         '<span class="chat-illustration-error" data-scene="s2">fail</span>\nB'
     )
@@ -433,10 +497,28 @@ def test_prune_orphans_keeps_photos(client, db_session):
     )
     assert res.status_code == 200
     body = res.json()
-    assert "keep.png" in body["content"]
+    assert name in body["content"]
     assert "⟦img:" not in body["content"]
     assert "chat-illustration-error" not in body["content"]
     assert "A" in body["content"] and "B" in body["content"]
+
+
+def test_prune_orphans_drops_imgs_without_file(client, db_session, tmp_path, monkeypatch):
+    from app import crud
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    content = (
+        'A\n<img src="/api/illustrated-images/fake_s1.jpg" class="chat-illustration" />\nB'
+    )
+    msg = crud.add_message(db_session, conv.id, "assistant", content)
+    res = client.post(
+        f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/prune-orphans"
+    )
+    assert res.status_code == 200
+    assert "<img" not in res.json()["content"]
+    assert "A" in res.json()["content"] and "B" in res.json()["content"]
 
 
 def _origin_fork_with_assistant(db_session, assistant_content="Ra"):
@@ -479,11 +561,14 @@ def test_clear_photos_from_fork_mutates_origin_and_sibling(client, db_session, t
     assert sibling_inherited[-1].content == body["content"]
 
 
-def test_prune_orphans_from_fork_mutates_origin(client, db_session):
+def test_prune_orphans_from_fork_mutates_origin(client, db_session, tmp_path, monkeypatch):
     from app import crud
+    from app.services.image_illustration import storage
 
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    name = storage.save_illustrated_image("keep", b"\x89PNG\r\n\x1a\n")
     content = (
-        'A\n<img src="/api/illustrated-images/keep.png" class="chat-illustration" />\n'
+        f'A\n<img src="/api/illustrated-images/{name}" class="chat-illustration" />\n'
         "⟦img:s1⟧\n"
         '<span class="chat-illustration-error" data-scene="s2">fail</span>\nB'
     )
@@ -493,7 +578,7 @@ def test_prune_orphans_from_fork_mutates_origin(client, db_session):
     )
     assert res.status_code == 200
     body = res.json()
-    assert "keep.png" in body["content"]
+    assert name in body["content"]
     assert "⟦img:" not in body["content"]
     assert "chat-illustration-error" not in body["content"]
     origin_msg = crud.get_message(db_session, origin.id, assistant.id)
