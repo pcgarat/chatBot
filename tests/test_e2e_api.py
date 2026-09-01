@@ -1143,6 +1143,7 @@ def test_e2e_illustrated_gallery_list_and_facets(client, ollama_available):
     assert r3.json()["total"] == 0
     r4 = client.get("/api/illustrated-images/messages", params={"conversation_id": "no-such-conv"})
     assert r4.status_code == 404
+    assert b'id="center-panels-splitter"' in client.get("/").content
 
 
 def test_e2e_workspace_profiles_crud(client, ollama_available):

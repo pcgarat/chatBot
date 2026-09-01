@@ -19,6 +19,11 @@
       if (localStorage.getItem("centerGalleryVisible") === "true") {
         document.documentElement.setAttribute("data-center-gallery", "on");
       }
+      var share = parseFloat(localStorage.getItem("centerChatGalleryShare") || "");
+      if (share >= 0.28 && share <= 0.72) {
+        document.documentElement.style.setProperty("--center-chat-share", String(share));
+        document.documentElement.style.setProperty("--center-gallery-share", String(1 - share));
+      }
       if (localStorage.getItem("composerCollapsed") === "true") {
         document.documentElement.setAttribute("data-composer", "collapsed");
       }
@@ -124,6 +129,7 @@
           </div>
         </div>
       </section>
+      <div id="center-panels-splitter" class="center-panels-splitter" hidden role="separator" aria-orientation="horizontal" aria-label="Redimensionar conversación y galería" aria-valuemin="28" aria-valuemax="72" aria-valuenow="50" tabindex="0"></div>
       <section class="image-gallery-panel" id="image-gallery-panel" hidden aria-label="Galería de imágenes generadas">
         <div class="image-gallery-toolbar" id="image-gallery-toolbar">
           <label class="image-gallery-filter">

@@ -1102,6 +1102,49 @@ def test_illustrated_gallery_filters_by_conversation_and_message(client, db_sess
     assert missing["items"] == []
 
 
+def test_illustrated_gallery_includes_visible_history_on_fork(client, db_session):
+    """Un fork ve ilustraciones del prefijo heredado y las propias, no las posteriores al ancla."""
+    from app import crud
+
+    origin, assistant, child = _origin_fork_with_assistant(db_session, "Ra")
+    after_anchor = crud.add_message(db_session, origin.id, "assistant", "despues del ancla")
+    fork_own = crud.add_message(db_session, child.id, "assistant", "solo del fork")
+    _seed_gallery_image(
+        db_session, conv=origin, msg=assistant, filename="inherited.png", prompt="prefijo"
+    )
+    _seed_gallery_image(
+        db_session, conv=origin, msg=after_anchor, filename="after-anchor.png", prompt="origen tarde"
+    )
+    _seed_gallery_image(
+        db_session, conv=child, msg=fork_own, filename="fork-own.png", prompt="rama"
+    )
+
+    by_fork = client.get("/api/illustrated-images", params={"conversation_id": child.id}).json()
+    assert {i["filename"] for i in by_fork["items"]} == {"inherited.png", "fork-own.png"}
+    assert by_fork["total"] == 2
+
+    by_origin = client.get("/api/illustrated-images", params={"conversation_id": origin.id}).json()
+    assert {i["filename"] for i in by_origin["items"]} == {"inherited.png", "after-anchor.png"}
+
+    after_on_fork = client.get(
+        "/api/illustrated-images",
+        params={"conversation_id": child.id, "message_id": after_anchor.id},
+    ).json()
+    assert after_on_fork["total"] == 0
+
+    chips = client.get(
+        "/api/illustrated-images/messages", params={"conversation_id": child.id}
+    ).json()["items"]
+    assert [i["message_id"] for i in chips] == [assistant.id, fork_own.id]
+    assert chips[0]["image_count"] == 1
+    assert chips[1]["image_count"] == 1
+
+    facets = client.get(
+        "/api/illustrated-images/facets", params={"conversation_id": child.id}
+    ).json()
+    assert facets["prompt_models"] == ["llama3.2"]
+
+
 def test_illustrated_gallery_message_summaries_and_trash(client, db_session):
     from app import crud
 

@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime
 
-from sqlalchemy import func, or_
+from sqlalchemy import false, func, or_
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, IllustratedImage, Message, Rule
@@ -496,18 +496,29 @@ def _escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _illustrated_gallery_base_query(db: Session):
-    return (
+def gallery_visible_message_ids(db: Session, conversation_id: str) -> list[str]:
+    """Mensajes visibles en esa vista: prefijo heredado (forks) + camino propio."""
+    conv = get_conversation(db, conversation_id)
+    if not conv:
+        return []
+    return [m.id for m in get_resolved_history(db, conv, None)]
+
+
+def _illustrated_gallery_base_query(db: Session, *, require_active_owner: bool = True):
+    q = (
         db.query(IllustratedImage, Message, Conversation)
         .join(Message, IllustratedImage.message_id == Message.id)
         .join(Conversation, Message.conversation_id == Conversation.id)
-        .filter(Conversation.deleted_at.is_(None))
     )
+    if require_active_owner:
+        q = q.filter(Conversation.deleted_at.is_(None))
+    return q
 
 
 def _apply_illustrated_gallery_filters(
     q,
     *,
+    db: Session,
     prompt_provider: str | None,
     prompt_model: str | None,
     forge_model: str | None,
@@ -519,10 +530,14 @@ def _apply_illustrated_gallery_filters(
     conversation_id: str | None = None,
     message_id: str | None = None,
 ):
+    if conversation_id:
+        scoped_ids = gallery_visible_message_ids(db, conversation_id)
+        if not scoped_ids:
+            q = q.filter(false())
+        else:
+            q = q.filter(IllustratedImage.message_id.in_(scoped_ids))
     if message_id:
         q = q.filter(IllustratedImage.message_id == message_id)
-    if conversation_id:
-        q = q.filter(Message.conversation_id == conversation_id)
     if prompt_provider is not None:
         if prompt_provider == "":
             q = q.filter(
@@ -589,7 +604,8 @@ def list_illustrated_images(
 ) -> tuple[list[tuple[IllustratedImage, Message, Conversation]], int]:
     """Galería: imágenes de conversaciones activas, más recientes primero."""
     q = _apply_illustrated_gallery_filters(
-        _illustrated_gallery_base_query(db),
+        _illustrated_gallery_base_query(db, require_active_owner=not bool(conversation_id)),
+        db=db,
         prompt_provider=prompt_provider,
         prompt_model=prompt_model,
         forge_model=forge_model,
@@ -618,14 +634,14 @@ def illustrated_image_facets(
     message_id: str | None = None,
 ) -> dict:
     """Valores distintos para los filtros cerrados de la galería."""
-    q = (
-        db.query(IllustratedImage)
-        .join(Message, IllustratedImage.message_id == Message.id)
-        .join(Conversation, Message.conversation_id == Conversation.id)
-        .filter(Conversation.deleted_at.is_(None))
+    q = db.query(IllustratedImage).join(Message, IllustratedImage.message_id == Message.id).join(
+        Conversation, Message.conversation_id == Conversation.id
     )
+    if not conversation_id:
+        q = q.filter(Conversation.deleted_at.is_(None))
     q = _apply_illustrated_gallery_filters(
         q,
+        db=db,
         prompt_provider=None,
         prompt_model=None,
         forge_model=None,
@@ -694,26 +710,23 @@ def _message_excerpt(content: str, limit: int = 88) -> str:
 
 
 def list_illustrated_message_summaries(db: Session, conversation_id: str) -> list[dict]:
-    """Mensajes de una conversación activa que tienen al menos una imagen."""
+    """Mensajes visibles (propios o heredados) de una conversación activa con al menos una imagen."""
     conv = get_conversation(db, conversation_id)
     if not conv:
         return []
+    history = get_resolved_history(db, conv, None)
+    if not history:
+        return []
+    ids = [m.id for m in history]
     counts = (
         db.query(IllustratedImage.message_id, func.count(IllustratedImage.id))
-        .join(Message, IllustratedImage.message_id == Message.id)
-        .filter(Message.conversation_id == conversation_id)
+        .filter(IllustratedImage.message_id.in_(ids))
         .group_by(IllustratedImage.message_id)
         .all()
     )
     if not counts:
         return []
     by_id = {mid: n for mid, n in counts}
-    messages = (
-        db.query(Message)
-        .filter(Message.id.in_(list(by_id.keys())))
-        .order_by(Message.created_at.asc())
-        .all()
-    )
     return [
         {
             "message_id": msg.id,
@@ -722,7 +735,8 @@ def list_illustrated_message_summaries(db: Session, conversation_id: str) -> lis
             "excerpt": _message_excerpt(msg.content or ""),
             "image_count": int(by_id.get(msg.id) or 0),
         }
-        for msg in messages
+        for msg in history
+        if msg.id in by_id
     ]
 
 

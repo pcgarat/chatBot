@@ -24,13 +24,15 @@ def test_gallery_entry_and_panel_exist_in_html():
     assert 'id="gallery-scope-all"' in html
     assert 'id="gallery-scope-conv-label"' in html
     assert 'id="center-panels-empty"' in html
+    assert 'id="center-panels-splitter"' in html
     gallery_btn = html.index('id="btn-image-gallery"')
     chat_btn = html.index('id="btn-center-chat"')
     new_btn = html.index('id="btn-new-chat"')
     assert new_btn < chat_btn < gallery_btn
     panel = html.index('id="image-gallery-panel"')
     chat = html.index('id="chat-column"')
-    assert chat < panel
+    splitter = html.index('id="center-panels-splitter"')
+    assert chat < splitter < panel
 
 
 def test_gallery_js_loads_list_and_opens_lightbox():
@@ -49,6 +51,10 @@ def test_gallery_js_loads_list_and_opens_lightbox():
     assert "data-center-gallery" in js
     assert "data-center-chat" in js
     assert "gallery-open-message" in js
+    assert "stayHere" in js
+    assert "initCenterPanelSplit" in js
+    assert "centerChatGalleryShare" in js
+    assert "applyCenterPanelShare" in js
     start = js.index("function initImageGallery")
     body = js[start : start + 3500]
     assert "btn-image-gallery" in body
@@ -81,6 +87,10 @@ def test_gallery_css_toggles_panels_independently():
     assert ".center-panel-toggles" in css
     assert "flex-direction: column" in css[css.index(".center-panel-toggles") : css.index(".center-panel-toggles") + 120]
     assert ".center-panels-empty" in css
+    assert ".center-panels-splitter" in css
+    assert "--center-chat-share" in css
+    assert "--center-gallery-share" in css
+    assert "ns-resize" in css
     chunk = css[
         css.index("html[data-center-chat=\"off\"] .chat-column") : css.index(
             "html[data-center-chat=\"off\"] .chat-column"
@@ -96,3 +106,4 @@ def test_index_serves_gallery_button(client):
     assert b'id="btn-image-gallery"' in r.content
     assert b'id="btn-center-chat"' in r.content
     assert b'id="image-gallery-lightbox"' in r.content
+    assert b'id="center-panels-splitter"' in r.content

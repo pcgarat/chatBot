@@ -4332,6 +4332,11 @@
   }
 
   const GALLERY_PAGE_SIZE = 24;
+  const CENTER_SHARE_STORAGE_KEY = "centerChatGalleryShare";
+  const CENTER_SHARE_MIN = 0.28;
+  const CENTER_SHARE_MAX = 0.72;
+  const CENTER_SHARE_DEFAULT = 0.5;
+  const CENTER_SHARE_KEYBOARD_STEP = 0.04;
   let galleryItems = [];
   let galleryTotal = 0;
   let galleryOffset = 0;
@@ -4353,15 +4358,48 @@
     return isGalleryPanelVisible();
   }
 
+  function clampCenterPanelShare(share) {
+    const n = typeof share === "number" ? share : parseFloat(share);
+    if (!Number.isFinite(n)) return CENTER_SHARE_DEFAULT;
+    return Math.max(CENTER_SHARE_MIN, Math.min(CENTER_SHARE_MAX, n));
+  }
+
+  function getStoredCenterPanelShare() {
+    try {
+      const raw = localStorage.getItem(CENTER_SHARE_STORAGE_KEY);
+      if (raw == null || raw === "") return CENTER_SHARE_DEFAULT;
+      return clampCenterPanelShare(raw);
+    } catch (_) {
+      return CENTER_SHARE_DEFAULT;
+    }
+  }
+
+  function saveCenterPanelShare(share) {
+    try {
+      localStorage.setItem(CENTER_SHARE_STORAGE_KEY, String(clampCenterPanelShare(share)));
+    } catch (_) {}
+  }
+
+  function applyCenterPanelShare(share) {
+    const clamped = clampCenterPanelShare(share);
+    document.documentElement.style.setProperty("--center-chat-share", String(clamped));
+    document.documentElement.style.setProperty("--center-gallery-share", String(1 - clamped));
+    const splitter = document.getElementById("center-panels-splitter");
+    if (splitter) splitter.setAttribute("aria-valuenow", String(Math.round(clamped * 100)));
+    return clamped;
+  }
+
   function applyCenterPanels() {
     const chatOn = isChatPanelVisible();
     const galleryOn = isGalleryPanelVisible();
     const chatCol = document.getElementById("chat-column") || document.querySelector(".chat-column");
     const panel = document.getElementById("image-gallery-panel");
+    const splitter = document.getElementById("center-panels-splitter");
     const chatBtn = document.getElementById("btn-center-chat");
     const galBtn = document.getElementById("btn-image-gallery");
     if (chatCol) chatCol.hidden = !chatOn;
     if (panel) panel.hidden = !galleryOn;
+    if (splitter) splitter.hidden = !(chatOn && galleryOn);
     if (chatBtn) chatBtn.setAttribute("aria-pressed", chatOn ? "true" : "false");
     if (galBtn) galBtn.setAttribute("aria-pressed", galleryOn ? "true" : "false");
     if (!galleryOn) closeGalleryLightbox();
@@ -4726,7 +4764,15 @@
     const go = document.getElementById("gallery-open-message");
     if (go) {
       go.addEventListener("click", function () {
-        openConversationAtMessage(item.conversation_id, item.message_id);
+        const stayHere =
+          currentConversationId &&
+          messages.some(function (m) {
+            return m.id === item.message_id;
+          });
+        openConversationAtMessage(
+          stayHere ? currentConversationId : item.conversation_id,
+          item.message_id
+        );
       });
     }
   }
@@ -4782,8 +4828,56 @@
     }
   }
 
+  function initCenterPanelSplit() {
+    const splitter = document.getElementById("center-panels-splitter");
+    if (!splitter) return;
+    let lastShare = applyCenterPanelShare(getStoredCenterPanelShare());
+    let drag = false;
+
+    function shareFromClientY(clientY) {
+      const chat = document.getElementById("chat-column") || document.querySelector(".chat-column");
+      const gallery = document.getElementById("image-gallery-panel");
+      if (!chat || !gallery) return lastShare;
+      const top = chat.getBoundingClientRect().top;
+      const total = gallery.getBoundingClientRect().bottom - top;
+      if (total <= 0) return lastShare;
+      return clampCenterPanelShare((clientY - top) / total);
+    }
+
+    function endDrag() {
+      if (!drag) return;
+      saveCenterPanelShare(lastShare);
+      drag = false;
+      document.body.classList.remove("center-panels-resizing");
+    }
+
+    splitter.addEventListener("pointerdown", function (e) {
+      if (e.button != null && e.button !== 0) return;
+      if (splitter.hidden) return;
+      e.preventDefault();
+      splitter.setPointerCapture(e.pointerId);
+      drag = true;
+      document.body.classList.add("center-panels-resizing");
+      lastShare = applyCenterPanelShare(shareFromClientY(e.clientY));
+    });
+    splitter.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      lastShare = applyCenterPanelShare(shareFromClientY(e.clientY));
+    });
+    splitter.addEventListener("pointerup", endDrag);
+    splitter.addEventListener("pointercancel", endDrag);
+    splitter.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      const delta = e.key === "ArrowDown" ? CENTER_SHARE_KEYBOARD_STEP : -CENTER_SHARE_KEYBOARD_STEP;
+      lastShare = applyCenterPanelShare(lastShare + delta);
+      saveCenterPanelShare(lastShare);
+    });
+  }
+
   function initImageGallery() {
     applyCenterPanels();
+    initCenterPanelSplit();
     if (isGalleryPanelVisible()) {
       refreshGalleryAfterScopeChange();
     }
