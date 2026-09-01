@@ -588,7 +588,7 @@ def list_illustrated_images(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    """Galería: imágenes de conversaciones activas, created_at desc, filtros cerrados."""
+    """Galería: imágenes visibles en la conversación (propias o heredadas en forks)."""
     width, height = _parse_size_query(size)
     conv_id = (conversation_id or "").strip() or None
     msg_id = (message_id or "").strip() or None
