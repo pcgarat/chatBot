@@ -102,7 +102,10 @@ def test_layout_keeps_pre_image_paragraph_out_of_wrap_unit():
     assert "illustration-wrap" in body
     assert "slice(0, -1)" in body or "slice(0,-1)" in body
     assert "formatMessageHtml" in js
-    assert "layoutIllustratedHtml(tokens)" in js
+    assert "layoutIllustratedHtml(tokens" in js
+    assert "narrativeParagraphHtml" in body
+    assert "data-owner-paragraph-index" in body
+    assert "data-paragraph-index" in js
 
 
 def test_message_html_uses_block_wrappers():

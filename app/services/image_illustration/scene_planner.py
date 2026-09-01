@@ -30,10 +30,11 @@ Si SÍ lo es, responde JSON:
 Reglas:
 - No reescribas el relato.
 - Devuelve SOLO JSON válido, sin markdown.
-- Si el mensaje trae «párrafos asignados», NO elijas ubicación: escribe un prompt visual en inglés para CADA paragraph_index listado (en ese orden). El prompt debe describir la escena de ESE párrafo. anchor_excerpt puede ir vacío; paragraph_index es obligatorio y debe coincidir.
+- Si el mensaje trae «ubicación fijada», illustrate DEBE ser true y UNA sola escena. No rechaces por no-relato. NO elijas otro sitio: paragraph_index = el indicado. El excerpt o el párrafo es el momento a ilustrar. Continuidad: mismos personajes, ropa, escenario, iluminación y estilo que el relato (y que los prompts ya usados). Varía solo acción, pose, encuadre e instante. Si ya hay imagen en ese párrafo, esta va AL LADO (otro instante, no un duplicado).
+- Si el mensaje trae «párrafos asignados» (sin ubicación fijada), NO elijas ubicación: escribe un prompt visual en inglés para CADA paragraph_index listado (en ese orden). El prompt debe describir la escena de ESE párrafo. anchor_excerpt puede ir vacío; paragraph_index es obligatorio y debe coincidir.
 - Si NO hay párrafos asignados: elige hasta max_images escenas repartidas a lo largo del relato (puntos medios entre imágenes existentes); anchor_excerpt literal o paragraph_index.
-- No concentres varias escenas al inicio ni en el mismo párrafo.
-- Si el mensaje lista prompts ya usados, NO generes escenas visualmente similares (mismo sujeto, pose, vestuario, encuadre o momento). Cada prompt nuevo debe aportar una escena distinta del relato.
+- No concentres varias escenas al inicio ni en el mismo párrafo (salvo ubicación fijada).
+- Si el mensaje lista prompts ya usados y NO hay ubicación fijada, NO generes escenas visualmente similares (mismo sujeto, pose, vestuario, encuadre o momento). Cada prompt nuevo debe aportar una escena distinta del relato.
 """
 
 
@@ -174,6 +175,49 @@ def _assigned_paragraphs_block(paragraphs: list[ParagraphInfo]) -> str:
     return "\n".join(lines) + "\n\n"
 
 
+def _pinned_location_block(
+    paragraphs: list[ParagraphInfo],
+    *,
+    focus_excerpt: str | None = None,
+    existing_prompts: list[str] | None = None,
+) -> str:
+    """Instrucciones cuando el usuario elige el párrafo (y opcionalmente un excerpt)."""
+    para = paragraphs[0] if paragraphs else None
+    idx = para.index if para is not None else 0
+    preview = (para.text if para else "").replace("\n", " ").strip()
+    if len(preview) > 280:
+        preview = preview[:279] + "…"
+    excerpt = (focus_excerpt or "").strip()
+    lines = [
+        "Ubicación fijada por el usuario.",
+        "illustrate DEBE ser true. UNA sola escena. NO rechaces el texto. "
+        "NO elijas otro párrafo.",
+        f"paragraph_index={idx} (obligatorio).",
+        f'Párrafo: "{preview}"' if preview else f"Párrafo {idx}.",
+        "Continuidad visual con TODO el relato: mismos personajes, ropa, "
+        "escenario, iluminación y estilo. El foco es este momento; varía "
+        "acción, pose y encuadre.",
+        "Si este párrafo ya tiene imagen(es), esta va AL LADO: mismo entorno, "
+        "otro instante o ángulo, no un duplicado.",
+    ]
+    if excerpt:
+        clipped = excerpt if len(excerpt) <= 240 else excerpt[:239] + "…"
+        lines.append(f'Foco (texto seleccionado): "{clipped}"')
+    prompts = [p.strip() for p in (existing_prompts or []) if (p or "").strip()]
+    if prompts:
+        lines.append(
+            "Prompts ya usados en el mensaje. Conserva vestuario/escenario; "
+            "cambia el instante:"
+        )
+        for p in prompts:
+            clipped = p if len(p) <= 220 else p[:219] + "…"
+            lines.append(f'- "{clipped}"')
+    lines.append(
+        "En el JSON: illustrate=true, una scene con ese paragraph_index y un prompt."
+    )
+    return "\n".join(lines) + "\n\n"
+
+
 def filter_duplicate_planned_scenes(
     scenes: list[SceneSpec],
     already_planned: list[SceneSpec] | None,
@@ -226,18 +270,28 @@ class LlmScenePlanner:
         coverage_block: str | None = None,
         assigned_paragraphs: list[ParagraphInfo] | None = None,
         existing_prompts: list[str] | None = None,
+        pinned: bool = False,
+        focus_excerpt: str | None = None,
     ) -> ScenePlan:
         self.last_debug = None
         assigned = list(assigned_paragraphs or [])
-        limit = len(assigned) if assigned else max_images
+        limit = 1 if pinned else (len(assigned) if assigned else max_images)
         if limit <= 0:
             return ScenePlan(illustrate=False, reason="max_images<=0", scenes=[])
-        already_block = _already_planned_block(
-            already_planned, existing_prompts=existing_prompts
-        )
+        if pinned:
+            already_block = ""
+            assigned_section = _pinned_location_block(
+                assigned,
+                focus_excerpt=focus_excerpt,
+                existing_prompts=existing_prompts,
+            )
+        else:
+            already_block = _already_planned_block(
+                already_planned, existing_prompts=existing_prompts
+            )
+            assigned_section = _assigned_paragraphs_block(assigned) if assigned else ""
         coverage = (coverage_block or "").strip()
-        coverage_section = f"{coverage}\n" if coverage else ""
-        assigned_section = _assigned_paragraphs_block(assigned) if assigned else ""
+        coverage_section = "" if pinned else (f"{coverage}\n" if coverage else "")
         user = (
             f"max_images={limit}\n\n"
             f"{assigned_section}"
@@ -269,6 +323,30 @@ class LlmScenePlanner:
             logged = True
             data = extract_json_object(raw)
             plan = plan_from_dict(data, limit)
+            if pinned:
+                scenes = plan.scenes or []
+                if not scenes:
+                    forced = plan_from_dict({**data, "illustrate": True}, limit)
+                    scenes = forced.scenes or []
+                if assigned:
+                    bound = bind_scenes_to_paragraphs(scenes, assigned)
+                    if bound:
+                        return ScenePlan(
+                            illustrate=True,
+                            reason=plan.reason or "ubicación fijada",
+                            scenes=bound[:1],
+                        )
+                if scenes and (scenes[0].prompt or "").strip():
+                    return ScenePlan(
+                        illustrate=True,
+                        reason=plan.reason or "ubicación fijada",
+                        scenes=scenes[:1],
+                    )
+                return ScenePlan(
+                    illustrate=False,
+                    reason=plan.reason or "sin prompt para la ubicación fijada",
+                    scenes=[],
+                )
             if plan.illustrate and plan.scenes and assigned:
                 bound = bind_scenes_to_paragraphs(plan.scenes, assigned)
                 if not bound:

@@ -27,6 +27,7 @@ from app.schemas import (
     IllustratedImageListResponse,
     IllustratedImageMessageListResponse,
     IllustratedImageMetaResponse,
+    IllustrateAtRequest,
     IllustrateRequest,
     MessageContentUpdateResponse,
 )
@@ -333,6 +334,67 @@ def illustrate_message(
                 prompt=body.prompt,
                 include_prompt_debug=body.include_prompt_debug,
                 batch_size=body.batch_size,
+                existing_prompts=meta_prompts or None,
+                forge_overrides=_forge_overrides_from_body(body),
+            ),
+            debug=body.debug,
+            include_prompt_debug=body.include_prompt_debug,
+            prompt_model=prompt_model,
+            prompt_provider=prompt_provider,
+            use_chat_config=body.use_chat_config,
+        )
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/illustrations/illustrate-at"
+)
+def illustrate_at_paragraph(
+    conversation_id: str,
+    message_id: str,
+    body: IllustrateAtRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Genera una imagen en el párrafo indicado (al lado si ya hay fotos).
+    Emite el mismo NDJSON que illustrate.
+    """
+    from app.services.image_illustration.coverage import analyze_coverage
+
+    conv = crud.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    msg = crud.get_visible_message(db, conversation_id, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    if msg.role != "assistant":
+        raise HTTPException(status_code=400, detail="Solo se ilustran mensajes assistant")
+
+    owner_conversation_id = msg.conversation_id
+    text = _content_without_missing_files(db, owner_conversation_id, message_id, msg.content or "")
+    coverage = analyze_coverage(text)
+    if not coverage.paragraphs:
+        raise HTTPException(status_code=400, detail="El mensaje no tiene párrafos ilustrables")
+    if body.paragraph_index >= len(coverage.paragraphs):
+        raise HTTPException(status_code=400, detail="Párrafo fuera de rango")
+
+    orch = _build_orchestrator(body, conv=conv, db=db)
+    meta_prompts = _prompts_from_message_meta(db, text)
+    prompt_provider, prompt_model = _planner_llm_from_request(body, conv)
+
+    def event_stream():
+        yield from _stream_illustration_events(
+            conversation_id=owner_conversation_id,
+            message_id=message_id,
+            text=text,
+            events=orch.run_at(
+                text,
+                paragraph_index=body.paragraph_index,
+                selected_excerpt=body.selected_excerpt,
+                retries=body.retries,
+                prompt=body.prompt,
+                include_prompt_debug=body.include_prompt_debug,
                 existing_prompts=meta_prompts or None,
                 forge_overrides=_forge_overrides_from_body(body),
             ),

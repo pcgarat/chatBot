@@ -21,6 +21,89 @@ def test_illustrate_404_conversation(client):
     assert res.status_code == 404
 
 
+def test_illustrate_at_404_conversation(client):
+    res = client.post(
+        "/api/conversations/no-existe/messages/m1/illustrations/illustrate-at",
+        json={"prompt_model": "llama3.2", "paragraph_index": 0},
+    )
+    assert res.status_code == 404
+
+
+def test_illustrate_at_rejects_user_message(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "user", "Párrafo uno.\n\nPárrafo dos.")
+    res = client.post(
+        f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/illustrate-at",
+        json={"prompt_model": "llama3.2", "paragraph_index": 0},
+    )
+    assert res.status_code == 400
+    assert "assistant" in res.json()["detail"].lower()
+
+
+def test_illustrate_at_rejects_out_of_range_paragraph(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Solo un párrafo.")
+    res = client.post(
+        f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/illustrate-at",
+        json={"prompt_model": "llama3.2", "paragraph_index": 3},
+    )
+    assert res.status_code == 400
+    assert "rango" in res.json()["detail"].lower()
+
+
+def test_illustrate_at_stream_forwards_paragraph_and_excerpt(client, db_session):
+    from app import crud
+    from app.services.image_illustration.models import ForgeParamOverrides
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Uno.\n\nDos.\n\nTres.")
+    captured: dict = {}
+
+    class FakeOrch:
+        def run_at(
+            self,
+            text,
+            *,
+            paragraph_index,
+            selected_excerpt="",
+            retries=0,
+            prompt="",
+            include_prompt_debug=False,
+            existing_prompts=None,
+            forge_overrides=None,
+        ):
+            captured["paragraph_index"] = paragraph_index
+            captured["selected_excerpt"] = selected_excerpt
+            captured["forge_overrides"] = forge_overrides
+            yield IllustrationEvent(type="done", message="ok", content=text)
+
+    with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrations/illustrate-at",
+            json={
+                "prompt_model": "llama3.2",
+                "prompt_provider": "ollama",
+                "paragraph_index": 1,
+                "selected_excerpt": "Dos.",
+                "retries": 0,
+                "steps": 20,
+                "debug": False,
+            },
+        )
+    assert res.status_code == 200
+    assert captured["paragraph_index"] == 1
+    assert captured["selected_excerpt"] == "Dos."
+    ov = captured["forge_overrides"]
+    assert isinstance(ov, ForgeParamOverrides)
+    assert ov.as_dict() == {"steps": 20}
+    lines = _ndjson_lines(res)
+    assert lines[-1]["type"] == "done"
+
+
 def test_illustrate_stream_skips_when_planner_says_no(client, db_session):
     from app import crud
 

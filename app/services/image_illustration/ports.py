@@ -33,5 +33,7 @@ class ScenePlannerPort(Protocol):
         coverage_block: str | None = None,
         assigned_paragraphs: list[ParagraphInfo] | None = None,
         existing_prompts: list[str] | None = None,
+        pinned: bool = False,
+        focus_excerpt: str | None = None,
     ) -> ScenePlan:
         ...

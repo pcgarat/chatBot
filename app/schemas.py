@@ -273,6 +273,17 @@ class IllustrateRequest(ForgePanelParamFields):
         return self
 
 
+class IllustrateAtRequest(IllustrateRequest):
+    """Una imagen en un párrafo concreto (click derecho / selección)."""
+
+    paragraph_index: int = Field(ge=0, description="Índice de párrafo del mapa de cobertura.")
+    selected_excerpt: str = Field(
+        default="",
+        max_length=2000,
+        description="Texto seleccionado como foco de la escena; vacío = todo el párrafo.",
+    )
+
+
 class GenerateRemainingRequest(ForgePanelParamFields):
     """Opciones para regenerar anclas/placeholders pendientes sin re-planificar."""
 

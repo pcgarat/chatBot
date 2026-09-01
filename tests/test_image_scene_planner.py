@@ -216,3 +216,56 @@ def test_planner_writes_prompts_for_assigned_paragraphs():
     user = provider.calls[0]["messages"][1]["content"]
     assert "Párrafos asignados" in user
     assert "paragraph_index=1" in user
+
+
+def test_planner_pinned_forces_illustrate_and_continuity():
+    from app.services.image_illustration.coverage import ParagraphInfo
+
+    provider = FakeProvider(
+        json.dumps(
+            {
+                "illustrate": False,
+                "reason": "no es relato",
+                "scenes": [
+                    {"id": "s1", "prompt": "same coat, new pose at the door", "paragraph_index": 1}
+                ],
+            }
+        )
+    )
+    planner = LlmScenePlanner(provider, model="m1", system_prompt="SYS")
+    assigned = [
+        ParagraphInfo(index=1, text="Abrió la puerta con el mismo abrigo.", illustration_count=1),
+    ]
+    plan = planner.plan(
+        "Había un faro.\n\nAbrió la puerta con el mismo abrigo.",
+        max_images=3,
+        assigned_paragraphs=assigned,
+        existing_prompts=["woman in red coat by the lighthouse"],
+        pinned=True,
+        focus_excerpt="el mismo abrigo",
+    )
+    assert plan.illustrate is True
+    assert len(plan.scenes) == 1
+    assert plan.scenes[0].paragraph_index == 1
+    assert "door" in plan.scenes[0].prompt
+    user = provider.calls[0]["messages"][1]["content"]
+    assert "Ubicación fijada" in user
+    assert "paragraph_index=1" in user
+    assert "el mismo abrigo" in user
+    assert "AL LADO" in user
+    assert "Conserva vestuario" in user
+    assert "NO reutilices las mismas anclas" not in user
+    assert "max_images=1" in user
+
+
+def test_planner_pinned_without_prompt_stays_false():
+    from app.services.image_illustration.coverage import ParagraphInfo
+
+    provider = FakeProvider(
+        json.dumps({"illustrate": False, "reason": "nada visual", "scenes": []})
+    )
+    planner = LlmScenePlanner(provider, model="m1", system_prompt="SYS")
+    assigned = [ParagraphInfo(index=0, text="Hola.", illustration_count=0)]
+    plan = planner.plan("Hola.", max_images=1, assigned_paragraphs=assigned, pinned=True)
+    assert plan.illustrate is False
+    assert "ubicación fijada" in plan.reason or "nada visual" in plan.reason
