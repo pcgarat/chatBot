@@ -14,21 +14,30 @@ logger = logging.getLogger(__name__)
 
 FLUX_PROMPT_GUIDE_RULE_ID = "a8f3c2e1-4b5d-4e6a-9c1f-7d2e8b0a4f31"
 FLUX_PROMPT_GUIDE_TITLE = "Guía prompts FLUX"
+KREA2_POV_GUIDE_RULE_ID = "2263d058-31a1-4249-81c2-bad16367b43b"
+KREA2_POV_GUIDE_TITLE = "Guía Krea 2 POV"
 
 _SEED_DIR = Path(__file__).resolve().parents[3] / "config" / "seed"
 FLUX_PROMPT_GUIDE_PATH = _SEED_DIR / "planner_flux_prompts.md"
+KREA2_POV_GUIDE_PATH = _SEED_DIR / "planner_krea2_pov_prompts.md"
+
+_BUILTIN_PLANNER_RULES = (
+    (FLUX_PROMPT_GUIDE_RULE_ID, FLUX_PROMPT_GUIDE_TITLE, FLUX_PROMPT_GUIDE_PATH),
+    (KREA2_POV_GUIDE_RULE_ID, KREA2_POV_GUIDE_TITLE, KREA2_POV_GUIDE_PATH),
+)
 
 
 def seed_builtin_rules(db: Session) -> int:
     """Crea reglas builtin que aún no existen. No actualiza contenido ya presente."""
     created = 0
-    created += ensure_rule_from_file(
-        db,
-        rule_id=FLUX_PROMPT_GUIDE_RULE_ID,
-        title=FLUX_PROMPT_GUIDE_TITLE,
-        path=FLUX_PROMPT_GUIDE_PATH,
-        scope=SCOPE_PLANNER,
-    )
+    for rule_id, title, path in _BUILTIN_PLANNER_RULES:
+        created += ensure_rule_from_file(
+            db,
+            rule_id=rule_id,
+            title=title,
+            path=path,
+            scope=SCOPE_PLANNER,
+        )
     return created
 
 

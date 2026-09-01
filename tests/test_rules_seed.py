@@ -1,4 +1,4 @@
-"""Seed de reglas builtin del planificador (guía FLUX)."""
+"""Seed de reglas builtin del planificador (guías FLUX y Krea 2 POV)."""
 from pathlib import Path
 
 from app.crud import delete_rule, get_rule, update_rule
@@ -7,15 +7,18 @@ from app.services.rules.seed import (
     FLUX_PROMPT_GUIDE_PATH,
     FLUX_PROMPT_GUIDE_RULE_ID,
     FLUX_PROMPT_GUIDE_TITLE,
+    KREA2_POV_GUIDE_PATH,
+    KREA2_POV_GUIDE_RULE_ID,
+    KREA2_POV_GUIDE_TITLE,
     ensure_rule_from_file,
     seed_builtin_rules,
 )
 
 _SEED = Path(__file__).resolve().parents[1] / "config" / "seed" / "planner_flux_prompts.md"
+_KREA2_SEED = Path(__file__).resolve().parents[1] / "config" / "seed" / "planner_krea2_pov_prompts.md"
 
 
-def test_seed_file_is_planner_contract_not_raw_download():
-    text = _SEED.read_text(encoding="utf-8")
+def _assert_planner_prompt_contract(text: str) -> None:
     assert "SOLO al string `prompt`" in text
     assert "JSON del planificador" in text
     assert "No preguntes al usuario" in text
@@ -27,16 +30,36 @@ def test_seed_file_is_planner_contract_not_raw_download():
     assert len(text) < 12_000
 
 
+def test_seed_file_is_planner_contract_not_raw_download():
+    _assert_planner_prompt_contract(_SEED.read_text(encoding="utf-8"))
+
+
+def test_krea2_pov_seed_file_is_planner_contract():
+    text = _KREA2_SEED.read_text(encoding="utf-8")
+    _assert_planner_prompt_contract(text)
+    assert "First-person POV from Paco's eyes:" in text
+    assert "Krea 2" in text
+    assert "looking at the camera" in text
+    assert "moodboard" not in text.lower()
+    assert "style reference" not in text.lower()
+
+
 def test_seed_creates_planner_rule_when_missing(db_session):
     assert get_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID) is None
+    assert get_rule(db_session, KREA2_POV_GUIDE_RULE_ID) is None
     created = seed_builtin_rules(db_session)
-    assert created == 1
+    assert created == 2
     rule = get_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID)
     assert rule is not None
     assert rule.title == FLUX_PROMPT_GUIDE_TITLE
     assert rule.scope == SCOPE_PLANNER
     assert "prosa" in rule.content.lower() or "prompt" in rule.content.lower()
     assert rule.content == FLUX_PROMPT_GUIDE_PATH.read_text(encoding="utf-8").strip()
+    krea = get_rule(db_session, KREA2_POV_GUIDE_RULE_ID)
+    assert krea is not None
+    assert krea.title == KREA2_POV_GUIDE_TITLE
+    assert krea.scope == SCOPE_PLANNER
+    assert krea.content == KREA2_POV_GUIDE_PATH.read_text(encoding="utf-8").strip()
 
 
 def test_seed_is_idempotent_and_does_not_overwrite(db_session):
@@ -80,8 +103,13 @@ def test_startup_function_seeds_builtin_rules():
 def test_startup_seeds_planner_rule_not_chat(client):
     chat = client.get("/api/rules").json()
     assert all(item["id"] != FLUX_PROMPT_GUIDE_RULE_ID for item in chat)
+    assert all(item["id"] != KREA2_POV_GUIDE_RULE_ID for item in chat)
     planner = client.get("/api/rules", params={"scope": "planner"}).json()
     match = [item for item in planner if item["id"] == FLUX_PROMPT_GUIDE_RULE_ID]
     assert len(match) == 1
     assert match[0]["title"] == FLUX_PROMPT_GUIDE_TITLE
     assert match[0]["scope"] == SCOPE_PLANNER
+    krea = [item for item in planner if item["id"] == KREA2_POV_GUIDE_RULE_ID]
+    assert len(krea) == 1
+    assert krea[0]["title"] == KREA2_POV_GUIDE_TITLE
+    assert krea[0]["scope"] == SCOPE_PLANNER
