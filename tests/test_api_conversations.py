@@ -36,6 +36,26 @@ def test_build_llm_messages_estructura_basica(mock_settings):
 
 
 @patch("app.routers.api_conversations.settings")
+def test_build_llm_messages_no_envia_html_de_ilustracion(mock_settings):
+    """El historial no debe incluir imgs de ilustración: el LLM las copia y rompe las fotos."""
+    conv = _mock_conv("Global.", history_turns=2)
+    existing = [
+        _mock_msg("user", "M1"),
+        _mock_msg(
+            "assistant",
+            'Había un faro.\n<img src="/api/illustrated-images/aaa_s1.jpg" class="chat-illustration" />\nEl mar.',
+        ),
+    ]
+    db = MagicMock()
+    msgs, _ = _build_llm_messages(conv, existing, "M2", None, db, rag_context=None)
+    assistant = next(m for m in msgs if m["role"] == "assistant")
+    assert "<img" not in assistant["content"]
+    assert "illustrated-images" not in assistant["content"]
+    assert "Había un faro." in assistant["content"]
+    assert "El mar." in assistant["content"]
+
+
+@patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_incluye_historial_orden_cronologico(mock_settings):
     """El historial va de más antiguo a más nuevo antes del prompt actual."""
     conv = _mock_conv("Global.", history_turns=2)
@@ -416,6 +436,28 @@ def test_send_message_ok(mock_get_provider, client):
     assert len(get_conv.json()["messages"]) == 2
     assert get_conv.json()["messages"][0]["content"] == "Hola"
     assert get_conv.json()["messages"][1]["content"] == "Hola, soy el asistente."
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_send_message_strips_illustration_html_del_llm(mock_get_provider, client):
+    """El LLM no puede persistir imgs de ilustración: salen rotas y sin metadatos."""
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = (
+        "Había un faro.\n"
+        '<img src="/api/illustrated-images/8a4e2f7c9d1b40a58b3c6e1f2d0a8b9_s1.jpg" '
+        'alt="escena s1" class="chat-illustration" loading="lazy" />\n'
+        "El mar."
+    )
+    mock_get_provider.return_value = mock_provider
+    cid = client.post("/api/conversations", json={"title": "Chat", "model_id": "m"}).json()["id"]
+    r = client.post(f"/api/conversations/{cid}/messages", json={"content": "Cuenta"})
+    assert r.status_code == 200
+    assert "<img" not in r.json()["content"]
+    assert "illustrated-images" not in r.json()["content"]
+    assert "Había un faro." in r.json()["content"]
+    assert "El mar." in r.json()["content"]
+    stored = client.get(f"/api/conversations/{cid}").json()["messages"][1]["content"]
+    assert "<img" not in stored
 
 
 @patch("app.routers.api_conversations.get_provider")

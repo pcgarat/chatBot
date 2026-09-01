@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -29,7 +30,11 @@ from app.schemas import (
     IllustrateRequest,
     MessageContentUpdateResponse,
 )
-from app.services.image_illustration.content_ops import remove_all_photos, remove_orphan_anchors
+from app.services.image_illustration.content_ops import (
+    drop_missing_illustration_files,
+    remove_all_photos,
+    remove_orphan_anchors,
+)
 from app.services.image_illustration.forge_client import ForgeHttpClient
 from app.services.image_illustration.forge_param_overrides import forge_overrides_from_optional
 from app.services.image_illustration.last_payload import (
@@ -152,11 +157,10 @@ def _build_forge_orchestrator() -> ImageIllustrationOrchestrator:
 
 def _persist_message_content(conversation_id: str, message_id: str, content: str) -> None:
     """Sesión corta: no reutilizar Depends(get_db) dentro del StreamingResponse."""
-    db = SessionLocal()
-    try:
-        crud.update_message_content(db, conversation_id, message_id, content)
-    finally:
-        db.close()
+    _retry_db_write(
+        lambda db: crud.update_message_content(db, conversation_id, message_id, content),
+        label=f"content message={message_id}",
+    )
 
 
 def _persist_illustrated_image_meta(
@@ -170,9 +174,8 @@ def _persist_illustrated_image_meta(
     prompt_provider: str | None = None,
     use_chat_config: bool | None = None,
 ) -> None:
-    db = SessionLocal()
-    try:
-        crud.save_illustrated_image_meta(
+    _retry_db_write(
+        lambda db: crud.save_illustrated_image_meta(
             db,
             message_id=message_id,
             filename=filename,
@@ -182,11 +185,25 @@ def _persist_illustrated_image_meta(
             prompt_model=prompt_model,
             prompt_provider=prompt_provider,
             use_chat_config=use_chat_config,
-        )
-    except Exception:
-        logger.exception("No se pudieron guardar metadatos de la imagen %s", filename)
-    finally:
-        db.close()
+        ),
+        label=f"meta {filename}",
+    )
+
+
+def _retry_db_write(write, *, label: str, attempts: int = 3) -> None:
+    """Reintenta escrituras cortas: el stream y la UI compiten por SQLite."""
+    for attempt in range(attempts):
+        db = SessionLocal()
+        try:
+            write(db)
+            return
+        except Exception:
+            if attempt + 1 < attempts:
+                time.sleep(0.05 * (attempt + 1))
+                continue
+            logger.exception("No se pudo persistir %s", label)
+        finally:
+            db.close()
 
 
 def _stream_illustration_events(
@@ -297,8 +314,8 @@ def illustrate_message(
     if msg.role != "assistant":
         raise HTTPException(status_code=400, detail="Solo se ilustran mensajes assistant")
 
-    text = msg.content or ""
     owner_conversation_id = msg.conversation_id
+    text = _content_without_missing_files(db, owner_conversation_id, message_id, msg.content or "")
     orch = _build_orchestrator(body, conv=conv, db=db)
     meta_prompts = _prompts_from_message_meta(db, text)
     prompt_provider, prompt_model = _planner_llm_from_request(body, conv)
@@ -343,8 +360,8 @@ def generate_remaining_images(
     Emite el mismo NDJSON que illustrate.
     """
     msg = _require_assistant_message(db, conversation_id, message_id)
-    text = msg.content or ""
     owner_conversation_id = msg.conversation_id
+    text = _content_without_missing_files(db, owner_conversation_id, message_id, msg.content or "")
     orch = _build_forge_orchestrator()
     prompt_provider, prompt_model = crud.get_latest_prompt_llm_for_message(db, message_id)
 
@@ -365,6 +382,16 @@ def generate_remaining_images(
         )
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+def _content_without_missing_files(
+    db: Session, conversation_id: str, message_id: str, content: str
+) -> str:
+    """Las <img> 404 no deben ocupar cobertura ni persistir en el mensaje."""
+    text = drop_missing_illustration_files(content)
+    if text != content:
+        crud.update_message_content(db, conversation_id, message_id, text)
+    return text
 
 
 def _require_assistant_message(db: Session, conversation_id: str, message_id: str):

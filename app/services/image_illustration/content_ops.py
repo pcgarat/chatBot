@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import unquote, urlparse
 
@@ -85,12 +86,40 @@ def remove_all_photos(content: str) -> tuple[str, list[str]]:
     return _normalize_blank_lines(cleaned), filenames
 
 
-def remove_orphan_anchors(content: str) -> str:
+def drop_missing_illustration_files(
+    content: str,
+    *,
+    image_exists: Callable[[str], bool] | None = None,
+) -> str:
+    """Quita <img> de ilustración cuyo fichero no está en disco. Conserva placeholders."""
+    exists = image_exists
+    if exists is None:
+        from app.services.image_illustration.storage import resolve_illustrated_path
+
+        def exists(name: str) -> bool:
+            return resolve_illustrated_path(name) is not None
+
+    def _keep_or_drop_img(match: re.Match) -> str:
+        src_m = _SRC_ATTR_RE.search(match.group(0))
+        name = _filename_from_illustrated_src(src_m.group(2)) if src_m else None
+        if name and exists(name):
+            return match.group(0)
+        return ""
+
+    return _normalize_blank_lines(_IMG_TAG_RE.sub(_keep_or_drop_img, content or ""))
+
+
+def remove_orphan_anchors(
+    content: str,
+    *,
+    image_exists: Callable[[str], bool] | None = None,
+) -> str:
     """
-    Elimina anclas sin imagen generada: marcadores ⟦img:id⟧,
-    placeholders y errores. Conserva las fotos ya insertadas.
+    Elimina anclas sin imagen: marcadores, placeholders, errores
+    y fotos cuyo fichero ya no está en disco.
     """
-    cleaned = _ORPHAN_ANCHOR_RE.sub("", content or "")
+    cleaned = drop_missing_illustration_files(content, image_exists=image_exists)
+    cleaned = _ORPHAN_ANCHOR_RE.sub("", cleaned)
     return _normalize_blank_lines(cleaned)
 
 

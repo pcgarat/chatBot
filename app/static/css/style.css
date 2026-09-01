@@ -3615,6 +3615,10 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   margin: 0.35rem 1rem 0.75rem 0;
 }
 
+.chat-illustration-frame.chat-illustration-missing {
+  display: none;
+}
+
 .chat-illustration-info-btn {
   position: absolute;
   top: 8px;

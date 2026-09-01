@@ -9,6 +9,7 @@ from app import crud, rag
 from app.config import settings
 from app.provider_params import build_extra_body
 from app.providers import get_provider
+from app.services.image_illustration.anchors import strip_illustration_artifacts
 from app.slash_commands import parse_slash_command
 from app.db import get_db
 from app.crud import create_rule as crud_create_rule
@@ -428,7 +429,10 @@ def _build_llm_messages(
         max_messages = max_turns * 2  # cada turno = 1 user + 1 assistant
         history = existing_messages[-max_messages:]
         for m in history:
-            messages.append({"role": m.role, "content": m.content})
+            content = m.content or ""
+            if m.role == "assistant":
+                content = strip_illustration_artifacts(content)
+            messages.append({"role": m.role, "content": content})
 
     messages.append({"role": "user", "content": new_content})
     if instruction_override and instruction_override.strip():
@@ -592,7 +596,7 @@ async def _stream_generator_async(
                 db,
                 conversation_id,
                 role="assistant",
-                content="".join(full_content),
+                content=strip_illustration_artifacts("".join(full_content)),
                 debug_request_json=debug_request_json,
                 debug_response_raw=debug_response_raw,
                 parent_id=user_message_id,
@@ -777,7 +781,11 @@ def send_message(
     if save_to_chromadb in ("user", "both"):
         rag.add_message(conversation_id, user_msg.id, "user", user_content, user_msg.created_at)
     assistant_msg = crud.add_message(
-        db, conversation_id, role="assistant", content=assistant_content, parent_id=user_msg.id
+        db,
+        conversation_id,
+        role="assistant",
+        content=strip_illustration_artifacts(assistant_content),
+        parent_id=user_msg.id,
     )
     crud.touch_conversation(db, conversation_id)
     if save_to_chromadb in ("assistant", "both"):

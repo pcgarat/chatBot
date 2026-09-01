@@ -1,6 +1,7 @@
 """Tests de operaciones sobre content ilustrado."""
 
 from app.services.image_illustration.content_ops import (
+    drop_missing_illustration_files,
     extract_illustrated_filenames,
     remove_all_photos,
     remove_orphan_anchors,
@@ -43,11 +44,38 @@ def test_remove_orphan_anchors_keeps_photos():
         "⟦img:s3⟧\n"
         "B"
     )
-    out = remove_orphan_anchors(text)
+    out = remove_orphan_anchors(text, image_exists=lambda name: name == "ok.png")
     assert "ok.png" in out
     assert "placeholder" not in out
     assert "chat-illustration-error" not in out
     assert "⟦img:" not in out
+    assert "A" in out and "B" in out
+
+
+def test_drop_missing_illustration_files_keeps_placeholders():
+    text = (
+        "A\n"
+        '<img src="/api/illustrated-images/gone.jpg" class="chat-illustration" />\n'
+        '<span class="chat-illustration-placeholder" data-scene="s1" data-prompt="storm">'
+        "pending</span>\n"
+        "B"
+    )
+    out = drop_missing_illustration_files(text, image_exists=lambda name: False)
+    assert "gone.jpg" not in out
+    assert "data-scene=\"s1\"" in out
+    assert "A" in out and "B" in out
+
+
+def test_remove_orphan_anchors_drops_missing_photos():
+    text = (
+        "A\n"
+        '<img src="/api/illustrated-images/gone.jpg" class="chat-illustration" />\n'
+        '<img src="/api/illustrated-images/ok.png" class="chat-illustration" />\n'
+        "B"
+    )
+    out = remove_orphan_anchors(text, image_exists=lambda name: name == "ok.png")
+    assert "gone.jpg" not in out
+    assert "ok.png" in out
     assert "A" in out and "B" in out
 
 

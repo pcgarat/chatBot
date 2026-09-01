@@ -1424,6 +1424,12 @@
       frame.className = "chat-illustration-frame";
       parent.insertBefore(frame, img);
       frame.appendChild(img);
+      img.addEventListener("error", function () {
+        frame.classList.add("chat-illustration-missing");
+      });
+      if (img.complete && img.naturalWidth === 0) {
+        frame.classList.add("chat-illustration-missing");
+      }
       const filename =
         img.getAttribute("data-filename") || filenameFromIllustratedSrc(img.getAttribute("src"));
       if (!filename) return;

@@ -66,3 +66,12 @@ def test_expand_collapse_kicks_lazy_illustrations():
     assert (
         "kickLazyIllustrations" in body or "revealLazyIllustrations" in body
     ), "Al expandir (willExpand) debe llamar a kick/reveal de ilustraciones lazy"
+
+
+def test_js_marks_broken_illustrations_on_error():
+    js = _js()
+    css = _css()
+    enhance = js.split("function enhanceIllustrationFrames")[1].split("function kickLazyIllustrations")[0]
+    assert 'addEventListener("error"' in enhance
+    assert "chat-illustration-missing" in enhance
+    assert ".chat-illustration-missing" in css
