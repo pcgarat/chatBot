@@ -23,9 +23,13 @@ def test_js_sends_forge_params_on_illustrate_and_remaining():
         "async function generateRemainingImages"
     )[0]
     remaining = js.split("async function generateRemainingImages")[1].split(
-        "async function runIllustrationStream"
+        "async function illustrateAtParagraph"
     )[0]
     assert "readForgePanelParams()" in illustrate
     assert "readForgePanelParams()" in remaining
+    at_fn = js.split("async function illustrateAtParagraph")[1].split(
+        "async function runIllustrationStream"
+    )[0]
+    assert "readForgePanelParams()" in at_fn
     assert "/forge/last-generation-params" in js
     assert "function reloadForgeParamsFromLastGen" in js

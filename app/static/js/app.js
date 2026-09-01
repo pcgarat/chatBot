@@ -1246,7 +1246,8 @@
   }
 
   /** Escapa texto pero conserva img/placeholder/error de ilustración y marcadores. */
-  function formatMessageHtml(content) {
+  function formatMessageHtml(content, paragraphStart) {
+    const startIndex = paragraphStart == null ? 0 : paragraphStart;
     const raw = content == null ? "" : String(content);
     const tokens = [];
     const pattern =
@@ -1269,11 +1270,43 @@
     if (last < raw.length) tokens.push({ t: "text", v: raw.slice(last) });
     trimIllustrationAdjacentWhitespace(tokens);
     if (!tokens.some((tok) => tok.t === "html")) {
-      return tokens
-        .map((tok) => (tok.t === "html" ? tok.v : escapeHtml(tok.v).replace(/\n/g, "<br>")))
-        .join("");
+      const plain = tokens.map((tok) => tok.v).join("");
+      return wrapNarrativeParagraphs(plain, startIndex);
     }
-    return layoutIllustratedHtml(tokens);
+    return layoutIllustratedHtml(tokens, startIndex);
+  }
+
+  function stripIllustrationArtifactsClient(text) {
+    return String(text || "")
+      .replace(/<img\b[^>]*class="[^"]*chat-illustration[^"]*"[^>]*>/gi, "")
+      .replace(
+        /<span\b[^>]*class="[^"]*chat-illustration-(?:error|placeholder)[^"]*"[^>]*>[\s\S]*?<\/span>/gi,
+        ""
+      )
+      .replace(/⟦img:[^⟧]+⟧/g, "");
+  }
+
+  function countNarrativeParagraphs(content) {
+    return splitIllustrationParagraphs(stripIllustrationArtifactsClient(content)).length;
+  }
+
+  function narrativeParagraphHtml(text, index, className) {
+    return (
+      `<div class="${className} chat-paragraph" data-paragraph-index="${index}">` +
+      `${escapeHtml(text).replace(/\n/g, "<br>")}</div>`
+    );
+  }
+
+  function wrapNarrativeParagraphs(text, startIndex) {
+    const paras = splitIllustrationParagraphs(text);
+    if (!paras.length) {
+      const raw = String(text || "");
+      if (!raw.trim()) return "";
+      return narrativeParagraphHtml(raw, startIndex, "illustration-lead");
+    }
+    return paras
+      .map((p, i) => narrativeParagraphHtml(p, startIndex + i, "illustration-lead"))
+      .join("");
   }
 
   function splitIllustrationParagraphs(text) {
@@ -1294,7 +1327,8 @@
    * Lo que sigue envuelve a la derecha; el previo a la siguiente imagen
    * queda fuera de esa unidad para no meterse en el hueco que sobre.
    */
-  function layoutIllustratedHtml(tokens) {
+  function layoutIllustratedHtml(tokens, paragraphStart) {
+    const startIndex = paragraphStart == null ? 0 : paragraphStart;
     const items = [];
     tokens.forEach((tok) => {
       if (tok.t === "html") {
@@ -1311,10 +1345,12 @@
 
     const out = [];
     let i = 0;
+    let paraIndex = startIndex;
     while (i < items.length) {
       const item = items[i];
       if (item.kind === "para") {
-        out.push(`<div class="illustration-lead">${escapeHtml(item.v).replace(/\n/g, "<br>")}</div>`);
+        out.push(narrativeParagraphHtml(item.v, paraIndex, "illustration-lead"));
+        paraIndex += 1;
         i += 1;
         continue;
       }
@@ -1342,10 +1378,17 @@
       if (hasNext && following.length) {
         wrapParas = following.slice(0, -1);
       }
+      const ownerIndex = paraIndex > 0 ? paraIndex - 1 : Math.max(0, startIndex - 1);
       const wrapHtml = wrapParas
-        .map((p) => `<div class="illustration-wrap">${escapeHtml(p.v).replace(/\n/g, "<br>")}</div>`)
+        .map((p) => {
+          const html = narrativeParagraphHtml(p.v, paraIndex, "illustration-wrap");
+          paraIndex += 1;
+          return html;
+        })
         .join("");
-      out.push(`<div class="illustration-unit">${item.v}${wrapHtml}</div>`);
+      out.push(
+        `<div class="illustration-unit" data-owner-paragraph-index="${ownerIndex}">${item.v}${wrapHtml}</div>`
+      );
       i += 1 + wrapParas.length;
     }
     return out.join("");
@@ -1621,13 +1664,14 @@
   function buildCollapsibleMessageHtml(content, key, expanded) {
     const parts = splitFirstParagraph(content);
     if (!parts.collapsible) {
-      return `<div class="message-content">${formatMessageHtml(content || "")}</div>`;
+      return `<div class="message-content">${formatMessageHtml(content || "", 0)}</div>`;
     }
     const collapsed = !expanded;
     const toggleLabel = collapsed ? "Show more" : "Show less";
+    const restOffset = countNarrativeParagraphs(parts.first);
     return `<div class="message-body-collapsible${collapsed ? " is-collapsed" : ""}" data-collapse-key="${escapeHtml(key)}">
-      <div class="message-content-preview">${formatMessageHtml(parts.first)}</div>
-      <div class="message-content-rest">${formatMessageHtml(parts.rest)}</div>
+      <div class="message-content-preview">${formatMessageHtml(parts.first, 0)}</div>
+      <div class="message-content-rest">${formatMessageHtml(parts.rest, restOffset)}</div>
       <button type="button" class="msg-collapse-toggle" aria-expanded="${collapsed ? "false" : "true"}">${toggleLabel}</button>
     </div>`;
   }
@@ -2344,7 +2388,7 @@
               expandedMessageKeys.has(collapseKey)
             );
           } else {
-            bodyHtml = `<div class="message-content">${formatMessageHtml(m.content || "")}</div>`;
+            bodyHtml = `<div class="message-content">${formatMessageHtml(m.content || "", 0)}</div>`;
           }
           return `<div class="${rowClass}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
             <div style="max-width: ${isUser ? "70%" : "100%"}; flex: 1; min-width: 0;">
@@ -2433,6 +2477,114 @@
     el.messagesContainer.querySelectorAll(".msg-more-btn").forEach((btn) => {
       btn.setAttribute("aria-expanded", "false");
     });
+    closeTextContextMenu();
+  }
+
+  let textContextPending = null;
+  let textContextIgnoreClickUntil = 0;
+
+  function getTextContextMenu() {
+    return document.getElementById("msg-text-context-menu");
+  }
+
+  function closeTextContextMenu() {
+    const menu = getTextContextMenu();
+    if (menu) menu.hidden = true;
+    textContextPending = null;
+  }
+
+  function paragraphIndexFromEventTarget(target, messageRoot) {
+    if (!target || !messageRoot) return 0;
+    const para = target.closest("[data-paragraph-index]");
+    if (para && messageRoot.contains(para)) {
+      const n = parseInt(para.getAttribute("data-paragraph-index"), 10);
+      if (!Number.isNaN(n) && n >= 0) return n;
+    }
+    const unit = target.closest(".illustration-unit");
+    if (unit && messageRoot.contains(unit)) {
+      const owner = parseInt(unit.getAttribute("data-owner-paragraph-index"), 10);
+      if (!Number.isNaN(owner) && owner >= 0) return owner;
+    }
+    const all = messageRoot.querySelectorAll("[data-paragraph-index]");
+    if (!all.length) return 0;
+    const last = all[all.length - 1].getAttribute("data-paragraph-index");
+    const n = parseInt(last, 10);
+    return Number.isNaN(n) ? 0 : n;
+  }
+
+  function selectedExcerptIn(root) {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const elNode = node.nodeType === 1 ? node : node.parentElement;
+    if (!elNode || !root.contains(elNode)) return "";
+    return String(sel.toString() || "").replace(/\s+/g, " ").trim().slice(0, 500);
+  }
+
+  function bindMessageTextContextMenu() {
+    if (!el.messagesContainer || el.messagesContainer.dataset.textCtxBound === "1") return;
+    el.messagesContainer.dataset.textCtxBound = "1";
+    el.messagesContainer.addEventListener("contextmenu", function (e) {
+      const bubble = e.target.closest(".message-bubble.assistant");
+      if (!bubble || !el.messagesContainer.contains(bubble)) return;
+      if (e.target.closest("button, a, textarea, input, .message-footer")) return;
+      const row = bubble.closest(".message-row");
+      const msgId = row && row.getAttribute("data-msg-id");
+      if (!msgId) return;
+      const msg = messages.find((m) => m.id === msgId);
+      if (!msg || msg.role !== "assistant" || msg.ephemeral_debug) return;
+      const body =
+        bubble.querySelector(".message-content, .message-body-collapsible") || bubble;
+      e.preventDefault();
+      e.stopPropagation();
+      closeAllMessageContextMenus();
+      const excerpt = selectedExcerptIn(body);
+      textContextPending = {
+        messageId: msgId,
+        paragraphIndex: paragraphIndexFromEventTarget(e.target, body),
+        excerpt: excerpt,
+      };
+      const menu = getTextContextMenu();
+      if (!menu) return;
+      const copyBtn = document.getElementById("msg-text-copy");
+      if (copyBtn) copyBtn.hidden = !excerpt;
+      menu.hidden = false;
+      const pad = 8;
+      let x = e.clientX;
+      let y = e.clientY;
+      menu.style.left = x + "px";
+      menu.style.top = y + "px";
+      const rect = menu.getBoundingClientRect();
+      if (rect.right > window.innerWidth - pad) {
+        x = Math.max(pad, window.innerWidth - rect.width - pad);
+      }
+      if (rect.bottom > window.innerHeight - pad) {
+        y = Math.max(pad, window.innerHeight - rect.height - pad);
+      }
+      menu.style.left = x + "px";
+      menu.style.top = y + "px";
+      textContextIgnoreClickUntil = Date.now() + 400;
+    });
+    const menu = getTextContextMenu();
+    if (menu) {
+      menu.addEventListener("click", function (e) {
+        e.stopPropagation();
+        const action = e.target.closest("[data-action]");
+        if (!action) return;
+        const pending = textContextPending;
+        const kind = action.getAttribute("data-action");
+        closeTextContextMenu();
+        if (!pending) return;
+        if (kind === "illustrate-at") {
+          illustrateAtParagraph(pending.messageId, pending.paragraphIndex, pending.excerpt);
+          return;
+        }
+        if (kind === "copy-selection" && pending.excerpt) {
+          copyMessageToClipboard(pending.excerpt);
+        }
+      });
+    }
   }
 
   function bindMessageContextMenus() {
@@ -3878,7 +4030,9 @@
   initConversationFontSize();
   initConversationScrollNav();
   initIllustrationMetaModal();
+  bindMessageTextContextMenu();
   document.addEventListener("click", function () {
+    if (Date.now() < textContextIgnoreClickUntil) return;
     closeAllMessageContextMenus();
   });
   document.addEventListener("keydown", function (e) {
@@ -5156,6 +5310,48 @@
       debugLabel: `Iniciando generate-remaining message=${messageId}`,
       doneNotice: "Imágenes restantes terminadas.",
       errorPrefix: "Imágenes restantes: ",
+    });
+  }
+
+  async function illustrateAtParagraph(messageId, paragraphIndex, excerpt) {
+    if (!currentConversationId || !messageId) return;
+    if (illustratingMessageIds.has(messageId)) return;
+    const idx = paragraphIndex == null ? 0 : parseInt(paragraphIndex, 10);
+    if (Number.isNaN(idx) || idx < 0) {
+      showNotice("No se pudo localizar el párrafo.");
+      return;
+    }
+    const providerSel = document.getElementById("images-prompt-provider");
+    const modelSel = document.getElementById("images-prompt-model");
+    const retries = document.getElementById("images-retries");
+    const promptEl = document.getElementById("images-prompt");
+    const useChatConfig = document.getElementById("images-use-chat-config");
+    const useChat = !!(useChatConfig && useChatConfig.checked);
+    const promptModel = modelSel && modelSel.value;
+    if (!useChat && !promptModel) {
+      showNotice("Imágenes: elige un modelo LLM de prompts en la pestaña Imágenes.");
+      return;
+    }
+    await runIllustrationStream({
+      messageId,
+      url: `${API}/conversations/${currentConversationId}/messages/${messageId}/illustrations/illustrate-at`,
+      body: {
+        images_per_response: 1,
+        prompt_provider: (providerSel && providerSel.value) || "ollama",
+        prompt_model: promptModel || "",
+        retries: retries ? parseInt(retries.value, 10) || 0 : 0,
+        prompt: promptEl ? String(promptEl.value || "").trim() : "",
+        prompt_system_instructions: getPlannerRulesTextForSystem(),
+        use_chat_config: useChat,
+        include_prompt_debug: isShowDebugMode(),
+        debug: true,
+        paragraph_index: idx,
+        selected_excerpt: excerpt ? String(excerpt).trim() : "",
+        ...readForgePanelParams(),
+      },
+      debugLabel: `Iniciando illustrate-at message=${messageId} párrafo=${idx}`,
+      doneNotice: "Imagen del párrafo terminada.",
+      errorPrefix: "Ilustración: ",
     });
   }
 

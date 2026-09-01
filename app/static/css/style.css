@@ -3089,6 +3089,29 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   display: none;
 }
 
+.msg-text-context-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background, #fff);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.msg-text-context-menu[hidden] {
+  display: none;
+}
+
+[data-theme="dark"] .msg-text-context-menu {
+  background: var(--sidebar);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
 .msg-context-item {
   display: block;
   width: 100%;
@@ -4963,8 +4986,19 @@ textarea:focus:not(:focus-visible) {
   padding: 4px;
 }
 
+.msg-text-context-menu {
+  border-radius: var(--radius-md);
+  background: var(--acrylic);
+  backdrop-filter: blur(30px) saturate(1.25);
+  -webkit-backdrop-filter: blur(30px) saturate(1.25);
+  border: 1px solid var(--stroke-card);
+  box-shadow: var(--elevation-16);
+  padding: 4px;
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .msg-context-menu {
+  .msg-context-menu,
+  .msg-text-context-menu {
     background: var(--acrylic-fallback);
   }
 }

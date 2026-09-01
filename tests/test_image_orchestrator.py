@@ -29,12 +29,16 @@ class FakePlanner:
         coverage_block=None,
         assigned_paragraphs=None,
         existing_prompts=None,
+        pinned=False,
+        focus_excerpt=None,
     ):
         self.last_text = text
         self.last_already_planned = already_planned
         self.last_coverage_block = coverage_block
         self.last_assigned_paragraphs = assigned_paragraphs
         self.last_existing_prompts = existing_prompts
+        self.last_pinned = pinned
+        self.last_focus_excerpt = focus_excerpt
         return self._scene_plan
 
 
@@ -53,6 +57,8 @@ class SequencingPlanner:
         coverage_block=None,
         assigned_paragraphs=None,
         existing_prompts=None,
+        pinned=False,
+        focus_excerpt=None,
     ):
         self.calls.append(
             {
@@ -62,6 +68,8 @@ class SequencingPlanner:
                 "coverage_block": coverage_block,
                 "assigned": list(assigned_paragraphs or []),
                 "existing_prompts": list(existing_prompts or []),
+                "pinned": pinned,
+                "focus_excerpt": focus_excerpt,
             }
         )
         if not self._plans:
@@ -576,3 +584,62 @@ def test_orchestrator_applies_forge_param_overrides_to_forge_body():
     assert forge.calls[0]["body"]["height"] == 768
     assert forge.calls[0]["body"]["seed"] == -1
     assert forge.calls[0]["body"]["prompt"] == "faro"
+
+
+def test_run_at_inserts_beside_existing_image_on_same_paragraph():
+    text = (
+        "El faro seguía en pie.\n"
+        '<img src="/api/illustrated-images/old.png" class="chat-illustration" />\n\n'
+        "Luego llegó la calma."
+    )
+    planner = FakePlanner(
+        ScenePlan(
+            illustrate=True,
+            reason="r",
+            scenes=[SceneSpec(id="s1", prompt="coat in wind at lighthouse", paragraph_index=0)],
+        )
+    )
+    orch = ImageIllustrationOrchestrator(
+        planner=planner,
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"coat in wind at lighthouse": b"img"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(
+        orch.run_at(
+            text,
+            paragraph_index=0,
+            selected_excerpt="faro seguía",
+            retries=0,
+            existing_prompts=["lighthouse at dusk"],
+        )
+    )
+    assert planner.last_pinned is True
+    assert planner.last_focus_excerpt == "faro seguía"
+    assert planner.last_assigned_paragraphs
+    assert planner.last_assigned_paragraphs[0].index == 0
+    assert "lighthouse at dusk" in (planner.last_existing_prompts or [])
+    done = events[-1]
+    assert done.type == "done"
+    content = done.content or ""
+    old_at = content.index("old.png")
+    new_at = content.index("s1.png")
+    calm_at = content.index("Luego llegó la calma")
+    assert old_at < new_at < calm_at
+    assert content.count("chat-illustration") >= 2
+    assert not any(e.type == "error" for e in events)
+
+
+def test_run_at_skips_out_of_range_paragraph():
+    orch = ImageIllustrationOrchestrator(
+        planner=FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=[])),
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(orch.run_at("Un párrafo.", paragraph_index=4, retries=0))
+    assert events[-1].type == "done"
+    assert events[-1].content == "Un párrafo."
+    assert not any(e.type == "image" for e in events)
+    codes = [e.data.get("code") for e in events if e.type == "status"]
+    assert "images.skipped" in codes
