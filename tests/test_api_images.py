@@ -439,6 +439,139 @@ def test_prune_orphans_keeps_photos(client, db_session):
     assert "A" in body["content"] and "B" in body["content"]
 
 
+def _origin_fork_with_assistant(db_session, assistant_content="Ra"):
+    from app import crud
+
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m", provider="ollama")
+    crud.add_message(db_session, origin.id, "user", "A")
+    assistant = crud.add_message(db_session, origin.id, "assistant", assistant_content)
+    child = crud.fork_conversation(db_session, origin.id, assistant.id)
+    return origin, assistant, child
+
+
+def test_clear_photos_from_fork_mutates_origin_and_sibling(client, db_session, tmp_path, monkeypatch):
+    from app import crud
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    name = storage.save_illustrated_image("s1", b"\x89PNG\r\n\x1a\n")
+    content = (
+        f'Había un faro.\n<img src="/api/illustrated-images/{name}" class="chat-illustration" />\n'
+        "⟦img:s2⟧"
+    )
+    origin, assistant, child = _origin_fork_with_assistant(db_session, content)
+    sibling = crud.fork_conversation(db_session, origin.id, assistant.id)
+
+    res = client.post(
+        f"/api/conversations/{child.id}/messages/{assistant.id}/illustrations/clear-photos"
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["deleted_files"] == 1
+    assert "<img" not in body["content"]
+    assert "⟦img:s2⟧" in body["content"]
+    assert not (tmp_path / "illustrated" / name).is_file()
+
+    origin_msg = crud.get_message(db_session, origin.id, assistant.id)
+    assert origin_msg is not None
+    assert origin_msg.content == body["content"]
+    sibling_inherited = crud.get_inherited_prefix(db_session, sibling)
+    assert sibling_inherited[-1].content == body["content"]
+
+
+def test_prune_orphans_from_fork_mutates_origin(client, db_session):
+    from app import crud
+
+    content = (
+        'A\n<img src="/api/illustrated-images/keep.png" class="chat-illustration" />\n'
+        "⟦img:s1⟧\n"
+        '<span class="chat-illustration-error" data-scene="s2">fail</span>\nB'
+    )
+    origin, assistant, child = _origin_fork_with_assistant(db_session, content)
+    res = client.post(
+        f"/api/conversations/{child.id}/messages/{assistant.id}/illustrations/prune-orphans"
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert "keep.png" in body["content"]
+    assert "⟦img:" not in body["content"]
+    assert "chat-illustration-error" not in body["content"]
+    origin_msg = crud.get_message(db_session, origin.id, assistant.id)
+    assert origin_msg is not None
+    assert origin_msg.content == body["content"]
+
+
+def test_illustration_ops_404_on_message_after_fork_anchor(client, db_session):
+    from app import crud
+
+    origin, assistant, child = _origin_fork_with_assistant(db_session)
+    after = crud.add_message(db_session, origin.id, "assistant", "fuera del prefijo")
+    res = client.post(
+        f"/api/conversations/{child.id}/messages/{after.id}/illustrations/clear-photos"
+    )
+    assert res.status_code == 404
+
+
+def test_illustrate_from_fork_persists_on_origin(client, db_session):
+    from app import crud
+
+    origin, assistant, child = _origin_fork_with_assistant(db_session, "Ra")
+    sibling = crud.fork_conversation(db_session, origin.id, assistant.id)
+
+    class FakeOrch:
+        def run(self, *a, **k):
+            yield IllustrationEvent(type="done", content="Ra ilustrado")
+
+    captured = {}
+
+    def fake_build(body, *, conv=None, db=None):
+        captured["conv_id"] = getattr(conv, "id", None)
+        return FakeOrch()
+
+    with patch("app.routers.api_images._build_orchestrator", side_effect=fake_build):
+        res = client.post(
+            f"/api/conversations/{child.id}/messages/{assistant.id}/illustrate",
+            json={"prompt_model": "m", "images_per_response": 1, "debug": True},
+        )
+    assert res.status_code == 200
+    assert captured["conv_id"] == child.id
+    origin_msg = crud.get_message(db_session, origin.id, assistant.id)
+    assert origin_msg is not None
+    assert origin_msg.content == "Ra ilustrado"
+    assert crud.get_inherited_prefix(db_session, sibling)[-1].content == "Ra ilustrado"
+
+
+def test_generate_remaining_from_fork_persists_on_origin(client, db_session):
+    from app import crud
+
+    content = (
+        'A\n<img src="/api/illustrated-images/keep.png" class="chat-illustration" />\n'
+        '<span class="chat-illustration-placeholder" data-scene="s1" data-prompt="storm">'
+        "pending</span>"
+    )
+    origin, assistant, child = _origin_fork_with_assistant(db_session, content)
+
+    class FakeOrch:
+        def run_remaining(self, *a, **k):
+            yield IllustrationEvent(
+                type="done",
+                content=(
+                    'A\n<img src="/api/illustrated-images/keep.png" class="chat-illustration" />\n'
+                    '<img src="/api/illustrated-images/s1.png" alt="escena s1" class="chat-illustration" />'
+                ),
+            )
+
+    with patch("app.routers.api_images._build_forge_orchestrator", return_value=FakeOrch()):
+        res = client.post(
+            f"/api/conversations/{child.id}/messages/{assistant.id}/illustrations/generate-remaining",
+            json={"retries": 0},
+        )
+    assert res.status_code == 200
+    origin_msg = crud.get_message(db_session, origin.id, assistant.id)
+    assert origin_msg is not None
+    assert "s1.png" in origin_msg.content
+
+
 def test_clear_photos_rejects_user_message(client, db_session):
     from app import crud
 

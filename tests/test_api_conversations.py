@@ -657,3 +657,20 @@ def test_fork_parent_heredado_en_envio_no_404(mock_get_provider, client):
     second = mock_provider.chat.call_args_list[1][0][1]
     contents = [m["content"] for m in second if m["role"] in ("user", "assistant")]
     assert contents == ["A", "Ra", "B"]
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_delete_mensaje_heredado_desde_fork_sigue_404(mock_get_provider, client):
+    """El borrado no se resuelve al origen: solo mutaciones de contenido son compartidas."""
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Ra"
+    mock_get_provider.return_value = mock_provider
+    origin_id = client.post("/api/conversations", json={"title": "Origen", "model_id": "m"}).json()["id"]
+    client.post(f"/api/conversations/{origin_id}/messages", json={"content": "A"})
+    origin = client.get(f"/api/conversations/{origin_id}").json()
+    ancla = origin["messages"][1]["id"]
+    child_id = client.post(f"/api/conversations/{origin_id}/fork", json={"message_id": ancla}).json()["id"]
+    r = client.delete(f"/api/conversations/{child_id}/messages/{ancla}")
+    assert r.status_code == 404
+    origin_after = client.get(f"/api/conversations/{origin_id}").json()
+    assert any(m["id"] == ancla for m in origin_after["messages"])

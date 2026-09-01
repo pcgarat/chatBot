@@ -242,14 +242,30 @@ def get_resolved_history(
     return prefix
 
 
+def get_visible_message(db: Session, view_conversation_id: str, message_id: str) -> Message | None:
+    """Mensaje propio o del prefijo heredado; None si no es visible en esa vista."""
+    view = get_conversation(db, view_conversation_id)
+    if not view:
+        return None
+    return _visible_message_in(db, view, message_id)
+
+
+def _visible_message_in(db: Session, view: Conversation, message_id: str) -> Message | None:
+    own = get_message(db, view.id, message_id)
+    if own:
+        return own
+    for msg in get_inherited_prefix(db, view):
+        if msg.id == message_id:
+            return msg
+    return None
+
+
 def resolve_fork_anchor(db: Session, view_conv: Conversation, message_id: str) -> tuple[str, str] | None:
     """(conversation_id dueña del mensaje, message_id) para colgar el historial."""
-    if get_message(db, view_conv.id, message_id):
-        return view_conv.id, message_id
-    for msg in get_inherited_prefix(db, view_conv):
-        if msg.id == message_id:
-            return msg.conversation_id, message_id
-    return None
+    msg = _visible_message_in(db, view_conv, message_id)
+    if not msg:
+        return None
+    return msg.conversation_id, message_id
 
 
 def fork_conversation(db: Session, view_conversation_id: str, message_id: str) -> Conversation | None:

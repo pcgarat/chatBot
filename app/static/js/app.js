@@ -2288,7 +2288,7 @@
             : "";
           const illustrating = m.id && illustratingMessageIds.has(m.id);
           const illustrateBtn =
-            !isInherited && !isEphemeralDebug && m.role === "assistant" && m.id && hasContent
+            !isEphemeralDebug && m.role === "assistant" && m.id && hasContent
               ? `<button type="button" class="msg-action-btn msg-illustrate-btn${illustrating ? " is-busy" : ""}" data-msg-id="${escapeHtml(m.id)}" title="Generar imágenes para esta respuesta" aria-label="Generar imágenes" ${illustrating ? "disabled" : ""}>${msgIllustrateIconSvg}</button>`
               : "";
           const readBtn =
@@ -2296,7 +2296,7 @@
               ? `<button type="button" class="msg-action-btn msg-read-btn" data-msg-index="${idx}" title="Modo lectura a pantalla completa" aria-label="Modo lectura">${msgReadIconSvg}</button>`
               : "";
           const illustrationItems =
-            !isInherited && m.role === "assistant" && hasContent
+            m.role === "assistant" && hasContent
               ? `<button type="button" class="msg-context-item" role="menuitem" data-action="clear-photos" data-msg-id="${escapeHtml(m.id)}">Borrar todas las fotos</button>
                     <button type="button" class="msg-context-item" role="menuitem" data-action="prune-orphans" data-msg-id="${escapeHtml(m.id)}">Eliminar anclas huérfanas</button>
                     <button type="button" class="msg-context-item" role="menuitem" data-action="generate-remaining" data-msg-id="${escapeHtml(m.id)}">Generar imágenes restantes</button>`
