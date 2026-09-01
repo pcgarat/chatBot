@@ -4015,11 +4015,27 @@ body.reading-mode-resizing img {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0;
-  padding-top: 4px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding-top: 0;
   min-height: 28px;
+}
+
+.auto-title-check {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  cursor: pointer;
+}
+
+.auto-title-check input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
 }
 
 .chat-session-actions {
@@ -4071,6 +4087,15 @@ body.reading-mode-resizing img {
   border: none;
   background: var(--layer-alt);
   box-shadow: var(--focus-ring);
+}
+
+.chat-title-row .conversation-title-input:read-only,
+.chat-title-row .conversation-title-input:read-only:hover,
+.chat-title-row .conversation-title-input:read-only:focus {
+  background: transparent;
+  box-shadow: none;
+  cursor: default;
+  opacity: 0.88;
 }
 
 .chat-meta-row {

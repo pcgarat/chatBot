@@ -8,6 +8,7 @@
     return;
   }
   let currentConversationId = null;
+  let currentAutoTitle = false;
   let messages = [];
   let allMessages = [];
   let activeLeafId = null;
@@ -40,6 +41,7 @@
     conversationsTrash: document.getElementById("conversations-trash"),
     conversationsTrashList: document.getElementById("conversations-trash-list"),
     conversationTitle: document.getElementById("conversation-title"),
+    conversationAutoTitle: document.getElementById("conversation-auto-title"),
     providerSelect: document.getElementById("provider-select"),
     modelSelect: document.getElementById("model-select"),
     modelSelectInput: document.getElementById("model-select-input"),
@@ -1033,6 +1035,10 @@
     try {
       const list = await fetchJson(`${API}/conversations`);
       renderConversationsList(list);
+      if (currentAutoTitle && currentConversationId && el.conversationTitle) {
+        const item = (list || []).find(function (c) { return c.id === currentConversationId; });
+        if (item && item.title) el.conversationTitle.value = item.title;
+      }
       await loadDeletedConversations();
     } catch (e) {
       showError("Error al cargar conversaciones: " + e.message);
@@ -1839,7 +1845,7 @@
       if (el.instructionOverride) {
         payload.instruction_override = (el.instructionOverride.value || "").trim() || null;
       }
-      if (el.conversationTitle) {
+      if (el.conversationTitle && !currentAutoTitle) {
         payload.title = el.conversationTitle.value.trim() || getDefaultConversationTitle();
       }
       if (Object.keys(payload).length > 0) {
@@ -1856,6 +1862,7 @@
     }
     if (conv) {
       if (el.conversationTitle) el.conversationTitle.value = conv.title;
+      applyAutoTitleUi(Boolean(conv.auto_title));
       currentProvider = conv.provider || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
       await loadModels(false);
@@ -1895,6 +1902,7 @@
       if (el.historyTurnsInput) el.historyTurnsInput.value = String(Math.min(100, Math.max(0, turns)));
     } else {
       if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
+      applyAutoTitleUi(false);
       currentProvider = providers[0] || "ollama";
       if (el.providerSelect) el.providerSelect.value = currentProvider;
       if (el.modelSelect) {
@@ -2216,6 +2224,7 @@
         method: "POST",
         body: JSON.stringify({
           title: title,
+          auto_title: Boolean(el.conversationAutoTitle && el.conversationAutoTitle.checked),
           model_id: model,
           provider: provider,
           system_instructions: rules.length ? rules : null,
@@ -2227,8 +2236,30 @@
     }
   }
 
+  function applyAutoTitleUi(enabled) {
+    currentAutoTitle = Boolean(enabled);
+    if (el.conversationAutoTitle) el.conversationAutoTitle.checked = currentAutoTitle;
+    if (el.conversationTitle) el.conversationTitle.readOnly = currentAutoTitle;
+  }
+
+  async function commitAutoTitleFlag() {
+    if (!el.conversationAutoTitle) return;
+    applyAutoTitleUi(el.conversationAutoTitle.checked);
+    if (!currentConversationId) return;
+    try {
+      const conv = await fetchJson(`${API}/conversations/${currentConversationId}`, {
+        method: "PUT",
+        body: JSON.stringify({ auto_title: currentAutoTitle }),
+      });
+      if (el.conversationTitle && conv && conv.title) el.conversationTitle.value = conv.title;
+      loadConversations();
+    } catch (e) {
+      showError("Error al guardar el título automático: " + e.message);
+    }
+  }
+
   async function commitConversationTitle() {
-    if (!el.conversationTitle) return;
+    if (!el.conversationTitle || currentAutoTitle) return;
     const title = el.conversationTitle.value.trim() || getDefaultConversationTitle();
     if (el.conversationTitle.value !== title) el.conversationTitle.value = title;
     if (!currentConversationId) return;
@@ -2252,7 +2283,10 @@
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
         body: JSON.stringify({
-          title: (el.conversationTitle && el.conversationTitle.value.trim()) || getDefaultConversationTitle(),
+          title: currentAutoTitle
+            ? undefined
+            : ((el.conversationTitle && el.conversationTitle.value.trim()) || getDefaultConversationTitle()),
+          auto_title: currentAutoTitle,
           model_id: (el.modelSelect && el.modelSelect.value) || "",
           provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
           system_instructions: rules,
@@ -2962,6 +2996,9 @@
         el.conversationTitle.blur();
       }
     });
+  }
+  if (el.conversationAutoTitle) {
+    el.conversationAutoTitle.addEventListener("change", commitAutoTitleFlag);
   }
   if (el.btnSend) el.btnSend.addEventListener("click", onComposerPrimaryClick);
   function onShowDebugModeChange(checked) {

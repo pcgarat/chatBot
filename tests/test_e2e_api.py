@@ -788,6 +788,7 @@ def test_e2e_create_conversation(client, ollama_available):
     data = r.json()
     assert "id" in data
     assert data["title"] == "E2E create"
+    assert data["auto_title"] is False
     assert data["model_id"] == model_name
     assert data["provider"] == "ollama"
     assert "created_at" in data
@@ -833,6 +834,11 @@ def test_e2e_update_conversation(client, ollama_available):
     )
     assert r.status_code == 200
     assert r.json()["title"] == "Updated title"
+    assert r.json()["auto_title"] is False
+    r_auto = client.put(f"/api/conversations/{cid}", json={"auto_title": True})
+    assert r_auto.status_code == 200
+    assert r_auto.json()["auto_title"] is True
+    assert r_auto.json()["title"] == "Updated title"
     assert "model_params" in r.json()
     assert r.json()["model_params"] is None
 

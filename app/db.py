@@ -210,3 +210,11 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(
+                "ALTER TABLE conversations ADD COLUMN auto_title BOOLEAN NOT NULL DEFAULT 0"
+            ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
