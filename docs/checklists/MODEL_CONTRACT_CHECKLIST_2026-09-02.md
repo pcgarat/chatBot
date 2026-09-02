@@ -6,7 +6,7 @@
 **Plan:** [`docs/plans/PLAN_MODEL_CONTRACT_2026-09-02.md`](../plans/PLAN_MODEL_CONTRACT_2026-09-02.md)  
 **Diseño:** [`docs/DESIGN_MODEL_CONTRACT_2026-09-02.md`](../DESIGN_MODEL_CONTRACT_2026-09-02.md)
 
-**Estado:** v1 implementada en `feat/model-contract`. Pendiente review humana / commit.
+**Estado:** v1 + overlays cloud + defaults de contrato en UI. Rama `feat/model-contract`.
 
 **Rama:** `feat/model-contract`
 

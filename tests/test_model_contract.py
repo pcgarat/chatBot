@@ -127,10 +127,40 @@ def test_load_overlays_json_invalido(tmp_path):
         _clear_overlay_cache("broken")
 
 
-def test_load_overlays_ollama_tiene_dos_modelos_antagónicos():
+def test_load_overlays_ollama_cubre_cloud_instalados():
     _clear_overlay_cache("ollama")
     data = load_overlays("ollama")
-    assert set(data) == {"gpt-oss:120b-cloud", "deepseek-v4-flash:cloud"}
+    expected = {
+        "gpt-oss:120b-cloud",
+        "deepseek-v4-flash:cloud",
+        "gemma4:31b-cloud",
+        "glm-5.3-flash:cloud",
+        "glm-5.2:cloud",
+        "kimi-k2.6:cloud",
+        "kimi-k3:cloud",
+        "mistral-large-3:675b-cloud",
+    }
+    assert set(data) == expected
+
+
+def test_resolve_mistral_sin_thinking_con_recetas():
+    contract = resolve_model_contract("ollama", "mistral-large-3:675b-cloud")
+    assert contract.capabilities.thinking.kind == "none"
+    assert contract.capabilities.vision is True
+    assert "think" not in contract.params
+    assert contract.params["num_ctx"]["max"] == 262144
+    assert contract.params["temperature"]["default"] == 0.3
+    assert {r.id for r in contract.recipes} >= {"enterprise", "docs"}
+
+
+def test_resolve_gemma_sampling_oficial():
+    contract = resolve_model_contract("ollama", "gemma4:31b-cloud")
+    assert contract.capabilities.vision is True
+    assert contract.capabilities.thinking.kind == "levels"
+    assert contract.params["temperature"]["default"] == 1.0
+    assert contract.params["top_p"]["default"] == 0.95
+    assert contract.params["top_k"]["default"] == 64
+    assert "omit_prior_thinking" in contract.quirks
 
 
 def test_overlay_gpt_oss_es_sparse_y_thinking_no_off():

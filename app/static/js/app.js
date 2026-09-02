@@ -446,7 +446,28 @@
       .join("");
   }
 
-  function applyThinkAndRecipesFromContract() {
+  function syncContractParamBaselines() {
+    if (!currentContract || !currentContract.params || typeof currentContract.params !== "object") return;
+    Object.keys(currentContract.params).forEach((paramId) => {
+      const spec = currentContract.params[paramId];
+      if (spec && spec.default !== undefined) paramsBaseline[paramId] = spec.default;
+    });
+  }
+
+  /** Aplica defaults del contrato a controles (temperature, num_ctx, think…). No usar si origen es user. */
+  function applyContractParamDefaults() {
+    if (!currentContract || !currentContract.params || typeof currentContract.params !== "object") return;
+    syncContractParamBaselines();
+    const defaults = {};
+    Object.keys(currentContract.params).forEach((paramId) => {
+      const spec = currentContract.params[paramId];
+      if (spec && spec.default !== undefined) defaults[paramId] = spec.default;
+    });
+    applyUserParamsToControls(defaults);
+  }
+
+  function applyThinkAndRecipesFromContract(opts) {
+    const applyParamDefaults = Boolean(opts && opts.applyParamDefaults);
     const row = document.getElementById("composer-model-row");
     const wrap = document.getElementById("composer-think-wrap");
     const control = document.getElementById("param-think");
@@ -469,8 +490,11 @@
         control.disabled = false;
         control.classList.remove("control-disabled");
         const def = spec.default !== undefined ? spec.default : thinking.default;
-        if (def !== undefined && def !== null) {
-          paramsBaseline.think = def;
+        if (def !== undefined && def !== null) paramsBaseline.think = def;
+        const allowed = Array.from(control.options).map((o) => o.value);
+        if (applyParamDefaults && def !== undefined && def !== null) {
+          control.value = thinkSelectValue(def);
+        } else if (!allowed.includes(control.value) && def !== undefined && def !== null) {
           control.value = thinkSelectValue(def);
         }
       } else {
@@ -497,14 +521,17 @@
     if (numCtx && ctxSpec && ctxSpec.max != null) {
       numCtx.setAttribute("max", String(ctxSpec.max));
     }
+    syncContractParamBaselines();
+    if (applyParamDefaults) applyContractParamDefaults();
   }
 
-  async function loadModelContract() {
+  async function loadModelContract(opts) {
+    const applyParamDefaults = Boolean(opts && opts.applyParamDefaults);
     const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "";
     const modelId = (el.modelSelect && el.modelSelect.value) || "";
     if (!provider || !modelId) {
       currentContract = null;
-      applyThinkAndRecipesFromContract();
+      applyThinkAndRecipesFromContract({ applyParamDefaults: false });
       return;
     }
     try {
@@ -517,7 +544,7 @@
     } catch (_) {
       currentContract = null;
     }
-    applyThinkAndRecipesFromContract();
+    applyThinkAndRecipesFromContract({ applyParamDefaults });
   }
 
   function applyModelRecipe(recipe) {
@@ -617,7 +644,7 @@
           applyPresetToControls(preset);
           setParamsBaselineFromPreset(preset);
           paramsSource = "preset";
-          await loadModelContract();
+          await loadModelContract({ applyParamDefaults: false });
           showNotice("Parámetros restaurados al preset del modelo.");
           return;
         }
@@ -625,7 +652,7 @@
     }
     applyParamsConfig();
     paramsSource = "default";
-    await loadModelContract();
+    await loadModelContract({ applyParamDefaults: true });
     showNotice("Parámetros restaurados a los valores por defecto del proveedor.");
   }
 
@@ -1165,7 +1192,7 @@
     await loadModels(false);
     await loadParamsForProvider(currentProvider);
     await ensureParamsBaselineForCurrentModel();
-    await loadModelContract();
+    await loadModelContract({ applyParamDefaults: paramsSource !== "user" });
     syncHeaderProviderModel();
     // Actualizar conversación si hay una abierta
     if (currentConversationId) {
@@ -2029,7 +2056,7 @@
       }
       rules = normalizeRulesFromApi(conv.system_instructions, conv.system_instruction_global);
       await loadParamsForProvider(currentProvider);
-      await loadModelContract();
+      await loadModelContract({ applyParamDefaults: false });
       if (conv.model_params && typeof conv.model_params === "object" && Object.keys(conv.model_params).length > 0) {
         await ensureParamsBaselineForCurrentModel();
         applyUserParamsToControls(conv.model_params);
@@ -2049,9 +2076,11 @@
             paramsSource = "preset";
           } else {
             paramsSource = "default";
+            applyContractParamDefaults();
           }
         } catch (_) {
           paramsSource = "default";
+          applyContractParamDefaults();
         }
       }
       applyConversationTree(conv);
@@ -2074,7 +2103,7 @@
       }
       rules = [];
       await loadParamsForProvider(currentProvider);
-      await loadModelContract();
+      await loadModelContract({ applyParamDefaults: true });
       await ensureParamsBaselineForCurrentModel();
       paramsSource = "default";
       resetConversationTree();
@@ -3170,7 +3199,7 @@
       }
     }
     lastUsage = null;
-    await loadModelContract();
+    await loadModelContract({ applyParamDefaults: paramsSource !== "user" });
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
@@ -6217,7 +6246,7 @@
     }
     await loadParamsForProvider(currentProvider);
     await ensureParamsBaselineForCurrentModel();
-    await loadModelContract();
+    await loadModelContract({ applyParamDefaults: false });
     if (snap.model_params && typeof snap.model_params === "object") {
       applyUserParamsToControls(snap.model_params);
     }
@@ -6907,7 +6936,7 @@
       }
     }
     await loadParamsForProvider(currentProvider);
-    await loadModelContract();
+    await loadModelContract({ applyParamDefaults: true });
     await loadConversations();
     const storedId = (function () {
       try {
