@@ -1460,11 +1460,16 @@
     return m && m.id ? String(m.id) : `idx:${idx}`;
   }
 
-  /** Claves de mensajes assistant que el usuario ha expandido (el resto colapsable queda plegado). */
-  const expandedMessageKeys = new Set();
+  /** Claves de mensajes assistant que el usuario ha plegado. El resto colapsable permanece abierto. */
+  const collapsedMessageKeys = new Set();
 
   function collapseAllMessages() {
-    expandedMessageKeys.clear();
+    messages.forEach((m, idx) => {
+      if (m.role === "user" || m.ephemeral_debug) return;
+      if (!(m.content && String(m.content).trim())) return;
+      if (!splitFirstParagraph(m.content).collapsible) return;
+      collapsedMessageKeys.add(messageCollapseKey(m, idx));
+    });
     renderMessages();
   }
 
@@ -1690,12 +1695,11 @@
     });
   }
 
-  function buildCollapsibleMessageHtml(content, key, expanded) {
+  function buildCollapsibleMessageHtml(content, key, collapsed) {
     const parts = splitFirstParagraph(content);
     if (!parts.collapsible) {
       return `<div class="message-content">${formatMessageHtml(content || "", 0)}</div>`;
     }
-    const collapsed = !expanded;
     const toggleLabel = collapsed ? "Show more" : "Show less";
     const restOffset = countNarrativeParagraphs(parts.first);
     return `<div class="message-body-collapsible${collapsed ? " is-collapsed" : ""}" data-collapse-key="${escapeHtml(key)}">
@@ -1861,7 +1865,8 @@
     }
   }
 
-  async function setCurrentConversation(conv) {
+  async function setCurrentConversation(conv, options) {
+    const preserveView = !!(options && options.preserveView);
     const previousConvId = currentConversationId;
     if (previousConvId && (!conv || conv.id !== previousConvId)) {
       const payload = {};
@@ -1920,7 +1925,7 @@
         }
       }
       applyConversationTree(conv);
-      expandedMessageKeys.clear();
+      if (!preserveView) collapsedMessageKeys.clear();
       const turns = conv.history_turns != null && conv.history_turns >= 0 ? conv.history_turns : 5;
       if (el.historyTurnsInput) el.historyTurnsInput.value = String(Math.min(100, Math.max(0, turns)));
       if (conv.images && typeof conv.images === "object") {
@@ -1942,13 +1947,14 @@
       await ensureParamsBaselineForCurrentModel();
       paramsSource = "default";
       resetConversationTree();
-      expandedMessageKeys.clear();
+      collapsedMessageKeys.clear();
       if (el.historyTurnsInput) el.historyTurnsInput.value = "5";
     }
     renderRules();
     renderParamsSourceLabel();
     renderParamsToSend();
     renderMessages();
+    if (conv && !preserveView) scheduleScrollMessagesToBottom();
     loadConversations();
     lastUsage = null;
     await loadContextLength();
@@ -2327,7 +2333,7 @@
           instruction_override: (el.instructionOverride && el.instructionOverride.value.trim()) || null,
         }),
       });
-      await setCurrentConversation(conv);
+      await setCurrentConversation(conv, { preserveView: true });
     } catch (e) {
       showError("Error al guardar: " + e.message);
     }
@@ -2379,12 +2385,51 @@
     }
   }
 
+  function isMessagesScrolledToBottom(threshold) {
+    const container = el.messagesContainer;
+    if (!container) return true;
+    const slack = threshold == null ? 64 : threshold;
+    return container.scrollTop + container.clientHeight >= container.scrollHeight - slack;
+  }
+
+  function scrollMessagesToBottom() {
+    if (!el.messagesContainer) return;
+    el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+  }
+
+  let scrollToBottomGeneration = 0;
+
+  function cancelScheduledScrollToBottom() {
+    scrollToBottomGeneration += 1;
+  }
+
+  /** Scroll al final al abrir una conversación; se anula si el usuario navega a un mensaje concreto. */
+  function scheduleScrollMessagesToBottom() {
+    const generation = ++scrollToBottomGeneration;
+    const run = function () {
+      if (generation !== scrollToBottomGeneration) return;
+      scrollMessagesToBottom();
+    };
+    const followLayout = function () {
+      if (generation !== scrollToBottomGeneration) return;
+      if (isMessagesScrolledToBottom(96)) scrollMessagesToBottom();
+    };
+    run();
+    requestAnimationFrame(function () {
+      run();
+      requestAnimationFrame(run);
+    });
+    window.setTimeout(followLayout, 120);
+    window.setTimeout(followLayout, 400);
+  }
+
   function renderMessages() {
     if (!el.messagesContainer) return;
     if (messages.length === 0) {
       el.messagesContainer.innerHTML = '<div class="empty-state chat-empty-state"><div class="empty-state-inner"><img src="/static/img/logo_256.png" alt="" class="empty-state-logo" /><p class="empty-state-text">Empieza escribiendo una orden. El agente mantendrá el contexto técnico y el tono estable.</p></div></div>';
       return;
     }
+    const prevScrollTop = el.messagesContainer.scrollTop;
     const showDebug = isShowDebugMode();
     el.messagesContainer.innerHTML = messages
       .map(
@@ -2448,7 +2493,7 @@
             bodyHtml = buildCollapsibleMessageHtml(
               m.content || "",
               collapseKey,
-              expandedMessageKeys.has(collapseKey)
+              collapsedMessageKeys.has(collapseKey)
             );
           } else {
             bodyHtml = `<div class="message-content">${formatMessageHtml(m.content || "", 0)}</div>`;
@@ -2472,13 +2517,13 @@
         if (!key) return;
         const willExpand = wrap.classList.contains("is-collapsed");
         if (willExpand) {
-          expandedMessageKeys.add(key);
+          collapsedMessageKeys.delete(key);
           wrap.classList.remove("is-collapsed");
           btn.setAttribute("aria-expanded", "true");
           btn.textContent = "Show less";
           kickLazyIllustrations(wrap);
         } else {
-          expandedMessageKeys.delete(key);
+          collapsedMessageKeys.add(key);
           wrap.classList.add("is-collapsed");
           btn.setAttribute("aria-expanded", "false");
           btn.textContent = "Show more";
@@ -2530,7 +2575,11 @@
     bindMessageContextMenus();
     enhanceIllustrationFrames(el.messagesContainer);
     scheduleConversationImageFilter();
-    scrollToBottomIfEnabled();
+    if (isAutoScrollDuringGeneration()) {
+      el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+    } else {
+      el.messagesContainer.scrollTop = prevScrollTop;
+    }
   }
 
   function closeAllMessageContextMenus() {
@@ -5070,7 +5119,7 @@
     if (!currentConversationId) return;
     try {
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}`);
-      await setCurrentConversation(conv);
+      await setCurrentConversation(conv, { preserveView: true });
     } catch (_) {}
   }
 
@@ -5677,6 +5726,7 @@
 
   function scrollAndHighlightMessage(messageId) {
     if (!el.messagesContainer || !messageId) return;
+    cancelScheduledScrollToBottom();
     const row = el.messagesContainer.querySelector('[data-msg-id="' + CSS.escape(messageId) + '"]');
     if (!row) {
       showNotice("El mensaje no está en el intento visible.");
