@@ -134,7 +134,7 @@ Orden recomendado (valor / riesgo). Cada corte en rama `feat/...` propia.
 
 ### Éxito v2 (borrador)
 
-- [ ] Gemma multi-turn no reenvía bloques `thought` previos.
+- [x] Gemma multi-turn no reenvía bloques `thought` previos.
 - [ ] Selector muestra cromos coherentes con el contrato.
 - [ ] Ajustes no muestran params que el contrato no declara.
 - [ ] Con visión: adjunto visible solo si `vision`; sin visión, oculto.

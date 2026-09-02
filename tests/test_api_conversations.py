@@ -5,11 +5,13 @@ from unittest.mock import patch, MagicMock
 from app.routers.api_conversations import _build_llm_messages
 
 
-def _mock_conv(system_instruction_global="Instrucciones", history_turns=None):
+def _mock_conv(system_instruction_global="Instrucciones", history_turns=None, model_id="llama3.2", provider="ollama"):
     """Convierte objeto con system_instruction_global y opcional history_turns (pares en el prompt)."""
     c = MagicMock()
     c.system_instruction_global = system_instruction_global
     c.history_turns = history_turns
+    c.model_id = model_id
+    c.provider = provider
     return c
 
 
@@ -452,6 +454,37 @@ def test_build_llm_messages_incluye_rag_context(mock_settings):
     assert "Contexto relevante del historial" in msgs[0]["content"]
     assert "Contexto RAG aquí." in msgs[0]["content"]
     assert "Global." in msgs[0]["content"]
+
+
+@patch("app.routers.api_conversations.settings")
+def test_build_llm_messages_gemma_omite_thought_previo(mock_settings):
+    """omit_prior_thinking del contrato Gemma: el historial assistant no reenvía bloques thought."""
+    conv = _mock_conv("Global.", history_turns=2, model_id="gemma4:31b-cloud")
+    existing = [
+        _mock_msg("user", "¿2+2?"),
+        _mock_msg("assistant", "<think>cuento con los dedos</think>\n4"),
+    ]
+    db = MagicMock()
+    msgs, _ = _build_llm_messages(conv, existing, "¿3+3?", None, db, rag_context=None)
+    assistant = next(m for m in msgs if m["role"] == "assistant")
+    assert assistant["content"] == "4"
+    assert "<think>" not in assistant["content"]
+    assert "thinking" not in assistant
+
+
+@patch("app.routers.api_conversations.settings")
+def test_build_llm_messages_sin_quirk_conserva_thought_en_content(mock_settings):
+    """Modelo sin overlay/quirk: el builder no reescribe bloques thought del historial."""
+    conv = _mock_conv("Global.", history_turns=2, model_id="llama3.2")
+    existing = [
+        _mock_msg("user", "¿2+2?"),
+        _mock_msg("assistant", "<think>cuento</think>\n4"),
+    ]
+    db = MagicMock()
+    msgs, _ = _build_llm_messages(conv, existing, "¿3+3?", None, db, rag_context=None)
+    assistant = next(m for m in msgs if m["role"] == "assistant")
+    assert "<think>cuento</think>" in assistant["content"]
+    assert "4" in assistant["content"]
 
 
 @patch("app.routers.api_conversations.get_provider")

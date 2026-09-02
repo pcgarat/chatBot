@@ -9,6 +9,7 @@ from app.services.model_contract.models import (
 )
 from app.services.model_contract.overlays import load_overlays
 from app.services.model_contract.resolve import resolve_model_contract
+from app.services.model_contract.history_quirks import apply_history_quirks
 from app.services.model_contract.thinking import normalize_think_value
 
 
@@ -274,3 +275,68 @@ def test_resolve_live_context_rellena_max_si_overlay_no_lo_trae():
     }
     contract = resolve_model_contract("ollama", "modelo-sin-overlay-xyz", show=show)
     assert contract.params["num_ctx"]["max"] == 8192
+
+
+def _history_with_thought() -> list[dict]:
+    return [
+        {"role": "system", "content": "Sé breve.\n<think>no toques el system</think>"},
+        {"role": "user", "content": "¿2+2?"},
+        {
+            "role": "assistant",
+            "content": "<think>sumo 2 y 2</think>\n\n4",
+            "thinking": "sumo 2 y 2",
+        },
+        {"role": "user", "content": "¿y 3+3?"},
+    ]
+
+
+def test_omit_prior_thinking_no_aplica_sin_quirk():
+    """Sin omit_prior_thinking el historial se reenvía tal cual (incl. thought)."""
+    original = _history_with_thought()
+    out = apply_history_quirks(original, ())
+    assert out == original
+    assert out[2]["thinking"] == "sumo 2 y 2"
+    assert "<think>" in out[2]["content"]
+
+
+def test_omit_prior_thinking_quita_campo_thinking_y_bloques_en_assistant():
+    """Gemma: no reenviar thought de turnos previos (campo API + tags en content)."""
+    out = apply_history_quirks(_history_with_thought(), ("omit_prior_thinking",))
+    assistant = out[2]
+    assert "thinking" not in assistant
+    assert "thought" not in assistant
+    assert assistant["content"] == "4"
+    assert "<think>" not in assistant["content"]
+
+
+def test_omit_prior_thinking_respeta_system_y_user():
+    """El quirk solo limpia turnos assistant; system/user no se reescriben."""
+    out = apply_history_quirks(_history_with_thought(), ("omit_prior_thinking",))
+    assert out[0]["content"] == "Sé breve.\n<think>no toques el system</think>"
+    assert out[1]["content"] == "¿2+2?"
+    assert out[3]["content"] == "¿y 3+3?"
+
+
+def test_omit_prior_thinking_no_muta_entrada():
+    original = _history_with_thought()
+    snapshot = [dict(m) for m in original]
+    apply_history_quirks(original, ("omit_prior_thinking",))
+    assert original == snapshot
+
+
+def test_omit_prior_thinking_strips_thought_tag_y_deja_respuesta():
+    messages = [
+        {
+            "role": "assistant",
+            "content": "<thought>razonamiento largo</thought>\nRespuesta útil.",
+        }
+    ]
+    out = apply_history_quirks(messages, ("omit_prior_thinking",))
+    assert out[0]["content"] == "Respuesta útil."
+
+
+def test_omit_prior_thinking_ignora_quirks_ajenos():
+    original = _history_with_thought()
+    out = apply_history_quirks(original, ("image_before_text",))
+    assert "<think>" in out[2]["content"]
+    assert out[2]["thinking"] == "sumo 2 y 2"

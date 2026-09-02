@@ -356,9 +356,9 @@ Seguir el [plan v2](../plans/PLAN_MODEL_CONTRACT_2026-09-02.md#plan-v2--siguient
 
 ### Phase A: Quirks de historial
 
-- [ ] A1: `omit_prior_thinking` al construir mensajes hacia el LLM
-- [ ] A2: Tests unitarios del builder (con/sin quirk)
-- [ ] Checkpoint: Gemma multi-turn OK; resto intacto; `make test`
+- [x] A1: `omit_prior_thinking` al construir mensajes hacia el LLM
+- [x] A2: Tests unitarios del builder (con/sin quirk)
+- [x] Checkpoint: Gemma multi-turn OK; resto intacto; `make test`
 
 ### Phase B: Cromos en selector
 

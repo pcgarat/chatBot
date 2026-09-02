@@ -76,8 +76,8 @@ flowchart TB
 
 ### Phase A — Quirks de historial (alta)
 
-- [ ] Task A1: Aplicar `omit_prior_thinking` al construir mensajes hacia el LLM (Gemma).
-- [ ] Task A2: Tests unitarios del builder de historial (con/sin quirk).
+- [x] Task A1: Aplicar `omit_prior_thinking` al construir mensajes hacia el LLM (Gemma).
+- [x] Task A2: Tests unitarios del builder de historial (con/sin quirk).
 - Checkpoint: multi-turn Gemma no reenvía bloques thought; resto de modelos intactos.
 
 ### Phase B — Cromos en selector (alta)
