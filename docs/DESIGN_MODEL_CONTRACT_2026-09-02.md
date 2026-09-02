@@ -8,9 +8,9 @@ Complementa (no sustituye aún) a [`DESIGN_LLM_PARAMS.md`](./DESIGN_LLM_PARAMS.m
 
 Investigación de modelos cloud: [`research/ollama-cloud/README_2026-09-02.md`](./research/ollama-cloud/README_2026-09-02.md).
 
-**Estado:** diseño. No implementado.
+**Estado:** **v1 implementada y mergeada** en `main` (PR [#36](https://github.com/pcgarat/chatBot/pull/36)). El diseño sigue siendo la referencia; lo pendiente está en §13 (roadmap v2).
 
-**Spec / plan / checklist (v1):** [`SPEC_MODEL_CONTRACT_2026-09-02.md`](./specs/SPEC_MODEL_CONTRACT_2026-09-02.md) · [`PLAN_MODEL_CONTRACT_2026-09-02.md`](./plans/PLAN_MODEL_CONTRACT_2026-09-02.md) · [`MODEL_CONTRACT_CHECKLIST_2026-09-02.md`](./checklists/MODEL_CONTRACT_CHECKLIST_2026-09-02.md)
+**Spec / plan / checklist:** [`SPEC_MODEL_CONTRACT_2026-09-02.md`](./specs/SPEC_MODEL_CONTRACT_2026-09-02.md) · [`PLAN_MODEL_CONTRACT_2026-09-02.md`](./plans/PLAN_MODEL_CONTRACT_2026-09-02.md) · [`MODEL_CONTRACT_CHECKLIST_2026-09-02.md`](./checklists/MODEL_CONTRACT_CHECKLIST_2026-09-02.md)
 
 ---
 
@@ -480,7 +480,7 @@ flowchart TD
 |--------------|----------------------------|
 | `config/provider_params.json` | Capa 1 del merge: schema base por proveedor. Se queda. |
 | `config/ollama.json` | Hoy: schema completo por modelo. Debe **adelgazar a overlay** (o un archivo `config/overlays/ollama.json`). |
-| `app/provider_params.py` `build_extra_body` | Debe resolver contrato, no solo proveedor. |
+| `app/provider_params.py` `build_extra_body` | **v1:** resuelve specs del contrato cuando hay `model_id`. |
 | `app/providers/capabilities.py` | Capacidades **de proveedor** (`show_model`, `unload_model`). Distinto de capacidades **de modelo**. |
 | `app/model_info.py` | Ficha usuario/proveedor. No es el contrato. Puede alimentar context_length vía `provider_info`. |
 | `LLMProvider` + `extra_body` | Adapter correcto; el builder escribe `extra_body`. |
@@ -489,19 +489,37 @@ flowchart TD
 
 ---
 
-## 13. MVP sugerido
+## 13. MVP y roadmap
 
-Objetivo: contrato + thinking + recetas + overlay. No redibujar todo el acordeón de golpe.
+### v1 (hecho)
 
-1. `ResolveModelContract` + `GET .../contract` (merge provider + show + overlay).
-2. Overlay sparse para 2 modelos antagónicos: `gpt-oss:120b-cloud` y `deepseek-v4-flash:cloud`.
-3. `build_extra_body` lee params del contrato (así `think` se envía).
-4. Control thinking en el composer según `capabilities.thinking`.
-5. Chips de receta; no pisar overrides existentes sin confirmación.
-6. Ocultar adjuntar imagen si `vision: false`.
-7. Tests unitarios del merge, del mapping de thinking y del builder (sin e2e salvo que se toque el endpoint de chat).
+Objetivo cumplido: contrato + thinking + recetas + overlay. Sin redibujar todo el acordeón.
 
-Fuera del MVP: renderer completo de Ajustes, overlays de todos los cloud, tools/MCP gated por `capabilities.tools`, coste estimado en UI.
+1. ~~`ResolveModelContract` + `GET .../contract`~~
+2. ~~Overlay sparse~~ — arranque GPT-OSS + DeepSeek; **hoy 8 cloud** en `config/model_overlays/ollama.json`
+3. ~~`build_extra_body` lee params del contrato (`think` top-level)~~
+4. ~~Control thinking en el composer según `capabilities.thinking`~~
+5. ~~Chips de receta; confirmación si origen user~~
+6. ~~Defaults de contrato (temperature / `num_ctx`) en UI sin pisar overrides user~~
+7. ~~Tests unitarios merge / thinking / builder; e2e del GET contract escrito~~
+
+**Aún no (era “fuera del MVP”):** ocultar adjuntar imagen si `vision: false` → v2 F.
+
+### v2 (siguientes pasos)
+
+Orden en plan/checklist:
+
+| Prioridad | Corte | Qué |
+|-----------|--------|-----|
+| Alta | A | Quirks historial (`omit_prior_thinking`) |
+| Alta | B | Cromos de capacidad en el selector |
+| Alta | C | Verificación manual / e2e light |
+| Media | D | Renderer Ajustes parcial (hide/show por `contract.params`) |
+| Media | E | Stream + UI de `message.thinking` |
+| Media | F | Visión usuario→LLM + `image_before_text` |
+| Baja | G | Tools gated, coste, adelgazar `ollama.json`, overlays locales |
+
+Detalle: [`PLAN_MODEL_CONTRACT_2026-09-02.md`](./plans/PLAN_MODEL_CONTRACT_2026-09-02.md) § Plan v2.
 
 ---
 
@@ -518,4 +536,4 @@ Bajar el contrato a esos dos modelos antagónicos y comprobar que aguanta:
 | Receta “rápido” | `think: low` | `think: false` |
 | Receta “difícil” | `think: high` | `think: max` |
 
-Si el mismo JSON schema y el mismo renderer cubren ambos, el diseño vale. Si hace falta un `if model.startswith("gpt-oss")` en la UI, el contrato está incompleto.
+**v1 validó** thinking + recetas + builder sin `if` por nombre. La fila «Visión → ocultar adjunto» sigue pendiente (v2 F). Si en v2 hace falta un `if model.startswith("gpt-oss")` en la UI, el contrato está incompleto.
