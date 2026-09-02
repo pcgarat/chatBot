@@ -65,6 +65,46 @@ def test_update_conversation_model_params(db_session):
     assert updated2.model_params is None
 
 
+def test_update_conversation_images_persist(db_session):
+    """Los ajustes de imágenes se guardan en la conversación, como model_params."""
+    import json
+
+    conv = crud.create_conversation(db_session, title="C", model_id="m")
+    assert conv.images is None
+    payload = {
+        "enabled": True,
+        "prompt": "film still",
+        "images_per_response": 4,
+        "prompt_provider": "ollama",
+        "prompt_model": "llama3.2",
+        "steps": 28,
+        "width": 768,
+        "height": 1024,
+        "seed": -1,
+        "debug": True,
+    }
+    updated = crud.update_conversation(db_session, conv.id, images=payload)
+    assert updated is not None
+    stored = json.loads(updated.images)
+    assert stored["enabled"] is True
+    assert stored["prompt"] == "film still"
+    assert stored["images_per_response"] == 4
+    assert stored["steps"] == 28
+    assert "debug" not in stored
+    found = crud.get_conversation(db_session, conv.id)
+    assert json.loads(found.images)["prompt_model"] == "llama3.2"
+
+
+def test_fork_copia_images(db_session):
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m")
+    crud.update_conversation(db_session, origin.id, images={"enabled": True, "prompt": "noir"})
+    u1 = crud.add_message(db_session, origin.id, "user", "A")
+    a1 = crud.add_message(db_session, origin.id, "assistant", "Ra")
+    child = crud.fork_conversation(db_session, origin.id, a1.id)
+    assert child is not None
+    assert child.images == origin.images
+
+
 def test_delete_conversation(db_session):
     conv = crud.create_conversation(db_session, title="Borrar", model_id="m")
     ok = crud.delete_conversation(db_session, conv.id)

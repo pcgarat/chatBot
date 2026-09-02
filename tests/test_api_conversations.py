@@ -219,6 +219,49 @@ def test_update_and_get_conversation_model_params(client):
     assert get_r.json()["model_params"] == params
 
 
+def test_conversation_images_persist_across_get(client):
+    """PUT images en la conversación y GET tras 'recarga' lo devuelve (como el resto de ajustes)."""
+    create = client.post("/api/conversations", json={"title": "Imágenes", "model_id": "m"})
+    cid = create.json()["id"]
+    assert create.json().get("images") is None
+    payload = {
+        "enabled": True,
+        "use_chat_config": False,
+        "images_per_response": 4,
+        "batch_size": 8,
+        "retries": 2,
+        "prompt": "cinematic still",
+        "prompt_system_instructions": [{"title": "Estilo", "content": "luz dura"}],
+        "prompt_provider": "ollama",
+        "prompt_model": "llama3.2",
+        "steps": 28,
+        "width": 768,
+        "height": 1024,
+        "seed": -1,
+        "debug": True,
+    }
+    r = client.put(f"/api/conversations/{cid}", json={"images": payload})
+    assert r.status_code == 200
+    images = r.json()["images"]
+    assert images["enabled"] is True
+    assert images["prompt"] == "cinematic still"
+    assert images["images_per_response"] == 4
+    assert images["steps"] == 28
+    assert images["width"] == 768
+    assert images["prompt_model"] == "llama3.2"
+    assert images["prompt_system_instructions"][0]["content"] == "luz dura"
+    assert "debug" not in images
+    get_r = client.get(f"/api/conversations/{cid}")
+    assert get_r.status_code == 200
+    assert get_r.json()["images"]["enabled"] is True
+    assert get_r.json()["images"]["prompt"] == "cinematic still"
+    assert get_r.json()["images"]["seed"] == -1
+    other = client.put(f"/api/conversations/{cid}", json={"title": "Sigue con imágenes"})
+    assert other.status_code == 200
+    assert other.json()["title"] == "Sigue con imágenes"
+    assert other.json()["images"]["prompt"] == "cinematic still"
+
+
 def test_conversation_history_turns(client):
     """GET incluye history_turns; PUT con history_turns persiste y GET lo devuelve."""
     create = client.post("/api/conversations", json={"title": "Turns", "model_id": "m"})

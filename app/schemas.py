@@ -111,6 +111,7 @@ class ConversationCreate(BaseModel):
     system_instruction_global: Optional[str] = None
     system_instructions: Optional[list[RuleItem]] = None  # Lista de reglas (título + contenido)
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora. Las instrucciones se envían siempre.
+    images: Optional["WorkspaceImagesSnapshot"] = None
 
 
 class ConversationFork(BaseModel):
@@ -130,6 +131,7 @@ class ConversationUpdate(BaseModel):
     history_turns: Optional[int] = None  # Pares user+assistant a enviar en el prompt; null = default 5
     instruction_override: Optional[str] = None  # Instrucción solo para el siguiente mensaje; último valor por conversación
     active_leaf_message_id: Optional[str] = None  # Hoja del intento visible; no reordena la lista
+    images: Optional["WorkspaceImagesSnapshot"] = None  # Ajustes del panel Imágenes
 
 
 class MessageInChat(BaseModel):
@@ -154,6 +156,7 @@ class ConversationOut(BaseModel):
     history_turns: Optional[int] = None  # Pares user+assistant en el prompt; null = default 5
     instruction_override: Optional[str] = None  # Último valor de instrucción por mensaje en esta conversación
     active_leaf_message_id: Optional[str] = None
+    images: Optional["WorkspaceImagesSnapshot"] = None
     forked_from_conversation_id: Optional[str] = None
     forked_from_message_id: Optional[str] = None
     inherited_messages: list[MessageInChat] = Field(default_factory=list)
@@ -444,3 +447,8 @@ class WorkspaceProfileOut(BaseModel):
     snapshot: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+
+
+ConversationCreate.model_rebuild()
+ConversationUpdate.model_rebuild()
+ConversationOut.model_rebuild()

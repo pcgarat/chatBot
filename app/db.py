@@ -218,3 +218,9 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE conversations ADD COLUMN images TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()

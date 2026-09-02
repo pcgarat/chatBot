@@ -149,6 +149,38 @@ def test_e2e_conversation_history_turns(client, ollama_available):
     assert conv.get("active_leaf_message_id") == conv["messages"][-1]["id"]
 
 
+def test_e2e_conversation_images_persist(client, ollama_available):
+    """PUT images en la conversación y GET lo devuelve tras recarga."""
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={"title": "E2E images prefs", "model_id": model_name, "provider": "ollama"},
+    )
+    assert r_create.status_code == 200
+    cid = r_create.json()["id"]
+    assert r_create.json().get("images") is None
+    payload = {
+        "enabled": True,
+        "prompt": "film still",
+        "images_per_response": 3,
+        "prompt_provider": "ollama",
+        "prompt_model": model_name,
+        "steps": 20,
+        "width": 768,
+        "height": 1024,
+        "seed": -1,
+    }
+    r_put = client.put(f"/api/conversations/{cid}", json={"images": payload})
+    assert r_put.status_code == 200
+    assert r_put.json()["images"]["enabled"] is True
+    assert r_put.json()["images"]["prompt"] == "film still"
+    r_get = client.get(f"/api/conversations/{cid}")
+    assert r_get.status_code == 200
+    assert r_get.json()["images"]["enabled"] is True
+    assert r_get.json()["images"]["prompt_model"] == model_name
+    assert r_get.json()["images"]["steps"] == 20
+
+
 def test_e2e_conversation_fork(client, ollama_available):
     """Variante por referencia: la hija no copia mensajes; el envío usa el prefijo del origen."""
     model_name = _get_first_ollama_model(client)
