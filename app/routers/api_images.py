@@ -23,6 +23,7 @@ from app.schemas import (
     ForgeLastGenerationParamsResponse,
     GenerateRemainingRequest,
     IllustratedImageFacetsResponse,
+    IllustratedImageFilenameListResponse,
     IllustratedImageListItem,
     IllustratedImageListResponse,
     IllustratedImageMessageListResponse,
@@ -570,11 +571,7 @@ def _list_item(row, msg, conv) -> IllustratedImageListItem:
     )
 
 
-@router.get(
-    "/illustrated-images",
-    response_model=IllustratedImageListResponse,
-)
-def list_illustrated_images(
+def _gallery_filter_kwargs(
     prompt_provider: str | None = Query(default=None),
     prompt_model: str | None = Query(default=None),
     forge_model: str | None = Query(default=None),
@@ -582,28 +579,41 @@ def list_illustrated_images(
     size: str | None = Query(default=None, description="WIDTHxHEIGHT, p. ej. 768x512"),
     mode: str | None = Query(default=None),
     prompt_q: str | None = Query(default=None, max_length=200),
+    seed: int | None = Query(default=None),
     conversation_id: str | None = Query(default=None),
     message_id: str | None = Query(default=None),
+) -> dict:
+    """Query params compartidos por listado, facets de chat y filenames coincidentes."""
+    width, height = _parse_size_query(size)
+    return {
+        "prompt_provider": prompt_provider,
+        "prompt_model": prompt_model,
+        "forge_model": (forge_model or "").strip() or None,
+        "steps": steps,
+        "width": width,
+        "height": height,
+        "seed": seed,
+        "mode": (mode or "").strip() or None,
+        "prompt_q": (prompt_q or "").strip() or None,
+        "conversation_id": (conversation_id or "").strip() or None,
+        "message_id": (message_id or "").strip() or None,
+    }
+
+
+@router.get(
+    "/illustrated-images",
+    response_model=IllustratedImageListResponse,
+)
+def list_illustrated_images(
+    filters: dict = Depends(_gallery_filter_kwargs),
     limit: int = Query(default=24, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
     """Galería: imágenes visibles en la conversación (propias o heredadas en forks)."""
-    width, height = _parse_size_query(size)
-    conv_id = (conversation_id or "").strip() or None
-    msg_id = (message_id or "").strip() or None
     rows, total = crud.list_illustrated_images(
         db,
-        prompt_provider=prompt_provider,
-        prompt_model=prompt_model,
-        forge_model=(forge_model or "").strip() or None,
-        steps=steps,
-        width=width,
-        height=height,
-        mode=(mode or "").strip() or None,
-        prompt_q=(prompt_q or "").strip() or None,
-        conversation_id=conv_id,
-        message_id=msg_id,
+        **filters,
         limit=limit,
         offset=offset,
     )
@@ -631,6 +641,26 @@ def get_illustrated_image_facets(
             conversation_id=(conversation_id or "").strip() or None,
             message_id=(message_id or "").strip() or None,
         )
+    )
+
+
+@router.get(
+    "/illustrated-images/matching-filenames",
+    response_model=IllustratedImageFilenameListResponse,
+)
+def list_matching_illustrated_filenames(
+    filters: dict = Depends(_gallery_filter_kwargs),
+    db: Session = Depends(get_db),
+):
+    """Filenames de una conversación que pasan los filtros de la toolbar de galería."""
+    conv_id = filters["conversation_id"]
+    if not conv_id:
+        raise HTTPException(status_code=422, detail="conversation_id es obligatorio")
+    conv = crud.get_conversation(db, conv_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    return IllustratedImageFilenameListResponse(
+        filenames=crud.list_illustrated_image_filenames(db, **filters)
     )
 
 

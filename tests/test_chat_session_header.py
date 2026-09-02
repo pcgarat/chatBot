@@ -24,6 +24,8 @@ def test_chat_panel_header_groups_identity_and_delete_action():
     identity_block = html[identity_start:identity_end]
     assert 'id="conversation-title"' in identity_block
     assert 'id="conversation-auto-title"' in identity_block
+    assert 'id="conversation-image-filter-notice"' in identity_block
+    assert "Filtros de imágenes activos" in identity_block
     assert 'id="btn-clear-memory"' not in identity_block
     assert "context-usage" not in identity_block
     assert "Ctx" not in identity_block
