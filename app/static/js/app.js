@@ -434,6 +434,75 @@
     return value != null ? String(value) : "";
   }
 
+  /** Etiqueta corta de ventana (p. ej. 262144 → 256K, 1048576 → 1M). */
+  function formatContextWindowLabel(maxTokens) {
+    const v = Number(maxTokens);
+    if (!Number.isFinite(v) || v <= 0) return null;
+    if (v >= 1048576 && v % 1048576 === 0) return String(v / 1048576) + "M";
+    if (v >= 1024 && v % 1024 === 0) return String(v / 1024) + "K";
+    if (v >= 1000000) {
+      const m = Math.round((v / 1000000) * 10) / 10;
+      return String(m).replace(/\.0$/, "") + "M";
+    }
+    if (v >= 1000) return String(Math.round(v / 1000)) + "K";
+    return String(Math.round(v));
+  }
+
+  /**
+   * Cromos de capacidad desde el contrato (sin nombres de modelo).
+   * Orden fijo: visión → thinking → tools → ventana.
+   */
+  function capabilityBadgesFromContract(contract) {
+    if (!contract || typeof contract !== "object") return [];
+    const caps = contract.capabilities || {};
+    const badges = [];
+    if (caps.vision) {
+      badges.push({ id: "vision", label: "Visión", title: "Soporta entrada de imágenes" });
+    }
+    const thinking = caps.thinking;
+    if (thinking && thinking.kind && thinking.kind !== "none") {
+      badges.push({ id: "thinking", label: "Thinking", title: "Razonamiento configurable" });
+    }
+    if (caps.tools) {
+      badges.push({ id: "tools", label: "Tools", title: "Function calling / tools" });
+    }
+    const maxCtx = contract.params && contract.params.num_ctx && contract.params.num_ctx.max;
+    const ctxLabel = formatContextWindowLabel(maxCtx);
+    if (ctxLabel) {
+      badges.push({
+        id: "ctx",
+        label: ctxLabel,
+        title: "Ventana de contexto máx. " + String(maxCtx) + " tokens",
+      });
+    }
+    return badges;
+  }
+
+  function fillCapabilityBadgeHost(host, badges) {
+    if (!host) return;
+    host.innerHTML = "";
+    if (!badges.length) {
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    badges.forEach((badge) => {
+      const span = document.createElement("span");
+      span.className = "model-capability-chip";
+      span.setAttribute("role", "listitem");
+      span.dataset.capability = badge.id;
+      span.textContent = badge.label;
+      span.title = badge.title;
+      host.appendChild(span);
+    });
+  }
+
+  function renderCapabilityBadges() {
+    const badges = capabilityBadgesFromContract(currentContract);
+    fillCapabilityBadgeHost(document.getElementById("status-model-capabilities"), badges);
+    fillCapabilityBadgeHost(document.getElementById("settings-model-capabilities"), badges);
+  }
+
   function fillThinkOptions(control, thinking) {
     let values = Array.isArray(thinking.values) && thinking.values.length
       ? thinking.values.slice()
@@ -523,6 +592,7 @@
     }
     syncContractParamBaselines();
     if (applyParamDefaults) applyContractParamDefaults();
+    renderCapabilityBadges();
   }
 
   async function loadModelContract(opts) {
