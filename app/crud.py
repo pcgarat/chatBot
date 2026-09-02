@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import false, func, or_
 from sqlalchemy.orm import Session
 
-from app.models import Conversation, IllustratedImage, Message, Rule
+from app.models import Conversation, IllustratedImage, ImageGenerationJob, Message, Rule
 from app.services.conversation_title import derive_auto_title
 from app.services.conversation_tree import path_from_messages
 from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
@@ -845,3 +845,209 @@ def delete_illustrated_images_by_filenames(db: Session, filenames: list[str]) ->
     )
     db.commit()
     return count
+
+
+_FIRST_SENTENCE_RE = re.compile(r"[\n\r]+|[.!?…]+(?:\s|$)")
+
+
+def _message_first_sentence(content: str, limit: int = 120) -> str:
+    """Primera frase o línea del mensaje, sin markup HTML."""
+    text = re.sub(r"<[^>]+>", " ", content or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return ""
+    match = _FIRST_SENTENCE_RE.search(text)
+    sentence = text[: match.start()].strip() if match else text
+    if not sentence:
+        sentence = text
+    if len(sentence) > limit:
+        return sentence[: limit - 1] + "…"
+    return sentence
+
+
+def create_image_generation_job(
+    db: Session,
+    *,
+    conversation_id: str,
+    message_id: str,
+    scene_id: str,
+    forge_prompt: str,
+    forge_mode: str,
+    forge_body: dict,
+    rules: dict | None = None,
+    prompt_model: str | None = None,
+    prompt_provider: str | None = None,
+    batch_id: str | None = None,
+    retries_remaining: int = 0,
+) -> ImageGenerationJob:
+    job = ImageGenerationJob(
+        conversation_id=conversation_id,
+        message_id=message_id,
+        scene_id=scene_id,
+        batch_id=batch_id,
+        status="pending",
+        forge_prompt=forge_prompt or "",
+        forge_mode=forge_mode or "txt2img",
+        forge_body_json=json.dumps(forge_body or {}, ensure_ascii=False),
+        rules_json=json.dumps(rules or {}, ensure_ascii=False),
+        prompt_model=prompt_model,
+        prompt_provider=prompt_provider,
+        retries_remaining=max(0, int(retries_remaining)),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def get_image_generation_job(db: Session, job_id: str) -> ImageGenerationJob | None:
+    return db.query(ImageGenerationJob).filter(ImageGenerationJob.id == job_id).first()
+
+
+def claim_next_image_generation_job(db: Session) -> ImageGenerationJob | None:
+    job = (
+        db.query(ImageGenerationJob)
+        .filter(ImageGenerationJob.status == "pending")
+        .order_by(ImageGenerationJob.created_at.asc(), ImageGenerationJob.id.asc())
+        .first()
+    )
+    if not job:
+        return None
+    job.status = "generating"
+    job.started_at = datetime.utcnow()
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def reset_stuck_image_generation_jobs(db: Session) -> int:
+    count = (
+        db.query(ImageGenerationJob)
+        .filter(ImageGenerationJob.status == "generating")
+        .update(
+            {
+                ImageGenerationJob.status: "pending",
+                ImageGenerationJob.started_at: None,
+            },
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    return int(count or 0)
+
+
+def complete_image_generation_job(
+    db: Session,
+    job_id: str,
+    *,
+    result_filename: str,
+) -> ImageGenerationJob | None:
+    job = db.query(ImageGenerationJob).filter(ImageGenerationJob.id == job_id).first()
+    if not job:
+        return None
+    job.status = "completed"
+    job.result_filename = result_filename
+    job.completed_at = datetime.utcnow()
+    job.error_message = None
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def fail_image_generation_job(
+    db: Session,
+    job_id: str,
+    *,
+    error_message: str,
+    retry: bool = False,
+) -> ImageGenerationJob | None:
+    job = db.query(ImageGenerationJob).filter(ImageGenerationJob.id == job_id).first()
+    if not job:
+        return None
+    if retry and job.retries_remaining > 0:
+        job.retries_remaining -= 1
+        job.status = "pending"
+        job.started_at = None
+        job.error_message = (error_message or "")[:2000]
+    else:
+        job.status = "failed"
+        job.error_message = (error_message or "")[:2000]
+        job.completed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def count_active_image_generation_jobs(db: Session) -> int:
+    return (
+        db.query(ImageGenerationJob)
+        .filter(ImageGenerationJob.status.in_(("pending", "generating")))
+        .count()
+    )
+
+
+def list_image_generation_jobs(
+    db: Session,
+    *,
+    statuses: list[str] | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    q = db.query(ImageGenerationJob)
+    if statuses:
+        cleaned = [s.strip() for s in statuses if (s or "").strip()]
+        if cleaned:
+            q = q.filter(ImageGenerationJob.status.in_(cleaned))
+    total = q.count()
+    rows = (
+        q.order_by(ImageGenerationJob.created_at.desc(), ImageGenerationJob.id.desc())
+        .offset(max(0, offset))
+        .limit(max(1, min(limit, 200)))
+        .all()
+    )
+    if not rows:
+        return [], total
+
+    conv_ids = {r.conversation_id for r in rows}
+    msg_ids = {r.message_id for r in rows}
+    convs = {
+        c.id: c
+        for c in db.query(Conversation).filter(Conversation.id.in_(conv_ids)).all()
+    }
+    msgs = {
+        m.id: m
+        for m in db.query(Message).filter(Message.id.in_(msg_ids)).all()
+    }
+
+    items = []
+    for job in rows:
+        conv = convs.get(job.conversation_id)
+        msg = msgs.get(job.message_id)
+        rules = {}
+        try:
+            rules = json.loads(job.rules_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            rules = {}
+        items.append(
+            {
+                "id": job.id,
+                "status": job.status,
+                "conversation_id": job.conversation_id,
+                "conversation_title": (conv.title if conv else "") or "Conversación",
+                "message_id": job.message_id,
+                "message_excerpt": _message_first_sentence(msg.content if msg else ""),
+                "scene_id": job.scene_id,
+                "forge_prompt": job.forge_prompt or "",
+                "prompt_model": job.prompt_model,
+                "prompt_provider": job.prompt_provider,
+                "batch_id": job.batch_id,
+                "error_message": job.error_message,
+                "result_filename": job.result_filename,
+                "rules": rules,
+                "forge_mode": job.forge_mode or "txt2img",
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            }
+        )
+    return items, total

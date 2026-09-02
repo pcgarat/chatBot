@@ -32,6 +32,7 @@ from app.services.image_illustration.models import (
 )
 from app.services.image_illustration.generation_params import build_stored_generation_params
 from app.services.image_illustration.ports import ForgeGenerationPort, LastPayloadSource, ScenePlannerPort
+from app.services.image_illustration.run_context import IllustrationRunContext
 from app.services.image_illustration import status_codes as st
 
 
@@ -116,6 +117,7 @@ def _run_pass(
     pass_name: str,
     extra_prompt: str = "",
     forge_overrides: ForgeParamOverrides | None = None,
+    run_context: IllustrationRunContext | None = None,
 ) -> Iterator[IllustrationEvent]:
     still_failed: list[SceneSpec] = []
     total = len(scenes)
@@ -127,6 +129,40 @@ def _run_pass(
             scene_id=scene.id,
             data={"prompt": forge_prompt},
         )
+        if run_context and run_context.uses_queue:
+            yield st.status_event(
+                st.IMAGES_QUEUING,
+                f"Encolando imagen ({index}/{total})",
+                scene_id=scene.id,
+                index=index,
+                total=total,
+            )
+            body = payload.body_with_prompt(forge_prompt, overrides=forge_overrides)
+            rules = dict(run_context.rules or {})
+            rules["pass_name"] = pass_name
+            rules["panel_prompt"] = extra_prompt
+            job_id = run_context.enqueue_fn(
+                conversation_id=run_context.conversation_id,
+                message_id=run_context.message_id,
+                scene_id=scene.id,
+                forge_prompt=forge_prompt,
+                forge_mode=payload.mode.value,
+                forge_body=body,
+                rules=rules,
+                prompt_model=run_context.prompt_model,
+                prompt_provider=run_context.prompt_provider,
+                batch_id=run_context.batch_id,
+                retries_remaining=run_context.retries,
+            )
+            yield IllustrationEvent(
+                type="queued",
+                scene_id=scene.id,
+                message=forge_prompt,
+                content=content,
+                data={"prompt": forge_prompt, "job_id": job_id, "pass_name": pass_name},
+            )
+            continue
+
         yield st.status_event(
             st.IMAGES_SUBMITTING_PROMPT,
             f"Enviando prompt de imagen ({index}/{total})",
@@ -226,6 +262,7 @@ class ImageIllustrationOrchestrator:
         batch_size: int = 10,
         existing_prompts: list[str] | None = None,
         forge_overrides: ForgeParamOverrides | None = None,
+        run_context: IllustrationRunContext | None = None,
     ) -> Iterator[IllustrationEvent]:
         yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración")
         batch_n = max(1, int(batch_size))
@@ -436,6 +473,7 @@ class ImageIllustrationOrchestrator:
                 pass_name=f"lote-{batch_idx}",
                 extra_prompt=extra_prompt,
                 forge_overrides=overrides,
+                run_context=run_context,
             )
             content, pending = yield from self._retry_failed(
                 pending,
@@ -444,6 +482,7 @@ class ImageIllustrationOrchestrator:
                 retries=retries,
                 extra_prompt=extra_prompt,
                 forge_overrides=overrides,
+                run_context=run_context,
             )
 
             already_planned.extend(plan.scenes)
@@ -462,8 +501,17 @@ class ImageIllustrationOrchestrator:
             if len(plan.scenes) < len(assigned):
                 break
 
-        yield st.status_event(st.IMAGES_DONE, "Ilustración completada")
-        yield IllustrationEvent(type="done", message="ilustración completa", content=content)
+        done_msg = (
+            "Escenas encoladas para generación"
+            if run_context and run_context.uses_queue
+            else "Ilustración completada"
+        )
+        yield st.status_event(st.IMAGES_DONE, done_msg)
+        yield IllustrationEvent(
+            type="done",
+            message="ilustración completa" if not (run_context and run_context.uses_queue) else "encolado",
+            content=content,
+        )
 
     def run_at(
         self,
@@ -476,6 +524,7 @@ class ImageIllustrationOrchestrator:
         include_prompt_debug: bool = False,
         existing_prompts: list[str] | None = None,
         forge_overrides: ForgeParamOverrides | None = None,
+        run_context: IllustrationRunContext | None = None,
     ) -> Iterator[IllustrationEvent]:
         """Una imagen en el párrafo elegido; si ya hay fotos, se inserta al lado."""
         yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración en párrafo")
@@ -634,6 +683,7 @@ class ImageIllustrationOrchestrator:
             pass_name="at-paragraph",
             extra_prompt=extra_prompt,
             forge_overrides=overrides,
+            run_context=run_context,
         )
         content, pending = yield from self._retry_failed(
             pending,
@@ -642,10 +692,20 @@ class ImageIllustrationOrchestrator:
             retries=retries,
             extra_prompt=extra_prompt,
             forge_overrides=overrides,
+            run_context=run_context,
         )
 
-        yield st.status_event(st.IMAGES_DONE, "Ilustración completada")
-        yield IllustrationEvent(type="done", message="ilustración completa", content=content)
+        done_msg = (
+            "Escena encolada para generación"
+            if run_context and run_context.uses_queue
+            else "Ilustración completada"
+        )
+        yield st.status_event(st.IMAGES_DONE, done_msg)
+        yield IllustrationEvent(
+            type="done",
+            message="ilustración completa" if not (run_context and run_context.uses_queue) else "encolado",
+            content=content,
+        )
 
     def run_remaining(
         self,
@@ -654,6 +714,7 @@ class ImageIllustrationOrchestrator:
         retries: int,
         batch_size: int = 10,
         forge_overrides: ForgeParamOverrides | None = None,
+        run_context: IllustrationRunContext | None = None,
     ) -> Iterator[IllustrationEvent]:
         """
         Regenera anclas/placeholders/errores pendientes sin re-planificar.
@@ -750,6 +811,7 @@ class ImageIllustrationOrchestrator:
                 pass_name=f"restantes-{batch_idx}",
                 extra_prompt="",
                 forge_overrides=overrides,
+                run_context=run_context,
             )
             content, pending = yield from self._retry_failed(
                 pending,
@@ -758,10 +820,20 @@ class ImageIllustrationOrchestrator:
                 retries=retries,
                 extra_prompt="",
                 forge_overrides=overrides,
+                run_context=run_context,
             )
 
-        yield st.status_event(st.IMAGES_DONE, "Imágenes restantes completadas")
-        yield IllustrationEvent(type="done", message="restantes completadas", content=content)
+        done_msg = (
+            "Imágenes restantes encoladas"
+            if run_context and run_context.uses_queue
+            else "Imágenes restantes completadas"
+        )
+        yield st.status_event(st.IMAGES_DONE, done_msg)
+        yield IllustrationEvent(
+            type="done",
+            message="restantes completadas" if not (run_context and run_context.uses_queue) else "encolado",
+            content=content,
+        )
 
     def _emit_payload_log(self, payload: LastGenerationPayload) -> Iterator[IllustrationEvent]:
         yield IllustrationEvent(
@@ -787,7 +859,10 @@ class ImageIllustrationOrchestrator:
         retries: int,
         extra_prompt: str,
         forge_overrides: ForgeParamOverrides | None = None,
+        run_context: IllustrationRunContext | None = None,
     ) -> Iterator[IllustrationEvent]:
+        if run_context and run_context.uses_queue:
+            return (content, pending)
         attempt = 0
         while pending and attempt < max(0, retries):
             attempt += 1
@@ -811,5 +886,6 @@ class ImageIllustrationOrchestrator:
                 pass_name=f"retry-{attempt}",
                 extra_prompt=extra_prompt,
                 forge_overrides=forge_overrides,
+                run_context=run_context,
             )
         return (content, pending)

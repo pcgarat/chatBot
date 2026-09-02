@@ -23,18 +23,28 @@ def test_gallery_entry_and_panel_exist_in_html():
     assert 'id="gallery-filter-seed"' in html
     assert 'id="gallery-filter-prompt-q"' in html
     assert 'id="conversation-image-filter-notice"' in html
+    assert 'id="conversation-image-filter-notice-dismiss"' in html
+    assert 'class="chat-image-filter-notice-open"' in html
     assert 'id="gallery-scope-all"' in html
     assert 'id="gallery-scope-conv-label"' in html
     assert 'id="center-panels-empty"' in html
     assert 'id="center-panels-splitter"' in html
     gallery_btn = html.index('id="btn-image-gallery"')
+    queue_btn = html.index('id="btn-image-queue"')
     chat_btn = html.index('id="btn-center-chat"')
     new_btn = html.index('id="btn-new-chat"')
-    assert new_btn < chat_btn < gallery_btn
+    assert new_btn < chat_btn < gallery_btn < queue_btn
     panel = html.index('id="image-gallery-panel"')
+    queue_panel = html.index('id="image-queue-panel"')
     chat = html.index('id="chat-column"')
     splitter = html.index('id="center-panels-splitter"')
-    assert chat < splitter < panel
+    assert chat < splitter < panel < queue_panel
+    assert 'id="image-queue-list"' in html
+    assert 'id="image-queue-pause-toggle"' in html
+    assert 'id="image-queue-paused-label"' in html
+    assert 'scroll-y-reveal' in html
+    assert 'id="messages-container"' in html
+    assert 'data-queue-status="pending"' in html
 
 
 def test_gallery_js_loads_list_and_opens_lightbox():
@@ -51,7 +61,17 @@ def test_gallery_js_loads_list_and_opens_lightbox():
     assert "illustrated-images/messages" in js
     assert "conversation_id" in js
     assert "data-center-gallery" in js
+    assert "data-center-queue" in js
     assert "data-center-chat" in js
+    assert "setQueuePanelVisible" in js
+    assert "loadImageQueuePage" in js
+    assert "bindScrollReveal" in js
+    assert "is-scrollbar-visible" in js
+    assert "deleteImageQueueJobs" in js
+    assert "image-queue-delete-btn" in js
+    assert "image-queue-context-menu" in js
+    assert "toggleImageQueuePaused" in js
+    assert "image-queue-pause-toggle" in js
     assert "gallery-open-message" in js
     assert "stayHere" in js
     assert "initCenterPanelSplit" in js
@@ -86,12 +106,18 @@ def test_gallery_css_toggles_panels_independently():
     assert ".image-gallery-lightbox" in css
     assert ".image-gallery-messages" in css
     assert ".image-gallery-msg-chip" in css
-    assert ".chat-image-filter-notice" in css
+    assert ".chat-image-filter-notice-wrap" in css
+    assert ".chat-image-filter-notice-dismiss" in css
     assert ".chat-illustration-frame.is-gallery-filter-hidden" in css
     assert ".center-panel-toggles" in css
     assert "flex-direction: column" in css[css.index(".center-panel-toggles") : css.index(".center-panel-toggles") + 120]
     assert ".center-panels-empty" in css
     assert ".center-panels-splitter" in css
+    assert ".scroll-y-reveal" in css
+    assert ".scroll-y-reveal.is-scrollbar-visible" in css
+    scroll_reveal = css[css.index(".scroll-y-reveal") : css.index(".scroll-y-reveal") + 500]
+    assert "scrollbar-gutter: stable" in scroll_reveal
+    assert "scrollbar-width: none" not in scroll_reveal
     assert "--center-chat-share" in css
     assert "--center-gallery-share" in css
     assert "ns-resize" in css
@@ -145,4 +171,6 @@ def test_gallery_toolbar_filters_apply_to_conversation_images():
     render_fn = js[js.index("function renderMessages") : js.index("function closeAllMessageContextMenus")]
     assert "scheduleConversationImageFilter" in render_fn
     assert "onGalleryToolbarFilterChange" in js
-    assert "setGalleryPanelVisible(true)" in js[js.index("conversation-image-filter-notice") :]
+    assert "clearGalleryToolbarFilters" in js
+    assert "conversation-image-filter-notice-dismiss" in js
+    assert "setGalleryPanelVisible(true)" in js[js.index("chat-image-filter-notice-open") : js.index("chat-image-filter-notice-open") + 400]
