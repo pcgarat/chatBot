@@ -56,8 +56,13 @@ class ForgeClientError(RuntimeError):
         self.status_code = status_code
 
 
+def _bytes_to_data_uri(image_bytes: bytes, mime: str = "image/png") -> str:
+    encoded = base64.b64encode(image_bytes).decode("utf-8")
+    return f"data:{mime};base64,{encoded}"
+
+
 class ForgeHttpClient:
-    """Adapter: POST /sdapi/v1/txt2img | img2img."""
+    """Adapter: POST /sdapi/v1/txt2img | img2img y /reactor/image."""
 
     def __init__(
         self,
@@ -68,6 +73,60 @@ class ForgeHttpClient:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self._http = http_client
+
+    def reactor_swap(
+        self,
+        *,
+        source_image: bytes,
+        target_image: bytes,
+        params: dict[str, Any],
+    ) -> bytes:
+        """Face swap vía API externa de ReActor; devuelve la imagen resultante."""
+        url = f"{self.base_url}/reactor/image"
+        payload = {
+            "source_image": _bytes_to_data_uri(source_image),
+            "target_image": _bytes_to_data_uri(target_image),
+            **params,
+        }
+        if settings.verbose:
+            summary = {
+                k: v
+                for k, v in payload.items()
+                if k not in ("source_image", "target_image")
+            }
+            print(
+                f"--- Forge ReActor → {url} {json.dumps(summary, ensure_ascii=False)} ---",
+                file=sys.stderr,
+                flush=True,
+            )
+        client = self._http
+        owns = False
+        if client is None:
+            client = httpx.Client(timeout=self.timeout_seconds)
+            owns = True
+        try:
+            resp = client.post(url, json=payload)
+            if resp.status_code != 200:
+                detail = resp.text[:500] if resp.text else resp.reason_phrase
+                raise ForgeClientError(
+                    f"ReActor HTTP {resp.status_code}: {detail}",
+                    status_code=resp.status_code,
+                )
+            data = resp.json()
+            raw = data.get("image") if isinstance(data, dict) else None
+            if not raw:
+                raise ForgeClientError("ReActor no devolvió image")
+            if isinstance(raw, str) and raw.startswith("data:"):
+                raw = raw.split(",", 1)[-1]
+            try:
+                return base64.b64decode(raw)
+            except Exception as exc:
+                raise ForgeClientError(f"Imagen ReActor base64 inválida: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise ForgeClientError(f"Error de red ReActor: {exc}") from exc
+        finally:
+            if owns:
+                client.close()
 
     def generate(self, mode: ForgeMode, body: dict[str, Any]) -> bytes:
         endpoint = "txt2img" if mode == ForgeMode.TXT2IMG else "img2img"

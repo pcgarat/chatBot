@@ -124,8 +124,69 @@ def normalize_images_snapshot(value: object) -> dict:
     return _normalize_images(value).to_dict()
 
 
+def _normalize_reactor_panel(value: object) -> dict:
+    data = value if isinstance(value, dict) else {}
+    legacy_enabled = bool(data.get("enabled") or data.get("reactor_enabled"))
+    out: dict = {
+        "enabled": legacy_enabled,
+        "female_enabled": bool(data.get("female_enabled")),
+        "female_face_model": _bounded_str(data.get("female_face_model") or "", 256),
+        "male_enabled": bool(data.get("male_enabled")),
+        "male_face_model": _bounded_str(data.get("male_face_model") or "", 256),
+    }
+    optional_keys = (
+        "model",
+        "source_faces_index",
+        "face_index",
+        "upscaler",
+        "scale",
+        "upscale_visibility",
+        "face_restorer",
+        "restorer_visibility",
+        "codeformer_weight",
+        "restore_first",
+        "gender_source",
+        "gender_target",
+        "device",
+        "mask_face",
+        "select_source",
+        "face_model",
+        "source_folder",
+        "random_image",
+        "upscale_force",
+    )
+    for key in optional_keys:
+        raw = data.get(key)
+        if raw is None or raw == "":
+            continue
+        if key in ("scale", "upscale_visibility", "restorer_visibility", "codeformer_weight"):
+            try:
+                out[key] = float(raw)
+            except (TypeError, ValueError):
+                continue
+        elif key in (
+            "restore_first",
+            "gender_source",
+            "gender_target",
+            "mask_face",
+            "select_source",
+            "random_image",
+            "upscale_force",
+        ):
+            try:
+                out[key] = int(raw)
+            except (TypeError, ValueError):
+                continue
+        else:
+            out[key] = _bounded_str(raw, 512 if key == "source_folder" else 256)
+    return out
+
+
 def _normalize_images(value: object) -> ImagesSnapshot:
     data = value if isinstance(value, dict) else {}
+    reactor_raw = data.get("reactor")
+    if reactor_raw is None and "reactor_enabled" in data:
+        reactor_raw = {"enabled": data.get("reactor_enabled")}
     return ImagesSnapshot(
         enabled=bool(data.get("enabled")),
         use_chat_config=bool(data.get("use_chat_config")),
@@ -142,4 +203,5 @@ def _normalize_images(value: object) -> ImagesSnapshot:
         width=_optional_int(data.get("width"), 64, 4096),
         height=_optional_int(data.get("height"), 64, 4096),
         seed=_optional_int(data.get("seed")),
+        reactor=_normalize_reactor_panel(reactor_raw),
     )

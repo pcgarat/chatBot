@@ -14,6 +14,7 @@ from app.models import ImageGenerationJob
 from app.services.image_illustration.forge_client import ForgeHttpClient
 from app.services.image_illustration.generation_params import build_stored_generation_params
 from app.services.image_illustration.models import ForgeMode
+from app.services.image_illustration.reactor import apply_reactor_if_configured
 from app.services.image_illustration.orchestrator import (
     _error_placeholder,
     _img_tag,
@@ -65,6 +66,12 @@ def process_image_generation_job(
         t0 = time.perf_counter()
         image_bytes = forge.generate(mode, body)
         generation_time_ms = (time.perf_counter() - t0) * 1000.0
+        rules = _load_rules(job)
+        image_bytes, reactor_meta = apply_reactor_if_configured(
+            forge,
+            image_bytes,
+            rules,
+        )
         filename = save_illustrated_image(job.scene_id, image_bytes)
         url = _url_for_saved(filename)
         content = _replace_scene_slot(
@@ -80,7 +87,7 @@ def process_image_generation_job(
             body,
             generation_time_ms=generation_time_ms,
         )
-        rules = _load_rules(job)
+        stored_params.update(reactor_meta)
         crud.save_illustrated_image_meta(
             db,
             message_id=job.message_id,

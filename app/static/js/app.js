@@ -4287,6 +4287,135 @@
     });
   }
 
+  let reactorEnvDefaults = null;
+
+  const REACTOR_PANEL_FIELDS = [
+    ["images-reactor-model", "model", "text"],
+    ["images-reactor-source-faces-index", "source_faces_index", "text"],
+    ["images-reactor-face-index", "face_index", "text"],
+    ["images-reactor-upscaler", "upscaler", "text"],
+    ["images-reactor-scale", "scale", "float"],
+    ["images-reactor-upscale-visibility", "upscale_visibility", "float"],
+    ["images-reactor-face-restorer", "face_restorer", "text"],
+    ["images-reactor-restorer-visibility", "restorer_visibility", "float"],
+    ["images-reactor-codeformer-weight", "codeformer_weight", "float"],
+    ["images-reactor-restore-first", "restore_first", "int"],
+    ["images-reactor-gender-source", "gender_source", "int"],
+    ["images-reactor-gender-target", "gender_target", "int"],
+    ["images-reactor-device", "device", "text"],
+    ["images-reactor-mask-face", "mask_face", "int"],
+    ["images-reactor-select-source", "select_source", "int"],
+    ["images-reactor-face-model", "face_model", "text"],
+    ["images-reactor-source-folder", "source_folder", "text"],
+    ["images-reactor-random-image", "random_image", "int"],
+    ["images-reactor-upscale-force", "upscale_force", "int"],
+  ];
+
+  function readOptionalFloatInput(el) {
+    if (!el || el.value === "" || el.value == null) return null;
+    const n = parseFloat(el.value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function applyReactorPlaceholders(defaults) {
+    if (!defaults || typeof defaults !== "object") return;
+    REACTOR_PANEL_FIELDS.forEach(function ([id, key]) {
+      const el = document.getElementById(id);
+      if (!el || el.value !== "") return;
+      const val = defaults[key];
+      if (val == null || val === "") return;
+      el.placeholder = "Del .env: " + String(val);
+    });
+  }
+
+  function syncReactorGenderInputs() {
+    const femaleOn = document.getElementById("images-reactor-female-enabled");
+    const femaleModel = document.getElementById("images-reactor-female-face-model");
+    const maleOn = document.getElementById("images-reactor-male-enabled");
+    const maleModel = document.getElementById("images-reactor-male-face-model");
+    if (femaleModel) femaleModel.disabled = !(femaleOn && femaleOn.checked);
+    if (maleModel) maleModel.disabled = !(maleOn && maleOn.checked);
+  }
+
+  function readReactorPanelSettings() {
+    const enabled = document.getElementById("images-reactor-enabled");
+    const femaleEnabled = document.getElementById("images-reactor-female-enabled");
+    const femaleModel = document.getElementById("images-reactor-female-face-model");
+    const maleEnabled = document.getElementById("images-reactor-male-enabled");
+    const maleModel = document.getElementById("images-reactor-male-face-model");
+    const out = {
+      enabled: !!(enabled && enabled.checked),
+      female_enabled: !!(femaleEnabled && femaleEnabled.checked),
+      female_face_model: femaleModel ? String(femaleModel.value || "").trim() : "",
+      male_enabled: !!(maleEnabled && maleEnabled.checked),
+      male_face_model: maleModel ? String(maleModel.value || "").trim() : "",
+    };
+    REACTOR_PANEL_FIELDS.forEach(function ([id, key, kind]) {
+      const el = document.getElementById(id);
+      if (!el || el.value === "" || el.value == null) return;
+      if (kind === "int") {
+        const n = readOptionalIntInput(el);
+        if (n != null) out[key] = n;
+      } else if (kind === "float") {
+        const n = readOptionalFloatInput(el);
+        if (n != null) out[key] = n;
+      } else {
+        out[key] = String(el.value).trim();
+      }
+    });
+    return out;
+  }
+
+  function applyReactorPanelSettings(reactorPrefs) {
+    const prefs = reactorPrefs && typeof reactorPrefs === "object" ? reactorPrefs : {};
+    const legacyEnabled = !!prefs.enabled || !!prefs.reactor_enabled;
+    const enabled = document.getElementById("images-reactor-enabled");
+    const femaleEnabled = document.getElementById("images-reactor-female-enabled");
+    const femaleModel = document.getElementById("images-reactor-female-face-model");
+    const maleEnabled = document.getElementById("images-reactor-male-enabled");
+    const maleModel = document.getElementById("images-reactor-male-face-model");
+    if (enabled) enabled.checked = legacyEnabled;
+    if (femaleEnabled) femaleEnabled.checked = !!prefs.female_enabled;
+    if (femaleModel && prefs.female_face_model != null) femaleModel.value = prefs.female_face_model;
+    if (maleEnabled) maleEnabled.checked = !!prefs.male_enabled;
+    if (maleModel && prefs.male_face_model != null) maleModel.value = prefs.male_face_model;
+    REACTOR_PANEL_FIELDS.forEach(function ([id, key]) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (prefs[key] == null || prefs[key] === "") {
+        el.value = "";
+        return;
+      }
+      el.value = String(prefs[key]);
+    });
+    syncReactorGenderInputs();
+    applyReactorPlaceholders(reactorEnvDefaults);
+  }
+
+  async function fetchForgeReactorDefaults() {
+    try {
+      const data = await fetchJson(`${API}/forge/reactor-defaults`);
+      if (data && data.defaults) {
+        reactorEnvDefaults = data.defaults;
+        applyReactorPlaceholders(reactorEnvDefaults);
+      }
+    } catch (_) {}
+  }
+
+  function reactorPanelInputNodes() {
+    const nodes = [
+      document.getElementById("images-reactor-enabled"),
+      document.getElementById("images-reactor-female-enabled"),
+      document.getElementById("images-reactor-female-face-model"),
+      document.getElementById("images-reactor-male-enabled"),
+      document.getElementById("images-reactor-male-face-model"),
+    ];
+    REACTOR_PANEL_FIELDS.forEach(function ([id]) {
+      nodes.push(document.getElementById(id));
+    });
+    return nodes.filter(Boolean);
+  }
+
   function collectImagesSnapshot() {
     const enabled = document.getElementById("images-enabled");
     const useChatConfig = document.getElementById("images-use-chat-config");
@@ -4311,6 +4440,7 @@
       width: forge.width,
       height: forge.height,
       seed: forge.seed,
+      reactor: readReactorPanelSettings(),
     };
   }
 
@@ -4331,6 +4461,7 @@
     plannerRules = normalizePlannerRulesFromPrefs(prefs.prompt_system_instructions);
     renderPlannerRules();
     if (dbg && prefs.debug != null) dbg.checked = !!prefs.debug;
+    applyReactorPanelSettings(prefs.reactor || (prefs.reactor_enabled ? { enabled: true } : {}));
     if (
       prefs.steps != null ||
       prefs.width != null ||
@@ -5793,18 +5924,30 @@
     const stopBtn = document.getElementById("images-debug-stop");
     const win = document.getElementById("images-debug-window");
     fillImagesPanelFromPrefs(prefs);
+    await fetchForgeReactorDefaults();
 
     const forgeParamInputs = [forgeSteps, forgeWidth, forgeHeight, forgeSeed];
     [enabled, useChatConfig, per, batchSize, retries, promptEl, providerSel, modelSel, dbg]
       .concat(forgeParamInputs)
+      .concat(reactorPanelInputNodes())
       .forEach((node) => {
       if (!node) return;
-      const evt = node === promptEl ? "input" : "change";
+      const evt =
+        node === promptEl ||
+        node.id === "images-reactor-female-face-model" ||
+        node.id === "images-reactor-male-face-model" ||
+        (node.id && node.id.indexOf("images-reactor-") === 0 && node.type === "text")
+          ? "input"
+          : "change";
       node.addEventListener(evt, function () {
+        if (node.id === "images-reactor-female-enabled" || node.id === "images-reactor-male-enabled") {
+          syncReactorGenderInputs();
+        }
         if (node === providerSel) loadImagesPromptModels().then(persistImagesPanel);
         else persistImagesPanel();
       });
     });
+    syncReactorGenderInputs();
     if (reloadForgeBtn) {
       reloadForgeBtn.addEventListener("click", function () {
         reloadForgeParamsFromLastGen({ notify: true }).catch(function () {});
@@ -6179,6 +6322,7 @@
         use_chat_config: useChat,
         include_prompt_debug: isShowDebugMode(),
         debug: true,
+        reactor: readReactorPanelSettings(),
         ...readForgePanelParams(),
       },
       debugLabel: `Iniciando illustrate message=${messageId}${force ? " (manual)" : ""}`,
@@ -6198,6 +6342,7 @@
       body: {
         retries: retries ? parseInt(retries.value, 10) || 0 : 0,
         batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
+        reactor: readReactorPanelSettings(),
         debug: true,
         ...readForgePanelParams(),
       },
@@ -6239,6 +6384,7 @@
         use_chat_config: useChat,
         include_prompt_debug: isShowDebugMode(),
         debug: true,
+        reactor: readReactorPanelSettings(),
         paragraph_index: idx,
         selected_excerpt: excerpt ? String(excerpt).trim() : "",
         ...readForgePanelParams(),

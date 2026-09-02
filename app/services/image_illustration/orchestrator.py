@@ -32,6 +32,7 @@ from app.services.image_illustration.models import (
 )
 from app.services.image_illustration.generation_params import build_stored_generation_params
 from app.services.image_illustration.ports import ForgeGenerationPort, LastPayloadSource, ScenePlannerPort
+from app.services.image_illustration.reactor import apply_reactor_if_configured
 from app.services.image_illustration.run_context import IllustrationRunContext
 from app.services.image_illustration import status_codes as st
 
@@ -182,6 +183,13 @@ def _run_pass(
             t0 = time.perf_counter()
             image_bytes = forge.generate(payload.mode, body)
             generation_time_ms = (time.perf_counter() - t0) * 1000.0
+            reactor_meta: dict = {}
+            if run_context:
+                image_bytes, reactor_meta = apply_reactor_if_configured(
+                    forge,
+                    image_bytes,
+                    run_context.rules,
+                )
             filename = save_image(scene.id, image_bytes)
             url = url_for_saved(filename)
             content = _replace_scene_slot(
@@ -192,6 +200,7 @@ def _run_pass(
                 body,
                 generation_time_ms=generation_time_ms,
             )
+            stored_params.update(reactor_meta)
             yield st.status_event(
                 st.IMAGES_IMAGE_READY,
                 f"Imagen recibida ({index}/{total})",

@@ -37,6 +37,7 @@ from app.schemas import (
     IllustrateAtRequest,
     IllustrateRequest,
     MessageContentUpdateResponse,
+    ReactorDefaultsResponse,
 )
 from app.services.image_illustration.content_ops import (
     drop_missing_illustration_files,
@@ -49,6 +50,7 @@ from app.services.image_illustration.last_payload import (
     FileSystemLastPayloadSource,
     LastPayloadError,
 )
+from app.services.image_illustration.reactor_settings import reactor_env_defaults
 from app.services.image_illustration.orchestrator import ImageIllustrationOrchestrator
 from app.services.image_illustration.queue_ops import delete_image_generation_jobs
 from app.services.image_illustration.run_context import IllustrationRunContext
@@ -95,6 +97,34 @@ def _forge_overrides_dict(body: IllustrateRequest | GenerateRemainingRequest) ->
     if not overrides:
         return {}
     return overrides.as_dict()
+
+
+def _reactor_panel_dict(body: IllustrateRequest | GenerateRemainingRequest) -> dict:
+    reactor = body.reactor
+    panel: dict = {}
+    if reactor is None:
+        return panel
+    raw = reactor.model_dump()
+    for key, value in raw.items():
+        if key in ("enabled", "female_enabled", "male_enabled"):
+            panel[key] = bool(value)
+        elif value is not None and value != "":
+            panel[key] = value
+    return panel
+
+
+def _illustration_rules(
+    body: IllustrateRequest | GenerateRemainingRequest,
+    **extra,
+) -> dict:
+    reactor_panel = _reactor_panel_dict(body)
+    rules = {
+        "forge_overrides": _forge_overrides_dict(body),
+        "reactor": reactor_panel,
+        "reactor_enabled": reactor_panel.get("enabled", False),
+    }
+    rules.update(extra)
+    return rules
 
 
 def _enqueue_image_generation_job(**kwargs) -> str:
@@ -378,11 +408,11 @@ def illustrate_message(
         prompt_model=prompt_model,
         prompt_provider=prompt_provider,
         retries=body.retries,
-        rules={
-            "prompt_system_instructions": body.prompt_system_instructions,
-            "use_chat_config": body.use_chat_config,
-            "forge_overrides": _forge_overrides_dict(body),
-        },
+        rules=_illustration_rules(
+            body,
+            prompt_system_instructions=body.prompt_system_instructions,
+            use_chat_config=body.use_chat_config,
+        ),
     )
 
     def event_stream():
@@ -453,13 +483,13 @@ def illustrate_at_paragraph(
         prompt_model=prompt_model,
         prompt_provider=prompt_provider,
         retries=body.retries,
-        rules={
-            "prompt_system_instructions": body.prompt_system_instructions,
-            "use_chat_config": body.use_chat_config,
-            "forge_overrides": _forge_overrides_dict(body),
-            "paragraph_index": body.paragraph_index,
-            "selected_excerpt": body.selected_excerpt,
-        },
+        rules=_illustration_rules(
+            body,
+            prompt_system_instructions=body.prompt_system_instructions,
+            use_chat_config=body.use_chat_config,
+            paragraph_index=body.paragraph_index,
+            selected_excerpt=body.selected_excerpt,
+        ),
     )
 
     def event_stream():
@@ -512,7 +542,7 @@ def generate_remaining_images(
         prompt_model=prompt_model,
         prompt_provider=prompt_provider,
         retries=body.retries,
-        rules={"forge_overrides": _forge_overrides_dict(body)},
+        rules=_illustration_rules(body),
     )
 
     def event_stream():
@@ -824,6 +854,16 @@ def get_forge_last_generation_params():
         seed=data.get("seed"),
         mode=data.get("mode"),
     )
+
+
+@router.get(
+    "/forge/reactor-defaults",
+    response_model=ReactorDefaultsResponse,
+)
+def get_forge_reactor_defaults():
+    """Defaults ReActor desde .env para placeholders del panel Imágenes."""
+    defaults = reactor_env_defaults().to_panel_dict()
+    return ReactorDefaultsResponse(defaults=defaults)
 
 
 @router.get(

@@ -137,3 +137,59 @@ def test_forge_client_missing_images():
     client = ForgeHttpClient(http_client=mock_http)
     with pytest.raises(ForgeClientError, match="images"):
         client.generate(ForgeMode.TXT2IMG, {"prompt": "z"})
+
+
+def test_forge_client_reactor_swap_decodes_image():
+    raw = b"swapped-face-bytes"
+    mock_http = MagicMock()
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"image": base64.b64encode(raw).decode()}
+    mock_http.post.return_value = resp
+
+    params = {
+        "source_faces_index": [0],
+        "face_index": [0],
+        "upscaler": "None",
+        "scale": 1,
+        "upscale_visibility": 1,
+        "face_restorer": "CodeFormer",
+        "restorer_visibility": 1,
+        "restore_first": 1,
+        "model": "inswapper_128.onnx",
+        "gender_source": 0,
+        "gender_target": 0,
+        "save_to_file": 0,
+        "result_file_path": "",
+        "device": "CUDA",
+        "mask_face": 1,
+        "select_source": 0,
+        "upscale_force": 0,
+        "codeformer_weight": 0.5,
+    }
+    client = ForgeHttpClient(base_url="http://forge.test", http_client=mock_http)
+    out = client.reactor_swap(
+        source_image=b"source",
+        target_image=b"target",
+        params=params,
+    )
+    assert out == raw
+    args, kwargs = mock_http.post.call_args
+    assert args[0] == "http://forge.test/reactor/image"
+    payload = kwargs["json"]
+    assert payload["model"] == "inswapper_128.onnx"
+    assert payload["source_image"].startswith("data:image/png;base64,")
+    assert payload["target_image"].startswith("data:image/png;base64,")
+
+
+def test_forge_client_reactor_swap_http_error():
+    mock_http = MagicMock()
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "not found"
+    resp.reason_phrase = "Not Found"
+    mock_http.post.return_value = resp
+    client = ForgeHttpClient(http_client=mock_http)
+    with pytest.raises(ForgeClientError) as ei:
+        client.reactor_swap(source_image=b"a", target_image=b"b", params={"model": "x"})
+    assert ei.value.status_code == 404
