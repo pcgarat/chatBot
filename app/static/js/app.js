@@ -1923,6 +1923,11 @@
       expandedMessageKeys.clear();
       const turns = conv.history_turns != null && conv.history_turns >= 0 ? conv.history_turns : 5;
       if (el.historyTurnsInput) el.historyTurnsInput.value = String(Math.min(100, Math.max(0, turns)));
+      if (conv.images && typeof conv.images === "object") {
+        await applyImagesSnapshot(conv.images);
+      } else {
+        persistImagesToConversation();
+      }
     } else {
       if (el.conversationTitle) el.conversationTitle.value = "Nueva conversación";
       applyAutoTitleUi(false);
@@ -2251,6 +2256,7 @@
           model_id: model,
           provider: provider,
           system_instructions: rules.length ? rules : null,
+          images: collectImagesSnapshot(),
         }),
       });
       await setCurrentConversation(conv);
@@ -4296,12 +4302,39 @@
     });
   }
 
+  function persistImagesToConversation() {
+    if (!currentConversationId) return;
+    const snap = collectImagesSnapshot();
+    const prev = loadImagesPrefs();
+    if (!snap.prompt_provider && prev.prompt_provider) snap.prompt_provider = prev.prompt_provider;
+    if (!snap.prompt_model && prev.prompt_model) snap.prompt_model = prev.prompt_model;
+    fetchJson(`${API}/conversations/${currentConversationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ images: snap }),
+    }).catch(() => {});
+  }
+
+  let saveImagesToConvTimer = null;
+  const SAVE_IMAGES_DEBOUNCE_MS = 600;
+
+  function debouncedPersistImagesToConversation() {
+    if (saveImagesToConvTimer) clearTimeout(saveImagesToConvTimer);
+    saveImagesToConvTimer = setTimeout(function () {
+      saveImagesToConvTimer = null;
+      persistImagesToConversation();
+    }, SAVE_IMAGES_DEBOUNCE_MS);
+  }
+
   function persistImagesPanel() {
     const snap = collectImagesSnapshot();
     snap.debug = isImagesDebugMode();
+    const prev = loadImagesPrefs();
+    if (!snap.prompt_provider && prev.prompt_provider) snap.prompt_provider = prev.prompt_provider;
+    if (!snap.prompt_model && prev.prompt_model) snap.prompt_model = prev.prompt_model;
     saveImagesPrefs(snap);
     syncImagesDebugWindow();
     syncImagesChatConfigDisabled();
+    debouncedPersistImagesToConversation();
   }
 
   async function fetchForgeLastGenerationParams() {
@@ -4317,12 +4350,14 @@
 
   function persistForgePanelParamsFromDom() {
     const forgeParams = readForgePanelParams();
-    return saveImagesPrefs({
+    const prefs = saveImagesPrefs({
       steps: forgeParams.steps,
       width: forgeParams.width,
       height: forgeParams.height,
       seed: forgeParams.seed,
     });
+    persistImagesPanel();
+    return prefs;
   }
 
   async function reloadForgeParamsFromLastGen(options) {
@@ -5173,7 +5208,7 @@
     });
   }
 
-  function initImagesPanel() {
+  async function initImagesPanel() {
     const prefs = loadImagesPrefs();
     const enabled = document.getElementById("images-enabled");
     const useChatConfig = document.getElementById("images-use-chat-config");
@@ -5224,11 +5259,10 @@
     }
     syncImagesChatConfigDisabled();
     syncImagesDebugWindow();
-    ensureImagesPromptSelects();
+    await ensureImagesPromptSelects();
     loadPlannerLibraryRules();
-    autofillForgeParamsFromLastGen(prefs).then(function () {
-      persistImagesPanel();
-    });
+    await autofillForgeParamsFromLastGen(prefs);
+    persistImagesPanel();
   }
 
   initImagesPanel();
@@ -5269,6 +5303,7 @@
         model_params: buildModelParams(),
         history_turns: snap.history_turns,
         system_instructions: snap.system_instructions,
+        images: snap.images,
       }),
     });
   }

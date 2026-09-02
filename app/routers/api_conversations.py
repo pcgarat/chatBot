@@ -14,6 +14,7 @@ from app.slash_commands import parse_slash_command
 from app.db import get_db
 from app.crud import create_rule as crud_create_rule
 from app.crud import get_rule as crud_get_rule
+from app.services.workspace_profiles.snapshot import normalize_images_snapshot
 from app.schemas import (
     ConversationCreate,
     ConversationFork,
@@ -37,6 +38,19 @@ def _parse_model_params(raw: str | None) -> dict | None:
         return data if isinstance(data, dict) else None
     except (TypeError, ValueError):
         return None
+
+
+def _parse_images(raw: str | None) -> dict | None:
+    """Convierte images de la BD (JSON string) al snapshot canónico."""
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return normalize_images_snapshot(data)
 
 
 def _parse_system_instructions(raw: str | None) -> list[dict] | None:
@@ -223,6 +237,7 @@ def _conversation_out(conv, db, messages=None) -> ConversationOut:
         history_turns=getattr(conv, "history_turns", None),
         instruction_override=getattr(conv, "instruction_override", None),
         active_leaf_message_id=getattr(conv, "active_leaf_message_id", None),
+        images=_parse_images(getattr(conv, "images", None)),
         forked_from_conversation_id=getattr(conv, "forked_from_conversation_id", None),
         forked_from_message_id=getattr(conv, "forked_from_message_id", None),
         inherited_messages=[_message_in_chat(m) for m in crud.get_inherited_prefix(db, conv)],
@@ -274,6 +289,7 @@ def create_conversation(body: ConversationCreate, db: Session = Depends(get_db))
         system_instruction_global=body.system_instruction_global,
         instruction_ids=instruction_ids,
         inject_instruction_every=body.inject_instruction_every,
+        images=body.images.model_dump() if body.images is not None else None,
     )
     return _conversation_out(conv, db)
 
@@ -305,6 +321,10 @@ def update_conversation(
             raise HTTPException(status_code=404, detail="Mensaje de intento no encontrado")
     instruction_ids = _instructions_to_ids(body.system_instructions, db) if body.system_instructions is not None else None
     instruction_override_arg = body.instruction_override if "instruction_override" in body_set else crud.INSTRUCTION_OVERRIDE_UNSET
+    if "images" in body_set:
+        images_arg = body.images.model_dump() if body.images is not None else None
+    else:
+        images_arg = crud.IMAGES_UNSET
     conv = crud.update_conversation(
         db,
         conversation_id,
@@ -319,6 +339,7 @@ def update_conversation(
         instruction_override=instruction_override_arg,
         active_leaf_message_id=body.active_leaf_message_id if "active_leaf_message_id" in body_set else None,
         auto_title=body.auto_title if "auto_title" in body_set else crud.AUTO_TITLE_UNSET,
+        images=images_arg,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")

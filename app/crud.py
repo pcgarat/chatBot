@@ -9,12 +9,14 @@ from app.models import Conversation, IllustratedImage, Message, Rule
 from app.services.conversation_title import derive_auto_title
 from app.services.conversation_tree import path_from_messages
 from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
+from app.services.workspace_profiles.snapshot import normalize_images_snapshot
 
 # Sentinel para "no actualizar inject_instruction_every" en update_conversation
 _INJECT_UNSET = object()
 # Sentinel para "no actualizar instruction_override" (omitido en el body); None = borrar
 INSTRUCTION_OVERRIDE_UNSET = object()
 AUTO_TITLE_UNSET = object()
+IMAGES_UNSET = object()
 
 
 # ----- Rules (biblioteca) -----
@@ -87,6 +89,7 @@ def create_conversation(
     forked_from_conversation_id: str | None = None,
     forked_from_message_id: str | None = None,
     auto_title: bool = False,
+    images: dict | None = None,
 ) -> Conversation:
     conv = Conversation(
         title=title,
@@ -99,6 +102,7 @@ def create_conversation(
         history_turns=history_turns if history_turns and history_turns > 0 else 5,
         forked_from_conversation_id=forked_from_conversation_id,
         forked_from_message_id=forked_from_message_id,
+        images=json.dumps(normalize_images_snapshot(images)) if images is not None else None,
     )
     db.add(conv)
     db.commit()
@@ -148,6 +152,7 @@ def update_conversation(
     instruction_override: str | None = INSTRUCTION_OVERRIDE_UNSET,
     active_leaf_message_id: str | None = None,
     auto_title: bool | object = AUTO_TITLE_UNSET,
+    images: dict | None | object = IMAGES_UNSET,
 ) -> Conversation | None:
     conv = get_conversation(db, conversation_id)
     if not conv:
@@ -178,6 +183,8 @@ def update_conversation(
         if not leaf:
             return None
         conv.active_leaf_message_id = active_leaf_message_id
+    if images is not IMAGES_UNSET:
+        conv.images = json.dumps(normalize_images_snapshot(images)) if images is not None else None
     if conv.auto_title:
         apply_auto_title(db, conv)
     # No actualizar updated_at si solo cambió instruction_override (al hacer click en otra conversación no debe reordenar la lista)
@@ -185,6 +192,7 @@ def update_conversation(
         title is not None and not conv.auto_title, model_id is not None, provider is not None,
         system_instruction_global is not None, instruction_ids is not None,
         inject_instruction_every is not _INJECT_UNSET, model_params is not None, history_turns is not None,
+        images is not IMAGES_UNSET,
     ])
     if affects_order:
         conv.updated_at = datetime.utcnow()
@@ -323,6 +331,7 @@ def fork_conversation(db: Session, view_conversation_id: str, message_id: str) -
         auto_title=bool(getattr(view, "auto_title", False)),
     )
     child.model_params = view.model_params
+    child.images = view.images
     child.instruction_override = view.instruction_override
     child.last_message_at = datetime.utcnow()
     apply_auto_title(db, child)

@@ -119,6 +119,11 @@ def _normalize_planner_instructions(value: object) -> list[dict]:
     return items
 
 
+def normalize_images_snapshot(value: object) -> dict:
+    """Snapshot canónico del panel Imágenes, sin cromo de UI."""
+    return _normalize_images(value).to_dict()
+
+
 def _normalize_images(value: object) -> ImagesSnapshot:
     data = value if isinstance(value, dict) else {}
     return ImagesSnapshot(
