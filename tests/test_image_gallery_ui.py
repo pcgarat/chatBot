@@ -20,7 +20,9 @@ def test_gallery_entry_and_panel_exist_in_html():
     assert 'id="gallery-filter-steps"' in html
     assert 'id="gallery-filter-size"' in html
     assert 'id="gallery-filter-mode"' in html
+    assert 'id="gallery-filter-seed"' in html
     assert 'id="gallery-filter-prompt-q"' in html
+    assert 'id="conversation-image-filter-notice"' in html
     assert 'id="gallery-scope-all"' in html
     assert 'id="gallery-scope-conv-label"' in html
     assert 'id="center-panels-empty"' in html
@@ -84,6 +86,8 @@ def test_gallery_css_toggles_panels_independently():
     assert ".image-gallery-lightbox" in css
     assert ".image-gallery-messages" in css
     assert ".image-gallery-msg-chip" in css
+    assert ".chat-image-filter-notice" in css
+    assert ".chat-illustration-frame.is-gallery-filter-hidden" in css
     assert ".center-panel-toggles" in css
     assert "flex-direction: column" in css[css.index(".center-panel-toggles") : css.index(".center-panel-toggles") + 120]
     assert ".center-panels-empty" in css
@@ -107,3 +111,38 @@ def test_index_serves_gallery_button(client):
     assert b'id="btn-center-chat"' in r.content
     assert b'id="image-gallery-lightbox"' in r.content
     assert b'id="center-panels-splitter"' in r.content
+    assert b'id="gallery-filter-seed"' in r.content
+    assert b'id="conversation-image-filter-notice"' in r.content
+
+
+def test_gallery_toolbar_filters_apply_to_conversation_images():
+    js = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'id="gallery-filter-seed"' in html
+    assert "hasActiveGalleryToolbarFilters" in js
+    assert "appendGalleryToolbarFilters" in js
+    assert "refreshConversationImageFilter" in js
+    assert "scheduleConversationImageFilter" in js
+    assert "applyIllustrationFilterToRoot" in js
+    assert "is-gallery-filter-hidden" in js
+    assert "syncImageFilterNotice" in js
+    assert "illustrated-images/matching-filenames" in js
+    assert "gallery-filter-seed" in js
+    refresh_fn = js[
+        js.index("async function refreshConversationImageFilter") : js.index(
+            "function scheduleConversationImageFilter"
+        )
+    ]
+    assert "conversation_id" in refresh_fn
+    assert "message_id" not in refresh_fn
+    assert "syncImageFilterNotice" in refresh_fn
+    notice_fn = js[
+        js.index("function syncImageFilterNotice") : js.index("function applyIllustrationFilterToRoot")
+    ]
+    assert "conversation-image-filter-notice" in notice_fn
+    assert "hidden" in notice_fn
+    assert "hasActiveGalleryToolbarFilters" in notice_fn
+    render_fn = js[js.index("function renderMessages") : js.index("function closeAllMessageContextMenus")]
+    assert "scheduleConversationImageFilter" in render_fn
+    assert "onGalleryToolbarFilterChange" in js
+    assert "setGalleryPanelVisible(true)" in js[js.index("conversation-image-filter-notice") :]

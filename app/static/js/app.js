@@ -1495,6 +1495,7 @@
       });
       frame.appendChild(btn);
     });
+    applyIllustrationFilterToRoot(root);
   }
 
   /** Tras salir de display:none, fuerza el fetch de imgs lazy que quedaron a 0×0. */
@@ -2500,6 +2501,7 @@
     });
     bindMessageContextMenus();
     enhanceIllustrationFrames(el.messagesContainer);
+    scheduleConversationImageFilter();
     scrollToBottomIfEnabled();
   }
 
@@ -4382,6 +4384,19 @@
   let galleryScopeAll = true;
   let galleryUserChoseAll = false;
   let galleryMessageId = null;
+  let conversationFilterFilenames = null;
+  let conversationFilterPending = false;
+  let conversationFilterSeq = 0;
+  let conversationFilterTimer = null;
+  const GALLERY_TOOLBAR_FILTER_IDS = [
+    "gallery-filter-prompt-model",
+    "gallery-filter-prompt-provider",
+    "gallery-filter-forge-model",
+    "gallery-filter-steps",
+    "gallery-filter-size",
+    "gallery-filter-mode",
+    "gallery-filter-seed",
+  ];
 
   function isGalleryPanelVisible() {
     return document.documentElement.getAttribute("data-center-gallery") === "on";
@@ -4483,6 +4498,116 @@
     return node ? String(node.value || "") : "";
   }
 
+  function appendGalleryToolbarFilters(params) {
+    const model = galleryFilterValue("gallery-filter-prompt-model");
+    if (model === "__none__") params.set("prompt_model", "");
+    else if (model) params.set("prompt_model", model);
+    const provider = galleryFilterValue("gallery-filter-prompt-provider");
+    if (provider === "__none__") params.set("prompt_provider", "");
+    else if (provider) params.set("prompt_provider", provider);
+    const forge = galleryFilterValue("gallery-filter-forge-model");
+    if (forge) params.set("forge_model", forge);
+    const steps = galleryFilterValue("gallery-filter-steps");
+    if (steps) params.set("steps", steps);
+    const size = galleryFilterValue("gallery-filter-size");
+    if (size) params.set("size", size);
+    const mode = galleryFilterValue("gallery-filter-mode");
+    if (mode) params.set("mode", mode);
+    const seed = galleryFilterValue("gallery-filter-seed");
+    if (seed) params.set("seed", seed);
+    const q = galleryFilterValue("gallery-filter-prompt-q").trim();
+    if (q) params.set("prompt_q", q);
+  }
+
+  function hasActiveGalleryToolbarFilters() {
+    if (GALLERY_TOOLBAR_FILTER_IDS.some(function (id) {
+      return Boolean(galleryFilterValue(id));
+    })) {
+      return true;
+    }
+    return Boolean(galleryFilterValue("gallery-filter-prompt-q").trim());
+  }
+
+  function syncImageFilterNotice() {
+    const notice = document.getElementById("conversation-image-filter-notice");
+    if (!notice) return;
+    notice.hidden = !hasActiveGalleryToolbarFilters();
+  }
+
+  function applyIllustrationFilterToRoot(root) {
+    if (!root) return;
+    const active = hasActiveGalleryToolbarFilters();
+    root.querySelectorAll(".chat-illustration-frame").forEach(function (frame) {
+      if (!active || (!conversationFilterPending && conversationFilterFilenames == null)) {
+        frame.classList.remove("is-gallery-filter-hidden");
+        return;
+      }
+      if (conversationFilterPending) {
+        frame.classList.add("is-gallery-filter-hidden");
+        return;
+      }
+      const img = frame.querySelector("img.chat-illustration");
+      const filename = img
+        ? img.getAttribute("data-filename") || filenameFromIllustratedSrc(img.getAttribute("src"))
+        : "";
+      frame.classList.toggle(
+        "is-gallery-filter-hidden",
+        !conversationFilterFilenames.has(filename)
+      );
+    });
+  }
+
+  function applyIllustrationFilterToVisibleRoots() {
+    applyIllustrationFilterToRoot(el.messagesContainer);
+    applyIllustrationFilterToRoot(document.getElementById("reading-mode-body"));
+  }
+
+  async function refreshConversationImageFilter() {
+    const seq = ++conversationFilterSeq;
+    syncImageFilterNotice();
+    if (!hasActiveGalleryToolbarFilters() || !currentConversationId) {
+      conversationFilterFilenames = null;
+      conversationFilterPending = false;
+      applyIllustrationFilterToVisibleRoots();
+      return;
+    }
+    conversationFilterPending = true;
+    conversationFilterFilenames = null;
+    applyIllustrationFilterToVisibleRoots();
+    try {
+      const params = new URLSearchParams();
+      params.set("conversation_id", currentConversationId);
+      appendGalleryToolbarFilters(params);
+      const data = await fetchJson(
+        `${API}/illustrated-images/matching-filenames?${params}`
+      );
+      if (seq !== conversationFilterSeq) return;
+      conversationFilterFilenames = new Set(data.filenames || []);
+      conversationFilterPending = false;
+      applyIllustrationFilterToVisibleRoots();
+    } catch (err) {
+      if (seq !== conversationFilterSeq) return;
+      conversationFilterFilenames = null;
+      conversationFilterPending = false;
+      applyIllustrationFilterToVisibleRoots();
+      showError("No se pudieron aplicar los filtros de imágenes al chat: " + err.message);
+    }
+  }
+
+  function scheduleConversationImageFilter() {
+    if (conversationFilterTimer) window.clearTimeout(conversationFilterTimer);
+    conversationFilterTimer = window.setTimeout(function () {
+      conversationFilterTimer = null;
+      refreshConversationImageFilter();
+    }, 80);
+  }
+
+  function onGalleryToolbarFilterChange() {
+    galleryOffset = 0;
+    if (isGalleryPanelVisible()) loadGalleryPage();
+    refreshConversationImageFilter();
+  }
+
   function galleryScopedConversationId() {
     if (galleryScopeAll || !currentConversationId) return "";
     return currentConversationId;
@@ -4571,22 +4696,7 @@
   function buildGalleryQuery(offset) {
     const params = new URLSearchParams();
     applyGalleryScopeToParams(params);
-    const model = galleryFilterValue("gallery-filter-prompt-model");
-    if (model === "__none__") params.set("prompt_model", "");
-    else if (model) params.set("prompt_model", model);
-    const provider = galleryFilterValue("gallery-filter-prompt-provider");
-    if (provider === "__none__") params.set("prompt_provider", "");
-    else if (provider) params.set("prompt_provider", provider);
-    const forge = galleryFilterValue("gallery-filter-forge-model");
-    if (forge) params.set("forge_model", forge);
-    const steps = galleryFilterValue("gallery-filter-steps");
-    if (steps) params.set("steps", steps);
-    const size = galleryFilterValue("gallery-filter-size");
-    if (size) params.set("size", size);
-    const mode = galleryFilterValue("gallery-filter-mode");
-    if (mode) params.set("mode", mode);
-    const q = galleryFilterValue("gallery-filter-prompt-q").trim();
-    if (q) params.set("prompt_q", q);
+    appendGalleryToolbarFilters(params);
     params.set("limit", String(GALLERY_PAGE_SIZE));
     params.set("offset", String(offset));
     return params;
@@ -4632,6 +4742,7 @@
       fillGallerySelect("gallery-filter-steps", data.steps, "");
       fillGallerySelect("gallery-filter-size", data.sizes, "");
       fillGallerySelect("gallery-filter-mode", data.modes, "");
+      fillGallerySelect("gallery-filter-seed", data.seeds, "");
     } catch (err) {
       showError("No se pudieron cargar los filtros de la galería: " + err.message);
     }
@@ -4665,6 +4776,7 @@
         const meta = [
           item.steps != null ? item.steps + " steps" : null,
           size,
+          item.seed != null ? "seed " + item.seed : null,
           item.forge_model,
           galleryLlmLabel(item),
         ]
@@ -4951,13 +5063,11 @@
       "gallery-filter-steps",
       "gallery-filter-size",
       "gallery-filter-mode",
+      "gallery-filter-seed",
     ].forEach(function (id) {
       const node = document.getElementById(id);
       if (!node) return;
-      node.addEventListener("change", function () {
-        galleryOffset = 0;
-        loadGalleryPage();
-      });
+      node.addEventListener("change", onGalleryToolbarFilterChange);
     });
     const scopeAll = document.getElementById("gallery-scope-all");
     if (scopeAll) {
@@ -4985,11 +5095,17 @@
       promptQ.addEventListener("input", function () {
         if (galleryPromptTimer) window.clearTimeout(galleryPromptTimer);
         galleryPromptTimer = window.setTimeout(function () {
-          galleryOffset = 0;
-          loadGalleryPage();
+          onGalleryToolbarFilterChange();
         }, 280);
       });
     }
+    const filterNotice = document.getElementById("conversation-image-filter-notice");
+    if (filterNotice) {
+      filterNotice.addEventListener("click", function () {
+        setGalleryPanelVisible(true);
+      });
+    }
+    syncImageFilterNotice();
     const lightbox = document.getElementById("image-gallery-lightbox");
     const closeBtn = document.getElementById("image-gallery-lightbox-close");
     const prev = document.getElementById("image-gallery-lightbox-prev");

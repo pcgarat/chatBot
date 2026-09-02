@@ -555,6 +555,7 @@ def _apply_illustrated_gallery_filters(
     steps: int | None,
     width: int | None,
     height: int | None,
+    seed: int | None,
     mode: str | None,
     prompt_q: str | None,
     conversation_id: str | None = None,
@@ -604,6 +605,10 @@ def _apply_illustrated_gallery_filters(
         q = q.filter(
             func.json_extract(IllustratedImage.params_json, "$.height") == height
         )
+    if seed is not None:
+        q = q.filter(
+            func.json_extract(IllustratedImage.params_json, "$.seed") == seed
+        )
     if mode:
         q = q.filter(IllustratedImage.mode == mode)
     if prompt_q:
@@ -625,6 +630,7 @@ def list_illustrated_images(
     steps: int | None = None,
     width: int | None = None,
     height: int | None = None,
+    seed: int | None = None,
     mode: str | None = None,
     prompt_q: str | None = None,
     conversation_id: str | None = None,
@@ -642,6 +648,7 @@ def list_illustrated_images(
         steps=steps,
         width=width,
         height=height,
+        seed=seed,
         mode=mode,
         prompt_q=prompt_q,
         conversation_id=conversation_id,
@@ -655,6 +662,47 @@ def list_illustrated_images(
         .all()
     )
     return rows, total
+
+
+def list_illustrated_image_filenames(
+    db: Session,
+    *,
+    prompt_provider: str | None = None,
+    prompt_model: str | None = None,
+    forge_model: str | None = None,
+    steps: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    seed: int | None = None,
+    mode: str | None = None,
+    prompt_q: str | None = None,
+    conversation_id: str | None = None,
+    message_id: str | None = None,
+) -> list[str]:
+    """Filenames que pasan los mismos filtros que la galería, sin paginar."""
+    q = _apply_illustrated_gallery_filters(
+        _illustrated_gallery_base_query(db, require_active_owner=not bool(conversation_id)),
+        db=db,
+        prompt_provider=prompt_provider,
+        prompt_model=prompt_model,
+        forge_model=forge_model,
+        steps=steps,
+        width=width,
+        height=height,
+        seed=seed,
+        mode=mode,
+        prompt_q=prompt_q,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    return [
+        filename
+        for (filename,) in q.order_by(
+            IllustratedImage.created_at.desc(), IllustratedImage.id.desc()
+        )
+        .with_entities(IllustratedImage.filename)
+        .all()
+    ]
 
 
 def illustrated_image_facets(
@@ -678,6 +726,7 @@ def illustrated_image_facets(
         steps=None,
         width=None,
         height=None,
+        seed=None,
         mode=None,
         prompt_q=None,
         conversation_id=conversation_id,
@@ -688,6 +737,7 @@ def illustrated_image_facets(
     models: set[str] = set()
     forge_models: set[str] = set()
     steps_vals: set[int] = set()
+    seeds_vals: set[int] = set()
     sizes: set[str] = set()
     modes: set[str] = set()
     missing_llm = False
@@ -714,6 +764,11 @@ def illustrated_image_facets(
                 steps_vals.add(int(params["steps"]))
             except (TypeError, ValueError):
                 pass
+        if params.get("seed") is not None:
+            try:
+                seeds_vals.add(int(params["seed"]))
+            except (TypeError, ValueError):
+                pass
         w, h = params.get("width"), params.get("height")
         if w is not None and h is not None:
             try:
@@ -725,6 +780,7 @@ def illustrated_image_facets(
         "prompt_models": sorted(models),
         "forge_models": sorted(forge_models),
         "steps": sorted(steps_vals),
+        "seeds": sorted(seeds_vals),
         "sizes": sorted(sizes, key=lambda s: [int(p) for p in s.split("x")]),
         "modes": sorted(modes),
         "has_missing_prompt_llm": missing_llm,

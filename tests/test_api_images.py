@@ -897,6 +897,7 @@ def _seed_gallery_image(
     prompt_model: str | None = "llama3.2",
     prompt_provider: str | None = "ollama",
     mode: str = "txt2img",
+    seed: int = 1,
     created_at=None,
 ):
     from datetime import datetime
@@ -916,7 +917,7 @@ def _seed_gallery_image(
             "height": height,
             "model": forge_model,
             "sampler_name": "Euler a",
-            "seed": 1,
+            "seed": seed,
         },
         prompt_model=prompt_model,
         prompt_provider=prompt_provider,
@@ -976,6 +977,7 @@ def test_illustrated_gallery_filters_and_excludes_trash(client, db_session):
         forge_model="flux.safetensors",
         prompt_model="qwen",
         prompt_provider="ollama",
+        seed=42,
     )
     _seed_gallery_image(
         db_session,
@@ -990,6 +992,7 @@ def test_illustrated_gallery_filters_and_excludes_trash(client, db_session):
         prompt_model="llama3.2",
         prompt_provider="mancer",
         mode="img2img",
+        seed=99,
     )
     trashed = crud.create_conversation(db_session, title="papelera", model_id="m", provider="ollama")
     tmsg = crud.add_message(db_session, trashed.id, "assistant", "y")
@@ -1017,6 +1020,9 @@ def test_illustrated_gallery_filters_and_excludes_trash(client, db_session):
 
     by_prompt = client.get("/api/illustrated-images", params={"prompt_q": "lighthouse"}).json()
     assert [i["filename"] for i in by_prompt["items"]] == ["match.png"]
+
+    by_seed = client.get("/api/illustrated-images", params={"seed": 42}).json()
+    assert [i["filename"] for i in by_seed["items"]] == ["match.png"]
 
     paged = client.get("/api/illustrated-images", params={"limit": 1, "offset": 0}).json()
     assert paged["total"] == 2
@@ -1051,7 +1057,7 @@ def test_illustrated_gallery_facets(client, db_session):
     conv = crud.create_conversation(db_session, title="a", model_id="m", provider="ollama")
     msg = crud.add_message(db_session, conv.id, "assistant", "x")
     _seed_gallery_image(
-        db_session, conv=conv, msg=msg, filename="a.png", prompt="a", steps=8, prompt_model="llama3.2"
+        db_session, conv=conv, msg=msg, filename="a.png", prompt="a", steps=8, prompt_model="llama3.2", seed=11
     )
     _seed_gallery_image(
         db_session,
@@ -1064,6 +1070,7 @@ def test_illustrated_gallery_facets(client, db_session):
         height=1216,
         prompt_model=None,
         prompt_provider=None,
+        seed=22,
     )
     res = client.get("/api/illustrated-images/facets")
     assert res.status_code == 200
@@ -1071,6 +1078,7 @@ def test_illustrated_gallery_facets(client, db_session):
     assert "llama3.2" in body["prompt_models"]
     assert body["has_missing_prompt_llm"] is True
     assert 8 in body["steps"] and 20 in body["steps"]
+    assert body["seeds"] == [11, 22]
     assert "768x512" in body["sizes"]
     assert "832x1216" in body["sizes"]
 
@@ -1100,6 +1108,51 @@ def test_illustrated_gallery_filters_by_conversation_and_message(client, db_sess
     missing = client.get("/api/illustrated-images", params={"conversation_id": "no-such"}).json()
     assert missing["total"] == 0
     assert missing["items"] == []
+
+
+def test_illustrated_gallery_matching_filenames_scoped_to_conversation(client, db_session):
+    from app import crud
+
+    conv_a = crud.create_conversation(db_session, title="faro", model_id="m", provider="ollama")
+    conv_b = crud.create_conversation(db_session, title="otra", model_id="m", provider="ollama")
+    msg_a = crud.add_message(db_session, conv_a.id, "assistant", "a")
+    msg_b = crud.add_message(db_session, conv_b.id, "assistant", "b")
+    _seed_gallery_image(
+        db_session, conv=conv_a, msg=msg_a, filename="keep.png", prompt="lighthouse dusk", prompt_model="qwen", seed=7
+    )
+    _seed_gallery_image(
+        db_session, conv=conv_a, msg=msg_a, filename="drop.png", prompt="kitchen cat", prompt_model="llama3.2", seed=8
+    )
+    _seed_gallery_image(
+        db_session, conv=conv_b, msg=msg_b, filename="other-conv.png", prompt="lighthouse dusk", prompt_model="qwen", seed=7
+    )
+
+    missing_conv = client.get("/api/illustrated-images/matching-filenames")
+    assert missing_conv.status_code == 422
+
+    unknown = client.get(
+        "/api/illustrated-images/matching-filenames", params={"conversation_id": "no-such"}
+    )
+    assert unknown.status_code == 404
+
+    all_in_a = client.get(
+        "/api/illustrated-images/matching-filenames", params={"conversation_id": conv_a.id}
+    )
+    assert all_in_a.status_code == 200
+    assert set(all_in_a.json()["filenames"]) == {"keep.png", "drop.png"}
+
+    by_llm = client.get(
+        "/api/illustrated-images/matching-filenames",
+        params={"conversation_id": conv_a.id, "prompt_model": "qwen", "prompt_q": "lighthouse"},
+    )
+    assert by_llm.status_code == 200
+    assert by_llm.json()["filenames"] == ["keep.png"]
+
+    by_seed = client.get(
+        "/api/illustrated-images/matching-filenames",
+        params={"conversation_id": conv_a.id, "seed": 8},
+    )
+    assert by_seed.json()["filenames"] == ["drop.png"]
 
 
 def test_illustrated_gallery_includes_visible_history_on_fork(client, db_session):

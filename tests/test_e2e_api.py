@@ -1144,11 +1144,18 @@ def test_e2e_illustrated_gallery_list_and_facets(client, ollama_available):
     assert "prompt_models" in facets
     assert "forge_models" in facets
     assert "has_missing_prompt_llm" in facets
+    assert "seeds" in facets
     r3 = client.get("/api/illustrated-images", params={"conversation_id": "no-such-conv"})
     assert r3.status_code == 200
     assert r3.json()["total"] == 0
     r4 = client.get("/api/illustrated-images/messages", params={"conversation_id": "no-such-conv"})
     assert r4.status_code == 404
+    r5 = client.get("/api/illustrated-images/matching-filenames")
+    assert r5.status_code == 422
+    r6 = client.get(
+        "/api/illustrated-images/matching-filenames", params={"conversation_id": "no-such-conv"}
+    )
+    assert r6.status_code == 404
     assert b'id="center-panels-splitter"' in client.get("/").content
 
 

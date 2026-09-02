@@ -81,6 +81,7 @@
               <input type="checkbox" id="conversation-auto-title" aria-label="Título automático" />
             </label>
             <input type="text" id="conversation-title" class="session-title conversation-title-input" placeholder="Chat de órdenes" aria-label="Título de la conversación" />
+            <button type="button" id="conversation-image-filter-notice" class="chat-image-filter-notice" hidden aria-live="polite" title="Abrir la galería para cambiar los filtros">Filtros de imágenes activos</button>
             <h1 id="gallery-view-title" class="gallery-view-title" hidden>Galería</h1>
           </div>
           <div class="chat-session-actions">
@@ -168,6 +169,12 @@
           <label class="image-gallery-filter">
             <span>Modo</span>
             <select id="gallery-filter-mode" class="param-control" aria-label="Filtrar por modo">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label class="image-gallery-filter">
+            <span>Seed</span>
+            <select id="gallery-filter-seed" class="param-control" aria-label="Filtrar por seed">
               <option value="">Todos</option>
             </select>
           </label>

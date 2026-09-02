@@ -370,9 +370,14 @@ class IllustratedImageFacetsResponse(BaseModel):
     prompt_models: list[str] = Field(default_factory=list)
     forge_models: list[str] = Field(default_factory=list)
     steps: list[int] = Field(default_factory=list)
+    seeds: list[int] = Field(default_factory=list)
     sizes: list[str] = Field(default_factory=list)
     modes: list[str] = Field(default_factory=list)
     has_missing_prompt_llm: bool = False
+
+
+class IllustratedImageFilenameListResponse(BaseModel):
+    filenames: list[str] = Field(default_factory=list)
 
 
 class IllustratedImageMessageSummary(BaseModel):
