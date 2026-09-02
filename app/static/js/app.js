@@ -995,6 +995,28 @@
     return out;
   }
 
+  function collectAllModelParams() {
+    const out = {};
+    for (const paramId of Object.keys(paramsConfig.params)) {
+      const spec = paramsConfig.params[paramId];
+      const control = document.querySelector(`[data-control-id="${paramId}"]`);
+      if (!control || control.disabled) continue;
+      let current;
+      if (control.tagName === "INPUT") {
+        current = control.type === "number" ? (control.value === "" ? null : Number(control.value)) : control.value;
+      } else if (control.tagName === "TEXTAREA") {
+        const v = control.value.trim();
+        current = spec.type === "string_list" ? (v ? v.split("\n").map((s) => s.trim()).filter(Boolean) : []) : v;
+      } else if (control.tagName === "SELECT") {
+        current = control.value;
+      } else {
+        continue;
+      }
+      out[paramId] = current;
+    }
+    return out;
+  }
+
   function syncHeaderProviderModel() {
     if (el.headerProviderName && el.providerSelect) {
       const opt = el.providerSelect.selectedOptions[0];
@@ -5221,7 +5243,7 @@
     return {
       provider: (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama",
       model_id: (el.modelSelect && el.modelSelect.value) || "",
-      model_params: buildModelParamsRaw(),
+      model_params: collectAllModelParams(),
       params_excluded: Array.from(getParamsExcludedFromSendSet()),
       history_turns: historyTurns,
       system_instructions: rules.map(function (r) {
@@ -5290,23 +5312,40 @@
     await loadContextLength();
   }
 
-  function renderWorkspaceProfileList() {
-    const list = document.getElementById("workspace-profile-list");
-    const empty = document.getElementById("workspace-profile-empty");
-    if (!list) return;
+  function getSelectedWorkspaceProfileId() {
+    const select = document.getElementById("workspace-profile-select");
+    return select && select.value ? select.value : "";
+  }
+
+  function syncWorkspaceProfileActions() {
+    const has = !!getSelectedWorkspaceProfileId();
+    ["btn-workspace-profile-apply", "btn-workspace-profile-save", "btn-workspace-profile-delete"].forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = !has;
+    });
+  }
+
+  function renderWorkspaceProfileSelect() {
+    const select = document.getElementById("workspace-profile-select");
+    if (!select) return;
+    const previous = currentWorkspaceProfileId || select.value;
     if (currentWorkspaceProfileId && !workspaceProfiles.some((p) => p.id === currentWorkspaceProfileId)) {
       currentWorkspaceProfileId = "";
     }
-    list.innerHTML = workspaceProfiles.map(function (p) {
-      const active = p.id === currentWorkspaceProfileId ? " is-active" : "";
-      return (
-        `<li class="workspace-profile-item${active}" data-id="${escapeHtml(p.id)}">` +
-        `<button type="button" class="workspace-profile-load" data-action="load">${escapeHtml(p.name)}</button>` +
-        `<button type="button" class="workspace-profile-delete" data-action="delete" title="Eliminar perfil" aria-label="Eliminar ${escapeHtml(p.name)}">×</button>` +
-        `</li>`
-      );
-    }).join("");
-    if (empty) empty.hidden = workspaceProfiles.length > 0;
+    const placeholder = workspaceProfiles.length ? "Elegir perfil" : "No hay perfiles";
+    select.innerHTML =
+      `<option value="">${placeholder}</option>` +
+      workspaceProfiles
+        .map(function (p) {
+          return `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`;
+        })
+        .join("");
+    if (previous && workspaceProfiles.some((p) => p.id === previous)) {
+      select.value = previous;
+    } else {
+      select.value = "";
+    }
+    syncWorkspaceProfileActions();
   }
 
   async function refreshWorkspaceProfiles() {
@@ -5315,11 +5354,11 @@
       workspaceProfiles = Array.isArray(list) ? list : [];
     } catch (e) {
       workspaceProfiles = [];
-      renderWorkspaceProfileList();
+      renderWorkspaceProfileSelect();
       showError("No se pudieron cargar los perfiles: " + (e.message || e));
       return;
     }
-    renderWorkspaceProfileList();
+    renderWorkspaceProfileSelect();
   }
 
   function promptWorkspaceProfileName(defaultName) {
@@ -5373,7 +5412,7 @@
       return;
     }
     let name = "";
-    let profileId = asNew ? "" : currentWorkspaceProfileId;
+    let profileId = asNew ? "" : getSelectedWorkspaceProfileId();
     if (profileId) {
       const current = workspaceProfiles.find((p) => p.id === profileId);
       name = current ? current.name : "";
@@ -5395,20 +5434,22 @@
           });
       currentWorkspaceProfileId = saved.id;
       await refreshWorkspaceProfiles();
+      const select = document.getElementById("workspace-profile-select");
+      if (select && saved && saved.id) select.value = saved.id;
       if (saved && saved.id && !workspaceProfiles.some((p) => p.id === saved.id)) {
         workspaceProfiles = workspaceProfiles.concat([saved]);
-        workspaceProfiles.sort(function (a, b) {
-          return (a.name || "").localeCompare(b.name || "", "es", { sensitivity: "base" });
-        });
-        renderWorkspaceProfileList();
+        renderWorkspaceProfileSelect();
+        if (select) select.value = saved.id;
       }
+      syncWorkspaceProfileActions();
       showNotice(profileId ? "Perfil actualizado." : "Perfil guardado.");
     } catch (e) {
       showError("No se pudo guardar el perfil: " + (e.message || e));
     }
   }
 
-  async function loadWorkspaceProfile(profileId) {
+  async function applySelectedWorkspaceProfile() {
+    const profileId = getSelectedWorkspaceProfileId();
     if (!profileId) return;
     let profile = workspaceProfiles.find((p) => p.id === profileId);
     if (!profile) {
@@ -5422,7 +5463,9 @@
     try {
       await applyWorkspaceSnapshot(profile.snapshot || {});
       currentWorkspaceProfileId = profile.id;
-      renderWorkspaceProfileList();
+      const select = document.getElementById("workspace-profile-select");
+      if (select) select.value = profile.id;
+      syncWorkspaceProfileActions();
       showNotice("Perfil «" + profile.name + "» cargado.");
     } catch (e) {
       showError("No se pudo aplicar el perfil: " + (e.message || e));
@@ -5447,9 +5490,19 @@
   }
 
   function initWorkspaceProfiles() {
+    const select = document.getElementById("workspace-profile-select");
+    const applyBtn = document.getElementById("btn-workspace-profile-apply");
     const saveBtn = document.getElementById("btn-workspace-profile-save");
     const saveAsBtn = document.getElementById("btn-workspace-profile-save-as");
-    const list = document.getElementById("workspace-profile-list");
+    const deleteBtn = document.getElementById("btn-workspace-profile-delete");
+    if (select) {
+      select.addEventListener("change", syncWorkspaceProfileActions);
+    }
+    if (applyBtn) {
+      applyBtn.addEventListener("click", function () {
+        applySelectedWorkspaceProfile();
+      });
+    }
     if (saveBtn) {
       saveBtn.addEventListener("click", function () {
         saveWorkspaceProfile(false);
@@ -5460,18 +5513,12 @@
         saveWorkspaceProfile(true);
       });
     }
-    if (list) {
-      list.addEventListener("click", function (e) {
-        const btn = e.target.closest("[data-action]");
-        if (!btn) return;
-        const item = btn.closest("[data-id]");
-        if (!item) return;
-        const id = item.getAttribute("data-id");
-        const action = btn.getAttribute("data-action");
-        if (action === "load") loadWorkspaceProfile(id);
-        if (action === "delete") deleteWorkspaceProfile(id);
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", function () {
+        deleteWorkspaceProfile(getSelectedWorkspaceProfileId());
       });
     }
+    syncWorkspaceProfileActions();
     refreshWorkspaceProfiles();
   }
 
