@@ -2275,6 +2275,45 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   cursor: pointer;
 }
 
+.model-capability-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.status-model-capabilities {
+  margin-top: 0;
+  flex-shrink: 0;
+  max-width: min(220px, 28vw);
+}
+
+.model-capability-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border, var(--stroke-divider));
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  font-family: var(--font-family-sans, inherit);
+}
+
+.status-model-capabilities .model-capability-chip {
+  font-size: 9px;
+  padding: 0 6px;
+}
+
+[data-theme="dark"] .model-capability-chip {
+  color: #b3b3b3;
+  border-color: #3a3a3a;
+}
+
 .composer-recipe-chip:hover,
 .composer-recipe-chip:focus-visible {
   background: var(--muted);
@@ -4640,7 +4679,7 @@ textarea:focus:not(:focus-visible) {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  max-width: min(320px, 36vw);
+  max-width: min(480px, 52vw);
   font-size: 11px;
   color: var(--text-secondary);
   font-family: var(--font-family-mono);
@@ -5753,7 +5792,7 @@ body {
 }
 
 .status-bar-model-info {
-  max-width: min(280px, 32vw);
+  max-width: min(420px, 48vw);
   font-size: 10px;
 }
 

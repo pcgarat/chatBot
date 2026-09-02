@@ -135,7 +135,7 @@ Orden recomendado (valor / riesgo). Cada corte en rama `feat/...` propia.
 ### Éxito v2 (borrador)
 
 - [x] Gemma multi-turn no reenvía bloques `thought` previos.
-- [ ] Selector muestra cromos coherentes con el contrato.
+- [x] Selector muestra cromos coherentes con el contrato.
 - [ ] Ajustes no muestran params que el contrato no declara.
 - [ ] Con visión: adjunto visible solo si `vision`; sin visión, oculto.
 - [ ] Thinking stream opcional en UI sin romper modelos sin thinking.
@@ -146,5 +146,5 @@ Orden recomendado (valor / riesgo). Cada corte en rama `feat/...` propia.
 ## Open Questions (v2)
 
 - ¿El CoT se guarda en el mensaje en BD o solo se muestra en vivo?
-- ¿Los cromos van en el select del header, en Ajustes, o ambos?
+- ~~¿Los cromos van en el select del header, en Ajustes, o ambos?~~ → **ambos** (barra de estado + Ajustes).
 - ¿Visión v1 del chat es solo adjunto por mensaje o también galería → prompt?

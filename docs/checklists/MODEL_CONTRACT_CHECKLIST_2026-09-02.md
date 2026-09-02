@@ -362,9 +362,9 @@ Seguir el [plan v2](../plans/PLAN_MODEL_CONTRACT_2026-09-02.md#plan-v2--siguient
 
 ### Phase B: Cromos en selector
 
-- [ ] B1: Cromos vision / thinking / tools / ventana desde el contrato
-- [ ] B2: Sin hardcode de nombres de modelo
-- [ ] Checkpoint: cambio de modelo actualiza cromos
+- [x] B1: Cromos vision / thinking / tools / ventana desde el contrato
+- [x] B2: Sin hardcode de nombres de modelo
+- [x] Checkpoint: cambio de modelo actualiza cromos (barra de estado + Ajustes)
 
 ### Phase C: Verificación
 

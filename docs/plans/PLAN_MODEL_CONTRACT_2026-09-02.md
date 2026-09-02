@@ -82,9 +82,9 @@ flowchart TB
 
 ### Phase B — Cromos en selector (alta)
 
-- [ ] Task B1: UI lee `capabilities` (+ ctx del contrato) y pinta cromos (visión / thinking / tools / ventana).
-- [ ] Task B2: Sin hardcode de nombres de modelo.
-- Checkpoint: cambiar de GPT-OSS a Mistral a DeepSeek cambia cromos de forma coherente.
+- [x] Task B1: UI lee `capabilities` (+ ctx del contrato) y pinta cromos (visión / thinking / tools / ventana).
+- [x] Task B2: Sin hardcode de nombres de modelo.
+- Checkpoint: cambiar de GPT-OSS a Mistral a DeepSeek cambia cromos de forma coherente (barra de estado + Ajustes).
 
 ### Phase C — Verificación (alta, corta)
 
