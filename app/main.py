@@ -9,6 +9,7 @@ from app.config import sync_env_to_dotenv
 from app.migrate_conversation_rules_to_library import migrate_all as migrate_conversation_rules_to_library
 from app.migrate_fill_instruction_ids import migrate_all as migrate_fill_instruction_ids
 from app.migrate_model_info_rules import migrate_all as migrate_model_info_rules
+from app.services.image_illustration.worker import start_image_generation_worker
 from app.services.rules.seed import seed_builtin_rules
 from app.routers import (
     api_conversations,
@@ -46,6 +47,7 @@ def startup():
         seed_builtin_rules(db)
     finally:
         db.close()
+    start_image_generation_worker()
 
 
 @app.get("/")

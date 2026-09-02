@@ -19,6 +19,9 @@
       if (localStorage.getItem("centerGalleryVisible") === "true") {
         document.documentElement.setAttribute("data-center-gallery", "on");
       }
+      if (localStorage.getItem("centerQueueVisible") === "true") {
+        document.documentElement.setAttribute("data-center-queue", "on");
+      }
       var share = parseFloat(localStorage.getItem("centerChatGalleryShare") || "");
       if (share >= 0.28 && share <= 0.72) {
         document.documentElement.style.setProperty("--center-chat-share", String(share));
@@ -60,6 +63,10 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <span class="sidebar-add-btn-text">Galería</span>
         </button>
+          <button type="button" id="btn-image-queue" class="sidebar-add-btn" title="Mostrar u ocultar la cola de imágenes" aria-label="Cola de imágenes" aria-pressed="false" aria-controls="image-queue-panel">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            <span class="sidebar-add-btn-text">Cola</span>
+          </button>
         </div>
       </div>
       <div class="conversations-list-wrap">
@@ -81,7 +88,10 @@
               <input type="checkbox" id="conversation-auto-title" aria-label="Título automático" />
             </label>
             <input type="text" id="conversation-title" class="session-title conversation-title-input" placeholder="Chat de órdenes" aria-label="Título de la conversación" />
-            <button type="button" id="conversation-image-filter-notice" class="chat-image-filter-notice" hidden aria-live="polite" title="Abrir la galería para cambiar los filtros">Filtros de imágenes activos</button>
+            <div id="conversation-image-filter-notice" class="chat-image-filter-notice-wrap" hidden aria-live="polite">
+              <button type="button" class="chat-image-filter-notice-open" title="Abrir la galería para cambiar los filtros">Filtros de imágenes activos</button>
+              <button type="button" id="conversation-image-filter-notice-dismiss" class="chat-image-filter-notice-dismiss" title="Quitar todos los filtros" aria-label="Quitar todos los filtros">×</button>
+            </div>
             <h1 id="gallery-view-title" class="gallery-view-title" hidden>Galería</h1>
           </div>
           <div class="chat-session-actions">
@@ -91,7 +101,7 @@
           </div>
         </div>
       </header>
-      <p id="center-panels-empty" class="center-panels-empty" hidden>Activa Conversación o Galería para mostrar un panel.</p>
+      <p id="center-panels-empty" class="center-panels-empty" hidden>Activa Conversación, Galería o Cola para mostrar un panel.</p>
       <section class="chat-column" id="chat-column">
         <div class="chat-stream-wrap">
           <div class="chat-stream-view-controls chat-font-size-corner font-size-controls" role="group" aria-label="Vista del chat">
@@ -103,7 +113,7 @@
             <button type="button" id="btn-font-size-increase" class="icon-btn font-size-btn" title="Aumentar tamaño" aria-label="Aumentar tamaño"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
             <button type="button" id="btn-collapse-all-messages" class="icon-btn font-size-btn" title="Colapsar todos los mensajes" aria-label="Colapsar todos los mensajes"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 12 6 20 14"/><polyline points="4 20 12 12 20 20"/></svg></button>
           </div>
-          <div class="chat-stream" id="messages-container"></div>
+          <div class="chat-stream scroll-y-reveal" id="messages-container"></div>
           <div class="chat-scroll-nav" id="chat-scroll-nav" aria-hidden="true">
             <button type="button" id="btn-scroll-msg-up" class="chat-scroll-nav-btn" title="Ir al inicio del primer mensaje visible" aria-label="Ir al inicio del primer mensaje visible">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>
@@ -190,6 +200,23 @@
         <div class="image-gallery-messages" id="image-gallery-messages" hidden></div>
         <div class="image-gallery-grid" id="image-gallery-grid"></div>
         <div class="image-gallery-pager" id="image-gallery-pager"></div>
+      </section>
+      <section class="image-queue-panel" id="image-queue-panel" hidden aria-label="Cola de imágenes">
+        <div class="image-queue-toolbar">
+          <div class="image-queue-filters" role="group" aria-label="Filtrar cola de imágenes">
+            <button type="button" class="image-queue-filter-btn is-active" data-queue-status="">Todas</button>
+            <button type="button" class="image-queue-filter-btn" data-queue-status="pending">Pendientes</button>
+            <button type="button" class="image-queue-filter-btn" data-queue-status="generating">Generándose</button>
+            <button type="button" class="image-queue-filter-btn" data-queue-status="completed">Generadas</button>
+            <button type="button" class="image-queue-filter-btn" data-queue-status="failed">Fallidas</button>
+          </div>
+          <div class="image-queue-toolbar-actions">
+            <span id="image-queue-paused-label" class="image-queue-paused-label" hidden>Cola pausada</span>
+            <button type="button" id="image-queue-pause-toggle" class="btn btn-secondary btn-small image-queue-pause-btn" aria-pressed="false" title="Pausar la generación encolada">Pausar</button>
+            <span id="image-queue-active-count" class="image-queue-active-count" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="image-queue-list scroll-y-reveal" id="image-queue-list"></div>
       </section>
     </main>
     <aside class="column-right sidebar-column" aria-label="Reglas y ajustes">
@@ -649,6 +676,9 @@
   <div id="msg-text-context-menu" class="msg-text-context-menu" role="menu" hidden>
     <button type="button" class="msg-context-item" role="menuitem" data-action="illustrate-at">Generar imagen aquí</button>
     <button type="button" class="msg-context-item" role="menuitem" data-action="copy-selection" id="msg-text-copy" hidden>Copiar</button>
+  </div>
+  <div id="image-queue-context-menu" class="image-queue-context-menu" role="menu" hidden>
+    <button type="button" class="msg-context-item" role="menuitem" data-action="delete">Eliminar</button>
   </div>
   <div id="illustration-meta-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="illustration-meta-title" hidden>
     <div class="modal-content illustration-meta-modal-content">

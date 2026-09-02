@@ -100,6 +100,41 @@ class IllustratedImage(Base):
     message = relationship("Message", back_populates="illustrated_images")
 
 
+class ImageGenerationJob(Base):
+    """Trabajo encolado para generar una imagen con Forge."""
+
+    __tablename__ = "image_generation_jobs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    conversation_id = Column(
+        String(36),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    message_id = Column(
+        String(36),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    scene_id = Column(String(64), nullable=False)
+    batch_id = Column(String(36), nullable=True, index=True)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    forge_prompt = Column(Text, nullable=False, default="")
+    forge_mode = Column(String(32), nullable=False, default="txt2img")
+    forge_body_json = Column(Text, nullable=False, default="{}")
+    rules_json = Column(Text, nullable=False, default="{}")
+    prompt_model = Column(String(128), nullable=True)
+    prompt_provider = Column(String(64), nullable=True)
+    retries_remaining = Column(Integer, nullable=False, default=0)
+    error_message = Column(Text, nullable=True)
+    result_filename = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+
 class WorkspaceProfileRecord(Base):
     """Perfil de workspace: snapshot JSON de modelo, reglas, params e imágenes."""
 

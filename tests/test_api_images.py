@@ -75,6 +75,7 @@ def test_illustrate_at_stream_forwards_paragraph_and_excerpt(client, db_session)
             include_prompt_debug=False,
             existing_prompts=None,
             forge_overrides=None,
+            run_context=None,
         ):
             captured["paragraph_index"] = paragraph_index
             captured["selected_excerpt"] = selected_excerpt
@@ -303,7 +304,7 @@ def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None):
             captured["prompt"] = prompt
             captured["max_images"] = max_images
             captured["batch_size"] = batch_size
@@ -337,7 +338,7 @@ def test_illustrate_forwards_forge_param_overrides_to_orchestrator(client, db_se
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None):
             captured["forge_overrides"] = forge_overrides
             yield IllustrationEvent(type="done", message="ok", content=text)
 
@@ -375,7 +376,7 @@ def test_generate_remaining_forwards_forge_param_overrides(client, db_session):
     captured: dict = {}
 
     class FakeOrch:
-        def run_remaining(self, text, *, retries, batch_size=10, forge_overrides=None):
+        def run_remaining(self, text, *, retries, batch_size=10, forge_overrides=None, run_context=None):
             captured["forge_overrides"] = forge_overrides
             yield IllustrationEvent(type="done", message="ok", content=text)
 
@@ -796,7 +797,7 @@ def test_generate_remaining_stream_regenerates_pending(client, db_session):
     msg = crud.add_message(db_session, conv.id, "assistant", content)
 
     class FakeOrch:
-        def run_remaining(self, text, *, retries, batch_size=10, forge_overrides=None):
+        def run_remaining(self, text, *, retries, batch_size=10, forge_overrides=None, run_context=None):
             assert retries == 0
             assert batch_size == 5
             assert "data-prompt" in text

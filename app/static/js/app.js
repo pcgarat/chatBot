@@ -3665,15 +3665,65 @@
   }
 
   /**
+   * Scrollbar vertical que aparece al mover el ratón (mismo ritmo que chat-scroll-nav).
+   */
+  function bindScrollReveal(activityRoot, scrollEl, idleMs) {
+    if (!activityRoot || !scrollEl) return;
+    const hideDelay = typeof idleMs === "number" ? idleMs : 1200;
+    let hideTimer = null;
+    let pointerInside = false;
+
+    function setScrollbarVisible(visible) {
+      scrollEl.classList.toggle("is-scrollbar-visible", visible);
+    }
+
+    function clearHideTimer() {
+      if (hideTimer != null) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    }
+
+    function scheduleHide() {
+      clearHideTimer();
+      hideTimer = setTimeout(function () {
+        hideTimer = null;
+        if (!pointerInside) setScrollbarVisible(false);
+      }, hideDelay);
+    }
+
+    function revealFromActivity() {
+      setScrollbarVisible(true);
+      if (!pointerInside) scheduleHide();
+      else clearHideTimer();
+    }
+
+    activityRoot.addEventListener("mousemove", revealFromActivity);
+    activityRoot.addEventListener("mouseenter", function () {
+      pointerInside = true;
+      revealFromActivity();
+    });
+    activityRoot.addEventListener("mouseleave", function () {
+      pointerInside = false;
+      clearHideTimer();
+      setScrollbarVisible(false);
+    });
+    scrollEl.addEventListener("scroll", revealFromActivity, { passive: true });
+  }
+
+  /**
    * Rail flotante ↑/↓ a media altura: aparece al mover el ratón por el stream,
    * se oculta en idle salvo si el puntero está sobre el rail.
    */
   function initConversationScrollNav() {
     const wrap = document.querySelector(".chat-stream-wrap");
+    const stream = document.getElementById("messages-container");
     const nav = document.getElementById("chat-scroll-nav");
     const btnUp = document.getElementById("btn-scroll-msg-up");
     const btnDown = document.getElementById("btn-scroll-msg-down");
     if (!wrap || !nav || !btnUp || !btnDown) return;
+
+    bindScrollReveal(wrap, stream);
 
     const IDLE_HIDE_MS = 1200;
     let hideTimer = null;
@@ -4445,6 +4495,16 @@
   let conversationFilterPending = false;
   let conversationFilterSeq = 0;
   let conversationFilterTimer = null;
+  let imageQueueItems = [];
+  let imageQueueFilterStatus = "";
+  let imageQueueExpandedId = null;
+  let imageQueuePollTimer = null;
+  let imageQueuePollBusy = false;
+  let imageQueueKnownActive = 0;
+  let imageQueuePaused = false;
+  const imageQueueSelectedIds = new Set();
+  let imageQueueSelectionAnchor = -1;
+  const IMAGE_QUEUE_POLL_MS = 2500;
   const GALLERY_TOOLBAR_FILTER_IDS = [
     "gallery-filter-prompt-model",
     "gallery-filter-prompt-provider",
@@ -4457,6 +4517,20 @@
 
   function isGalleryPanelVisible() {
     return document.documentElement.getAttribute("data-center-gallery") === "on";
+  }
+
+  function isQueuePanelVisible() {
+    return document.documentElement.getAttribute("data-center-queue") === "on";
+  }
+
+  function isBottomPanelVisible() {
+    return isGalleryPanelVisible() || isQueuePanelVisible();
+  }
+
+  function getVisibleBottomPanel() {
+    if (isQueuePanelVisible()) return document.getElementById("image-queue-panel");
+    if (isGalleryPanelVisible()) return document.getElementById("image-gallery-panel");
+    return null;
   }
 
   function isChatPanelVisible() {
@@ -4500,20 +4574,33 @@
 
   function applyCenterPanels() {
     const chatOn = isChatPanelVisible();
-    const galleryOn = isGalleryPanelVisible();
+    let galleryOn = isGalleryPanelVisible();
+    let queueOn = isQueuePanelVisible();
+    if (galleryOn && queueOn) {
+      document.documentElement.removeAttribute("data-center-queue");
+      try {
+        localStorage.setItem("centerQueueVisible", "false");
+      } catch (err) {}
+      queueOn = false;
+    }
+    const bottomOn = galleryOn || queueOn;
     const chatCol = document.getElementById("chat-column") || document.querySelector(".chat-column");
-    const panel = document.getElementById("image-gallery-panel");
+    const galleryPanel = document.getElementById("image-gallery-panel");
+    const queuePanel = document.getElementById("image-queue-panel");
     const splitter = document.getElementById("center-panels-splitter");
     const chatBtn = document.getElementById("btn-center-chat");
     const galBtn = document.getElementById("btn-image-gallery");
+    const queueBtn = document.getElementById("btn-image-queue");
     if (chatCol) chatCol.hidden = !chatOn;
-    if (panel) panel.hidden = !galleryOn;
-    if (splitter) splitter.hidden = !(chatOn && galleryOn);
+    if (galleryPanel) galleryPanel.hidden = !galleryOn;
+    if (queuePanel) queuePanel.hidden = !queueOn;
+    if (splitter) splitter.hidden = !(chatOn && bottomOn);
     if (chatBtn) chatBtn.setAttribute("aria-pressed", chatOn ? "true" : "false");
     if (galBtn) galBtn.setAttribute("aria-pressed", galleryOn ? "true" : "false");
+    if (queueBtn) queueBtn.setAttribute("aria-pressed", queueOn ? "true" : "false");
     if (!galleryOn) closeGalleryLightbox();
     const empty = document.getElementById("center-panels-empty");
-    if (empty) empty.hidden = chatOn || galleryOn;
+    if (empty) empty.hidden = chatOn || bottomOn;
   }
 
   function setChatPanelVisible(on) {
@@ -4525,7 +4612,11 @@
     applyCenterPanels();
   }
 
-  function setGalleryPanelVisible(on) {
+  function setGalleryPanelVisible(on, options) {
+    const skipMutex = !!(options && options.skipMutex);
+    if (on && !skipMutex && isQueuePanelVisible()) {
+      setQueuePanelVisible(false, { skipMutex: true });
+    }
     const was = isGalleryPanelVisible();
     if (on) document.documentElement.setAttribute("data-center-gallery", "on");
     else document.documentElement.removeAttribute("data-center-gallery");
@@ -4542,12 +4633,454 @@
     }
   }
 
+  function setQueuePanelVisible(on, options) {
+    const skipMutex = !!(options && options.skipMutex);
+    if (on && !skipMutex && isGalleryPanelVisible()) {
+      setGalleryPanelVisible(false, { skipMutex: true });
+    }
+    const was = isQueuePanelVisible();
+    if (on) document.documentElement.setAttribute("data-center-queue", "on");
+    else document.documentElement.removeAttribute("data-center-queue");
+    try {
+      localStorage.setItem("centerQueueVisible", on ? "true" : "false");
+    } catch (err) {}
+    applyCenterPanels();
+    if (on && !was) {
+      loadImageQueuePage();
+      startImageQueuePoll();
+    } else if (!on) {
+      stopImageQueuePoll();
+    }
+  }
+
   function exitGalleryView() {
     setGalleryPanelVisible(false);
   }
 
   function enterGalleryView() {
     setGalleryPanelVisible(true);
+  }
+
+  const IMAGE_QUEUE_STATUS_LABELS = {
+    pending: "Pendiente",
+    generating: "Generándose",
+    completed: "Generada",
+    failed: "Fallida",
+  };
+
+  function renderImageQueueDetailsBody(item) {
+    const rules = (item && item.rules) || {};
+    const rows = [
+      ["Prompt Forge", item.forge_prompt || "—"],
+      ["Modo", item.forge_mode || "—"],
+      ["LLM del prompt", [item.prompt_provider, item.prompt_model].filter(Boolean).join(" · ") || "—"],
+      ["Panel prompt", rules.panel_prompt || null],
+      ["Reglas del planificador", rules.prompt_system_instructions || null],
+      ["Párrafo", rules.paragraph_index != null ? String(rules.paragraph_index) : null],
+      ["Extracto seleccionado", rules.selected_excerpt || null],
+      ["Lote", item.batch_id || null],
+      ["Escena", item.scene_id || null],
+      ["Error", item.error_message || null],
+      ["Archivo", item.result_filename || null],
+    ].filter(function (pair) {
+      return pair[1] != null && pair[1] !== "";
+    });
+    const overrides = rules.forge_overrides || {};
+    Object.keys(overrides).forEach(function (key) {
+      rows.push(["Override " + key, overrides[key]]);
+    });
+    if (rules.use_chat_config != null) {
+      rows.push(["Usar config del chat", rules.use_chat_config ? "sí" : "no"]);
+    }
+    if (rules.pass_name) rows.push(["Pase", rules.pass_name]);
+    let html = '<dl class="illustration-meta-grid image-queue-details-grid">';
+    rows.forEach(function (pair) {
+      html +=
+        "<div><dt>" +
+        escapeHtml(pair[0]) +
+        '</dt><dd class="image-queue-details-value">' +
+        escapeHtml(String(pair[1])) +
+        "</dd></div>";
+    });
+    html += "</dl>";
+    return html;
+  }
+
+  function renderImageQueueList() {
+    const list = document.getElementById("image-queue-list");
+    if (!list) return;
+    pruneImageQueueSelection();
+    if (!imageQueueItems.length) {
+      list.innerHTML = '<p class="image-queue-empty">No hay trabajos en la cola.</p>';
+      return;
+    }
+    list.innerHTML = imageQueueItems
+      .map(function (item, index) {
+        const status = item.status || "pending";
+        const statusLabel = IMAGE_QUEUE_STATUS_LABELS[status] || status;
+        const llm = [item.prompt_provider, item.prompt_model].filter(Boolean).join(" · ") || "—";
+        const expanded = imageQueueExpandedId === item.id;
+        const selected = imageQueueSelectedIds.has(item.id);
+        return (
+          '<article class="image-queue-row image-queue-row--' +
+          escapeHtml(status) +
+          (selected ? " is-selected" : "") +
+          '" data-queue-id="' +
+          escapeHtml(item.id) +
+          '" data-queue-index="' +
+          String(index) +
+          '">' +
+          '<div class="image-queue-row-main" data-queue-selectable="true">' +
+          '<span class="image-queue-status" data-status="' +
+          escapeHtml(status) +
+          '">' +
+          escapeHtml(statusLabel) +
+          "</span>" +
+          '<div class="image-queue-row-body">' +
+          '<div class="image-queue-row-title">' +
+          escapeHtml(item.conversation_title || "Conversación") +
+          "</div>" +
+          '<div class="image-queue-row-excerpt">' +
+          escapeHtml(item.message_excerpt || "(sin texto)") +
+          "</div>" +
+          '<div class="image-queue-row-meta">LLM: ' +
+          escapeHtml(llm) +
+          "</div>" +
+          "</div>" +
+          '<div class="image-queue-row-actions">' +
+          '<button type="button" class="btn btn-secondary btn-small image-queue-go-message" data-conversation-id="' +
+          escapeHtml(item.conversation_id) +
+          '" data-message-id="' +
+          escapeHtml(item.message_id) +
+          '">Ir al mensaje</button>' +
+          '<button type="button" class="btn btn-secondary btn-small image-queue-details-btn" data-queue-id="' +
+          escapeHtml(item.id) +
+          '" aria-expanded="' +
+          (expanded ? "true" : "false") +
+          '">Detalles</button>' +
+          '<button type="button" class="btn btn-secondary btn-small image-queue-delete-btn" data-queue-id="' +
+          escapeHtml(item.id) +
+          '" title="Eliminar de la cola" aria-label="Eliminar de la cola">Eliminar</button>' +
+          "</div>" +
+          "</div>" +
+          (expanded
+            ? '<div class="image-queue-details" id="image-queue-details-' +
+              escapeHtml(item.id) +
+              '">' +
+              renderImageQueueDetailsBody(item) +
+              "</div>"
+            : "") +
+          "</article>"
+        );
+      })
+      .join("");
+  }
+
+  function pruneImageQueueSelection() {
+    const known = new Set(imageQueueItems.map(function (item) {
+      return item.id;
+    }));
+    Array.from(imageQueueSelectedIds).forEach(function (id) {
+      if (!known.has(id)) imageQueueSelectedIds.delete(id);
+    });
+    if (
+      imageQueueSelectionAnchor >= imageQueueItems.length ||
+      (imageQueueSelectionAnchor >= 0 &&
+        imageQueueItems[imageQueueSelectionAnchor] &&
+        !imageQueueSelectedIds.has(imageQueueItems[imageQueueSelectionAnchor].id))
+    ) {
+      imageQueueSelectionAnchor = imageQueueItems.findIndex(function (item) {
+        return imageQueueSelectedIds.has(item.id);
+      });
+    }
+  }
+
+  function clearImageQueueSelection() {
+    imageQueueSelectedIds.clear();
+    imageQueueSelectionAnchor = -1;
+    closeImageQueueContextMenu();
+    renderImageQueueList();
+  }
+
+  function selectImageQueueRange(fromIndex, toIndex) {
+    const start = Math.max(0, Math.min(fromIndex, toIndex));
+    const end = Math.min(imageQueueItems.length - 1, Math.max(fromIndex, toIndex));
+    imageQueueSelectedIds.clear();
+    for (let i = start; i <= end; i += 1) {
+      if (imageQueueItems[i]) imageQueueSelectedIds.add(imageQueueItems[i].id);
+    }
+    renderImageQueueList();
+  }
+
+  function selectSingleImageQueueItem(index) {
+    imageQueueSelectedIds.clear();
+    if (index >= 0 && imageQueueItems[index]) {
+      imageQueueSelectedIds.add(imageQueueItems[index].id);
+      imageQueueSelectionAnchor = index;
+    } else {
+      imageQueueSelectionAnchor = -1;
+    }
+    renderImageQueueList();
+  }
+
+  function handleImageQueueRowSelect(index, shiftKey) {
+    if (index < 0 || index >= imageQueueItems.length) return;
+    if (shiftKey && imageQueueSelectionAnchor >= 0) {
+      selectImageQueueRange(imageQueueSelectionAnchor, index);
+      return;
+    }
+    selectSingleImageQueueItem(index);
+  }
+
+  function getImageQueueContextMenu() {
+    return document.getElementById("image-queue-context-menu");
+  }
+
+  function closeImageQueueContextMenu() {
+    const menu = getImageQueueContextMenu();
+    if (menu) menu.hidden = true;
+  }
+
+  function openImageQueueContextMenu(clientX, clientY) {
+    const menu = getImageQueueContextMenu();
+    if (!menu || !imageQueueSelectedIds.size) return;
+    menu.hidden = false;
+    menu.style.left = Math.max(8, clientX) + "px";
+    menu.style.top = Math.max(8, clientY) + "px";
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 8) {
+      menu.style.left = Math.max(8, window.innerWidth - rect.width - 8) + "px";
+    }
+    if (rect.bottom > window.innerHeight - 8) {
+      menu.style.top = Math.max(8, window.innerHeight - rect.height - 8) + "px";
+    }
+  }
+
+  async function deleteImageQueueJobs(ids) {
+    const cleaned = Array.from(new Set((ids || []).filter(Boolean)));
+    if (!cleaned.length) return;
+    try {
+      await fetchJson(`${API}/image-generation-queue/delete`, {
+        method: "POST",
+        body: JSON.stringify({ ids: cleaned }),
+      });
+      cleaned.forEach(function (id) {
+        imageQueueSelectedIds.delete(id);
+      });
+      if (imageQueueExpandedId && cleaned.indexOf(imageQueueExpandedId) >= 0) {
+        imageQueueExpandedId = null;
+      }
+      closeImageQueueContextMenu();
+      await loadImageQueuePage();
+      if (currentConversationId) await refreshCurrentConversationMessages();
+    } catch (e) {
+      showError("No se pudo eliminar de la cola: " + (e.message || e));
+    }
+  }
+
+  async function deleteSelectedImageQueueJobs() {
+    await deleteImageQueueJobs(Array.from(imageQueueSelectedIds));
+  }
+
+  function syncImageQueuePauseUi() {
+    const btn = document.getElementById("image-queue-pause-toggle");
+    const label = document.getElementById("image-queue-paused-label");
+    if (btn) {
+      btn.textContent = imageQueuePaused ? "Reanudar" : "Pausar";
+      btn.setAttribute("aria-pressed", imageQueuePaused ? "true" : "false");
+      btn.title = imageQueuePaused
+        ? "Reanudar la generación encolada"
+        : "Pausar la generación encolada";
+    }
+    if (label) label.hidden = !imageQueuePaused;
+  }
+
+  async function toggleImageQueuePaused() {
+    const endpoint = imageQueuePaused ? "resume" : "pause";
+    try {
+      const data = await fetchJson(`${API}/image-generation-queue/${endpoint}`, {
+        method: "POST",
+      });
+      imageQueuePaused = Boolean(data.paused);
+      syncImageQueuePauseUi();
+      if (!imageQueuePaused) startImageQueuePoll();
+    } catch (e) {
+      showError("No se pudo cambiar el estado de la cola: " + (e.message || e));
+    }
+  }
+
+  function syncImageQueueActiveCount(activeCount) {
+    const node = document.getElementById("image-queue-active-count");
+    if (!node) return;
+    const n = typeof activeCount === "number" ? activeCount : 0;
+    node.textContent = n > 0 ? n + " en curso" : "";
+    node.hidden = n <= 0;
+  }
+
+  async function loadImageQueuePage() {
+    const params = new URLSearchParams();
+    if (imageQueueFilterStatus) params.set("status", imageQueueFilterStatus);
+    params.set("limit", "100");
+    try {
+      const data = await fetchJson(`${API}/image-generation-queue?${params}`);
+      imageQueueItems = data.items || [];
+      imageQueuePaused = Boolean(data.paused);
+      syncImageQueueActiveCount(data.active_count);
+      syncImageQueuePauseUi();
+      imageQueueKnownActive = data.active_count || 0;
+      renderImageQueueList();
+    } catch (e) {
+      const list = document.getElementById("image-queue-list");
+      if (list) list.innerHTML = '<p class="image-queue-empty">Error al cargar la cola.</p>';
+    }
+  }
+
+  async function refreshCurrentConversationMessages() {
+    if (!currentConversationId) return;
+    try {
+      const conv = await fetchJson(`${API}/conversations/${currentConversationId}`);
+      await setCurrentConversation(conv);
+    } catch (_) {}
+  }
+
+  async function pollImageQueue() {
+    if (imageQueuePollBusy) return;
+    imageQueuePollBusy = true;
+    try {
+      const params = new URLSearchParams();
+      if (imageQueueFilterStatus) params.set("status", imageQueueFilterStatus);
+      params.set("limit", "100");
+      const data = await fetchJson(`${API}/image-generation-queue?${params}`);
+      const prevActive = imageQueueKnownActive;
+      imageQueueItems = data.items || [];
+      imageQueuePaused = Boolean(data.paused);
+      imageQueueKnownActive = data.active_count || 0;
+      syncImageQueueActiveCount(data.active_count);
+      syncImageQueuePauseUi();
+      if (isQueuePanelVisible()) renderImageQueueList();
+      const activeDropped = prevActive > 0 && (data.active_count || 0) < prevActive;
+      if (activeDropped && currentConversationId) {
+        const touched = (data.items || []).some(function (item) {
+          return item.conversation_id === currentConversationId && item.status === "completed";
+        });
+        if (touched || prevActive > (data.active_count || 0)) {
+          await refreshCurrentConversationMessages();
+        }
+      }
+      if ((data.active_count || 0) <= 0 && !isQueuePanelVisible()) {
+        stopImageQueuePoll();
+      }
+    } catch (_) {
+    } finally {
+      imageQueuePollBusy = false;
+    }
+  }
+
+  function startImageQueuePoll() {
+    stopImageQueuePoll();
+    imageQueuePollTimer = window.setInterval(pollImageQueue, IMAGE_QUEUE_POLL_MS);
+  }
+
+  function stopImageQueuePoll() {
+    if (imageQueuePollTimer) {
+      window.clearInterval(imageQueuePollTimer);
+      imageQueuePollTimer = null;
+    }
+  }
+
+  function initImageQueuePanel() {
+    document.querySelectorAll(".image-queue-filter-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.querySelectorAll(".image-queue-filter-btn").forEach(function (node) {
+          node.classList.remove("is-active");
+        });
+        btn.classList.add("is-active");
+        imageQueueFilterStatus = btn.getAttribute("data-queue-status") || "";
+        loadImageQueuePage();
+      });
+    });
+    const pauseBtn = document.getElementById("image-queue-pause-toggle");
+    if (pauseBtn) {
+      pauseBtn.addEventListener("click", function () {
+        toggleImageQueuePaused();
+      });
+    }
+    const list = document.getElementById("image-queue-list");
+    if (list) {
+      list.addEventListener("click", function (e) {
+        const deleteBtn = e.target.closest(".image-queue-delete-btn");
+        if (deleteBtn && list.contains(deleteBtn)) {
+          e.preventDefault();
+          e.stopPropagation();
+          const id = deleteBtn.getAttribute("data-queue-id");
+          if (id) deleteImageQueueJobs([id]);
+          return;
+        }
+        const goBtn = e.target.closest(".image-queue-go-message");
+        if (goBtn && list.contains(goBtn)) {
+          const convId = goBtn.getAttribute("data-conversation-id");
+          const msgId = goBtn.getAttribute("data-message-id");
+          if (convId && msgId) openConversationAtMessage(convId, msgId);
+          return;
+        }
+        const detailsBtn = e.target.closest(".image-queue-details-btn");
+        if (detailsBtn && list.contains(detailsBtn)) {
+          const id = detailsBtn.getAttribute("data-queue-id");
+          imageQueueExpandedId = imageQueueExpandedId === id ? null : id;
+          renderImageQueueList();
+          return;
+        }
+        const row = e.target.closest(".image-queue-row");
+        const selectable = e.target.closest("[data-queue-selectable]");
+        if (row && selectable && list.contains(row)) {
+          const index = parseInt(row.getAttribute("data-queue-index"), 10);
+          if (!Number.isNaN(index)) {
+            handleImageQueueRowSelect(index, e.shiftKey);
+          }
+        }
+      });
+      list.addEventListener("contextmenu", function (e) {
+        const row = e.target.closest(".image-queue-row");
+        if (!row || !list.contains(row)) return;
+        if (e.target.closest("button, a, textarea, input")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const index = parseInt(row.getAttribute("data-queue-index"), 10);
+        if (!Number.isNaN(index)) {
+          const id = row.getAttribute("data-queue-id");
+          if (id && !imageQueueSelectedIds.has(id)) {
+            selectSingleImageQueueItem(index);
+          }
+        }
+        if (!imageQueueSelectedIds.size) return;
+        openImageQueueContextMenu(e.clientX, e.clientY);
+      });
+    }
+    const queueMenu = getImageQueueContextMenu();
+    if (queueMenu) {
+      queueMenu.addEventListener("click", function (e) {
+        const item = e.target.closest("[data-action]");
+        if (!item || !queueMenu.contains(item)) return;
+        if (item.getAttribute("data-action") === "delete") {
+          deleteSelectedImageQueueJobs();
+        }
+      });
+    }
+    document.addEventListener("click", function (e) {
+      if (Date.now() < textContextIgnoreClickUntil) return;
+      if (e.target.closest("#image-queue-context-menu")) return;
+      closeImageQueueContextMenu();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeImageQueueContextMenu();
+    });
+    if (isQueuePanelVisible()) {
+      loadImageQueuePage();
+      startImageQueuePoll();
+    }
+    const queuePanel = document.getElementById("image-queue-panel");
+    const queueList = document.getElementById("image-queue-list");
+    bindScrollReveal(queuePanel || queueList, queueList);
   }
 
   function galleryFilterValue(id) {
@@ -4583,6 +5116,20 @@
       return true;
     }
     return Boolean(galleryFilterValue("gallery-filter-prompt-q").trim());
+  }
+
+  function clearGalleryToolbarFilters() {
+    GALLERY_TOOLBAR_FILTER_IDS.forEach(function (id) {
+      const node = document.getElementById(id);
+      if (node) node.value = "";
+    });
+    const promptQ = document.getElementById("gallery-filter-prompt-q");
+    if (promptQ) promptQ.value = "";
+    if (galleryPromptTimer) {
+      window.clearTimeout(galleryPromptTimer);
+      galleryPromptTimer = null;
+    }
+    onGalleryToolbarFilterChange();
   }
 
   function syncImageFilterNotice() {
@@ -5042,10 +5589,10 @@
 
     function shareFromClientY(clientY) {
       const chat = document.getElementById("chat-column") || document.querySelector(".chat-column");
-      const gallery = document.getElementById("image-gallery-panel");
-      if (!chat || !gallery) return lastShare;
+      const bottom = getVisibleBottomPanel();
+      if (!chat || !bottom) return lastShare;
       const top = chat.getBoundingClientRect().top;
-      const total = gallery.getBoundingClientRect().bottom - top;
+      const total = bottom.getBoundingClientRect().bottom - top;
       if (total <= 0) return lastShare;
       return clampCenterPanelShare((clientY - top) / total);
     }
@@ -5099,6 +5646,13 @@
         setGalleryPanelVisible(!isGalleryPanelVisible());
       });
     }
+    const queueBtn = document.getElementById("btn-image-queue");
+    if (queueBtn) {
+      queueBtn.addEventListener("click", function () {
+        setQueuePanelVisible(!isQueuePanelVisible());
+      });
+    }
+    initImageQueuePanel();
     if (el.messagesContainer) {
       el.messagesContainer.addEventListener("click", function (e) {
         if (!isGalleryPanelVisible()) return;
@@ -5158,9 +5712,20 @@
     }
     const filterNotice = document.getElementById("conversation-image-filter-notice");
     if (filterNotice) {
-      filterNotice.addEventListener("click", function () {
-        setGalleryPanelVisible(true);
-      });
+      const openBtn = filterNotice.querySelector(".chat-image-filter-notice-open");
+      if (openBtn) {
+        openBtn.addEventListener("click", function () {
+          setGalleryPanelVisible(true);
+        });
+      }
+      const dismissBtn = document.getElementById("conversation-image-filter-notice-dismiss");
+      if (dismissBtn) {
+        dismissBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          clearGalleryToolbarFilters();
+        });
+      }
     }
     syncImageFilterNotice();
     const lightbox = document.getElementById("image-gallery-lightbox");
@@ -5692,6 +6257,7 @@
     renderMessages();
     const imgStatusId = appStatus.push("images", "images.starting");
     appendImagesDebugLog(opts.debugLabel || `Iniciando stream message=${messageId}`);
+    let queuedAny = false;
     try {
       const res = await fetch(opts.url, {
         method: "POST",
@@ -5727,6 +6293,9 @@
           if (data.type === "log") {
             appendImagesDebugLog(data.message || JSON.stringify(data));
           }
+          if (data.type === "queued") {
+            queuedAny = true;
+          }
           if (data.type === "llm_debug" && isShowDebugMode()) {
             const label =
               (data.data && data.data.label) ||
@@ -5756,6 +6325,11 @@
         }
       }
       appendImagesDebugLog("Stream de ilustración terminado");
+      if (queuedAny) {
+        startImageQueuePoll();
+        if (isQueuePanelVisible()) loadImageQueuePage();
+        if (!opts.doneNotice) showNotice("Imágenes encoladas para generación.");
+      }
       if (opts.doneNotice) showNotice(opts.doneNotice);
     } catch (e) {
       if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) {

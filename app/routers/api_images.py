@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -28,6 +29,11 @@ from app.schemas import (
     IllustratedImageListResponse,
     IllustratedImageMessageListResponse,
     IllustratedImageMetaResponse,
+    ImageGenerationJobDeleteRequest,
+    ImageGenerationJobDeleteResponse,
+    ImageGenerationJobListItem,
+    ImageGenerationJobListResponse,
+    ImageGenerationQueueRunStateResponse,
     IllustrateAtRequest,
     IllustrateRequest,
     MessageContentUpdateResponse,
@@ -44,7 +50,14 @@ from app.services.image_illustration.last_payload import (
     LastPayloadError,
 )
 from app.services.image_illustration.orchestrator import ImageIllustrationOrchestrator
+from app.services.image_illustration.queue_ops import delete_image_generation_jobs
+from app.services.image_illustration.run_context import IllustrationRunContext
 from app.services.image_illustration.scene_planner import LlmScenePlanner
+from app.services.image_illustration.worker import (
+    is_image_generation_queue_paused,
+    pause_image_generation_queue,
+    resume_image_generation_queue,
+)
 from app.services.image_illustration.storage import (
     delete_illustrated_image,
     media_type_for_illustrated_file,
@@ -74,6 +87,44 @@ def _forge_overrides_from_body(body: IllustrateRequest | GenerateRemainingReques
         width=body.width,
         height=body.height,
         seed=body.seed,
+    )
+
+
+def _forge_overrides_dict(body: IllustrateRequest | GenerateRemainingRequest) -> dict:
+    overrides = _forge_overrides_from_body(body)
+    if not overrides:
+        return {}
+    return overrides.as_dict()
+
+
+def _enqueue_image_generation_job(**kwargs) -> str:
+    db = SessionLocal()
+    try:
+        job = crud.create_image_generation_job(db, **kwargs)
+        return job.id
+    finally:
+        db.close()
+
+
+def _build_run_context(
+    *,
+    conversation_id: str,
+    message_id: str,
+    prompt_model: str | None,
+    prompt_provider: str | None,
+    retries: int,
+    rules: dict | None = None,
+) -> IllustrationRunContext:
+    batch_id = str(uuid.uuid4())
+    return IllustrationRunContext(
+        conversation_id=conversation_id,
+        message_id=message_id,
+        prompt_model=prompt_model,
+        prompt_provider=prompt_provider,
+        batch_id=batch_id,
+        retries=retries,
+        rules=rules or {},
+        enqueue_fn=_enqueue_image_generation_job,
     )
 
 
@@ -226,7 +277,7 @@ def _stream_illustration_events(
         for event in events:
             if event.content is not None:
                 final_content = event.content
-                if event.type in ("placeholder", "image", "error", "done") and final_content != text:
+                if event.type in ("placeholder", "image", "error", "queued", "done") and final_content != text:
                     try:
                         _persist_message_content(
                             conversation_id, message_id, final_content
@@ -321,6 +372,18 @@ def illustrate_message(
     orch = _build_orchestrator(body, conv=conv, db=db)
     meta_prompts = _prompts_from_message_meta(db, text)
     prompt_provider, prompt_model = _planner_llm_from_request(body, conv)
+    run_context = _build_run_context(
+        conversation_id=owner_conversation_id,
+        message_id=message_id,
+        prompt_model=prompt_model,
+        prompt_provider=prompt_provider,
+        retries=body.retries,
+        rules={
+            "prompt_system_instructions": body.prompt_system_instructions,
+            "use_chat_config": body.use_chat_config,
+            "forge_overrides": _forge_overrides_dict(body),
+        },
+    )
 
     def event_stream():
         # No capturar `db` del request: Depends(get_db) se cierra al acabar/cortar el stream.
@@ -337,6 +400,7 @@ def illustrate_message(
                 batch_size=body.batch_size,
                 existing_prompts=meta_prompts or None,
                 forge_overrides=_forge_overrides_from_body(body),
+                run_context=run_context,
             ),
             debug=body.debug,
             include_prompt_debug=body.include_prompt_debug,
@@ -383,6 +447,20 @@ def illustrate_at_paragraph(
     orch = _build_orchestrator(body, conv=conv, db=db)
     meta_prompts = _prompts_from_message_meta(db, text)
     prompt_provider, prompt_model = _planner_llm_from_request(body, conv)
+    run_context = _build_run_context(
+        conversation_id=owner_conversation_id,
+        message_id=message_id,
+        prompt_model=prompt_model,
+        prompt_provider=prompt_provider,
+        retries=body.retries,
+        rules={
+            "prompt_system_instructions": body.prompt_system_instructions,
+            "use_chat_config": body.use_chat_config,
+            "forge_overrides": _forge_overrides_dict(body),
+            "paragraph_index": body.paragraph_index,
+            "selected_excerpt": body.selected_excerpt,
+        },
+    )
 
     def event_stream():
         yield from _stream_illustration_events(
@@ -398,6 +476,7 @@ def illustrate_at_paragraph(
                 include_prompt_debug=body.include_prompt_debug,
                 existing_prompts=meta_prompts or None,
                 forge_overrides=_forge_overrides_from_body(body),
+                run_context=run_context,
             ),
             debug=body.debug,
             include_prompt_debug=body.include_prompt_debug,
@@ -427,6 +506,14 @@ def generate_remaining_images(
     text = _content_without_missing_files(db, owner_conversation_id, message_id, msg.content or "")
     orch = _build_forge_orchestrator()
     prompt_provider, prompt_model = crud.get_latest_prompt_llm_for_message(db, message_id)
+    run_context = _build_run_context(
+        conversation_id=owner_conversation_id,
+        message_id=message_id,
+        prompt_model=prompt_model,
+        prompt_provider=prompt_provider,
+        retries=body.retries,
+        rules={"forge_overrides": _forge_overrides_dict(body)},
+    )
 
     def event_stream():
         yield from _stream_illustration_events(
@@ -438,6 +525,7 @@ def generate_remaining_images(
                 retries=body.retries,
                 batch_size=body.batch_size,
                 forge_overrides=_forge_overrides_from_body(body),
+                run_context=run_context,
             ),
             debug=body.debug,
             prompt_model=prompt_model,
@@ -736,6 +824,75 @@ def get_forge_last_generation_params():
         seed=data.get("seed"),
         mode=data.get("mode"),
     )
+
+
+@router.get(
+    "/image-generation-queue",
+    response_model=ImageGenerationJobListResponse,
+)
+def list_image_generation_queue(
+    status: str | None = Query(
+        default=None,
+        description="Estados separados por coma: pending, generating, completed, failed",
+    ),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Listado de trabajos encolados para generación Forge."""
+    statuses = None
+    if status:
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+    items, total = crud.list_image_generation_jobs(
+        db,
+        statuses=statuses,
+        limit=limit,
+        offset=offset,
+    )
+    active_count = crud.count_active_image_generation_jobs(db)
+    return ImageGenerationJobListResponse(
+        items=[ImageGenerationJobListItem(**item) for item in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+        active_count=active_count,
+        paused=is_image_generation_queue_paused(),
+    )
+
+
+@router.post(
+    "/image-generation-queue/pause",
+    response_model=ImageGenerationQueueRunStateResponse,
+)
+def pause_image_generation_queue_endpoint():
+    """Pausa el worker: no se encolan nuevas generaciones Forge."""
+    pause_image_generation_queue()
+    return ImageGenerationQueueRunStateResponse(paused=True)
+
+
+@router.post(
+    "/image-generation-queue/resume",
+    response_model=ImageGenerationQueueRunStateResponse,
+)
+def resume_image_generation_queue_endpoint():
+    """Reanuda el worker de la cola de imágenes."""
+    resume_image_generation_queue()
+    return ImageGenerationQueueRunStateResponse(paused=False)
+
+
+@router.post(
+    "/image-generation-queue/delete",
+    response_model=ImageGenerationJobDeleteResponse,
+)
+def delete_image_generation_queue_jobs(
+    body: ImageGenerationJobDeleteRequest,
+    db: Session = Depends(get_db),
+):
+    """Elimina trabajos de la cola; cancela placeholders en mensajes no completados."""
+    deleted, ids = delete_image_generation_jobs(db, body.ids)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Ningún trabajo encontrado")
+    return ImageGenerationJobDeleteResponse(deleted=deleted, ids=ids)
 
 
 @router.get("/illustrated-images/{filename}")

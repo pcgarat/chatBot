@@ -395,6 +395,49 @@ class IllustratedImageMessageListResponse(BaseModel):
     items: list[IllustratedImageMessageSummary] = Field(default_factory=list)
 
 
+class ImageGenerationJobListItem(BaseModel):
+    id: str
+    status: str
+    conversation_id: str
+    conversation_title: str
+    message_id: str
+    message_excerpt: str = ""
+    scene_id: str
+    forge_prompt: str = ""
+    prompt_model: Optional[str] = None
+    prompt_provider: Optional[str] = None
+    batch_id: Optional[str] = None
+    error_message: Optional[str] = None
+    result_filename: Optional[str] = None
+    rules: dict = Field(default_factory=dict)
+    forge_mode: str = "txt2img"
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+class ImageGenerationJobListResponse(BaseModel):
+    items: list[ImageGenerationJobListItem] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+    active_count: int = 0
+    paused: bool = False
+
+
+class ImageGenerationQueueRunStateResponse(BaseModel):
+    paused: bool = False
+
+
+class ImageGenerationJobDeleteRequest(BaseModel):
+    ids: list[str] = Field(..., min_length=1, max_length=200)
+
+
+class ImageGenerationJobDeleteResponse(BaseModel):
+    deleted: int = 0
+    ids: list[str] = Field(default_factory=list)
+
+
 class WorkspaceImagesSnapshot(ForgePanelParamFields):
     """Prefs del panel Imágenes (sin debug ni cromo de UI)."""
 
