@@ -129,24 +129,28 @@ def get_context_length_max(provider_name: str, model_name: str) -> int | None:
     return None
 
 
-def build_extra_body(provider_name: str, model_params: dict[str, Any] | None) -> dict[str, Any]:
+def build_extra_body(
+    provider_name: str,
+    model_params: dict[str, Any] | None,
+    model_id: str | None = None,
+) -> dict[str, Any]:
     """
     Construye el fragmento de payload a fusionar con la petición al proveedor.
 
-    Usa get_params_config(provider_name) para mapear cada clave de model_params
-    al api_key del proveedor (ej. options.temperature). Si model_params es None
-    o vacío, devuelve {}.
-
-    Args:
-        provider_name: Nombre del proveedor (ollama, mancer, ...).
-        model_params: Parámetros que el usuario ha modificado (solo esos se envían).
-
-    Returns:
-        Dict listo para merge en el body (ej. {"options": {"temperature": 0.8}}).
+    Si hay model_id, usa las specs del contrato (overlay + think). Si no, el
+    schema del proveedor. think se coacciona según el contrato (no 422).
     """
     if not model_params:
         return {}
-    specs = get_params_config(provider_name)
+    thinking = None
+    if model_id:
+        from app.services.model_contract import normalize_think_value, resolve_model_contract
+
+        contract = resolve_model_contract(provider_name, model_id)
+        specs = contract.params
+        thinking = contract.capabilities.thinking
+    else:
+        specs = get_params_config(provider_name)
     if not specs:
         return {}
     extra: dict[str, Any] = {}
@@ -157,7 +161,10 @@ def build_extra_body(provider_name: str, model_params: dict[str, Any] | None) ->
         api_key = spec.get("api_key")
         if not api_key:
             continue
-        # Normalizar valor según tipo (string_list debe ser lista de strings)
+        if key == "think" and thinking is not None:
+            value = normalize_think_value(thinking, value)
+            if value is None:
+                continue
         param_type = spec.get("type", "string")
         if param_type == "string_list" and isinstance(value, str):
             value = [s.strip() for s in value.split("\n") if s.strip()] if value else []
@@ -171,11 +178,9 @@ def build_extra_body(provider_name: str, model_params: dict[str, Any] | None) ->
                 value = float(value)
             except (TypeError, ValueError):
                 continue
-        # No enviar listas vacías para stop/stop_sequences: algunos backends (ej. Ollama) devuelven 500
         if param_type == "string_list" and (value is None or (isinstance(value, list) and len(value) == 0)):
             continue
         set_nested(extra, api_key, value)
-    # No enviar "options": {} vacío; Ollama puede fallar con options presentes pero vacíos
     if extra.get("options") == {}:
         extra.pop("options", None)
     return extra

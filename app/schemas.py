@@ -58,6 +58,37 @@ class ProviderCapabilitiesResponse(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
 
 
+class ModelContractThinkingOut(BaseModel):
+    kind: str
+    values: list[str] = Field(default_factory=list)
+    can_disable: bool = True
+    true_maps_to: str | None = None
+    default: Any = None
+
+
+class ModelContractCapabilitiesOut(BaseModel):
+    vision: bool = False
+    tools: bool = False
+    structured_output: bool = False
+    thinking: ModelContractThinkingOut
+
+
+class ModelContractRecipeOut(BaseModel):
+    id: str
+    label: str
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelContractResponse(BaseModel):
+    """Respuesta de GET /api/providers/{provider}/models/{model_id}/contract."""
+    provider: str
+    model: str
+    capabilities: ModelContractCapabilitiesOut
+    params: dict[str, Any] = Field(default_factory=dict)
+    recipes: list[ModelContractRecipeOut] = Field(default_factory=list)
+    quirks: list[str] = Field(default_factory=list)
+
+
 class StreamUsageInfo(BaseModel):
     """
     Uso de tokens en el stream (normalizado para todos los proveedores).

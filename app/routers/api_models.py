@@ -12,6 +12,7 @@ from app.model_info import MAX_TAG_LENGTH, MAX_TAGS, get_all_tags, get_model_inf
 from app.provider_params import get_context_length_max, get_params_config, get_presets
 from app.providers import ProviderFactory, get_provider
 from app.providers.capabilities import get_model_details, get_provider_capabilities
+from app.services.model_contract import contract_as_dict, resolve_model_contract
 from app.schemas import (
     ModelInfo,
     ModelInfoResponse,
@@ -20,6 +21,7 @@ from app.schemas import (
     ProviderCapabilitiesResponse,
     ProviderInfo,
     ProviderModelInfo,
+    ModelContractResponse,
     RuleItem,
     TagsResponse,
 )
@@ -239,6 +241,28 @@ def get_model_info_route(provider_name: str, model_id: str, db: Session = Depend
         tags=tags_final,
     )
     return ModelInfoResponse(provider_info=raw["provider_info"], user_info=user_info)
+
+
+@router.get(
+    "/providers/{provider_name}/models/{model_id:path}/contract",
+    response_model=ModelContractResponse,
+)
+def get_model_contract(provider_name: str, model_id: str):
+    """
+    Contrato efectivo del modelo: capabilities, params mergeados, recipes y quirks.
+    show_model es best-effort; si falla se omite la capa live.
+    """
+    try:
+        get_provider(provider_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    show = None
+    try:
+        show = get_model_details(provider_name, model_id)
+    except Exception:
+        show = None
+    contract = resolve_model_contract(provider_name, model_id, show=show)
+    return contract_as_dict(contract)
 
 
 @router.put(

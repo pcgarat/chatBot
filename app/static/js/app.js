@@ -27,6 +27,8 @@
   let paramsBaseline = {};
   /** Parámetros que el usuario ha marcado como "no enviar" (por conversación). Clave: conversationId o "_new". */
   let paramsExcludedFromSendByConv = {};
+  /** Contrato efectivo del modelo actual (GET .../contract). null si no hay o falló. */
+  let currentContract = null;
   /** Uso de contexto (último turno): prompt_tokens, completion_tokens. null si no hay datos. */
   let lastUsage = null;
   /** Contexto máximo del modelo actual (tokens). null si no se conoce. */
@@ -415,6 +417,157 @@
     renderParamsToSend();
   }
 
+  function thinkOptionLabel(value) {
+    const v = String(value);
+    if (v === "false") return "Apagado";
+    if (v === "true") return "Pensando";
+    if (v === "low") return "Bajo";
+    if (v === "medium") return "Medio";
+    if (v === "high") return "Alto";
+    if (v === "max") return "Máximo";
+    return v;
+  }
+
+  function thinkSelectValue(value) {
+    if (value === true || value === "true") return "true";
+    if (value === false || value === "false") return "false";
+    return value != null ? String(value) : "";
+  }
+
+  function fillThinkOptions(control, thinking) {
+    let values = Array.isArray(thinking.values) && thinking.values.length
+      ? thinking.values.slice()
+      : (thinking.kind === "boolean" ? ["false", "true"] : []);
+    if (!thinking.can_disable) {
+      values = values.filter((v) => v !== "false" && v !== false);
+    }
+    control.innerHTML = values
+      .map((v) => `<option value="${thinkSelectValue(v)}">${thinkOptionLabel(v)}</option>`)
+      .join("");
+  }
+
+  function syncContractParamBaselines() {
+    if (!currentContract || !currentContract.params || typeof currentContract.params !== "object") return;
+    Object.keys(currentContract.params).forEach((paramId) => {
+      const spec = currentContract.params[paramId];
+      if (spec && spec.default !== undefined) paramsBaseline[paramId] = spec.default;
+    });
+  }
+
+  /** Aplica defaults del contrato a controles (temperature, num_ctx, think…). No usar si origen es user. */
+  function applyContractParamDefaults() {
+    if (!currentContract || !currentContract.params || typeof currentContract.params !== "object") return;
+    syncContractParamBaselines();
+    const defaults = {};
+    Object.keys(currentContract.params).forEach((paramId) => {
+      const spec = currentContract.params[paramId];
+      if (spec && spec.default !== undefined) defaults[paramId] = spec.default;
+    });
+    applyUserParamsToControls(defaults);
+  }
+
+  function applyThinkAndRecipesFromContract(opts) {
+    const applyParamDefaults = Boolean(opts && opts.applyParamDefaults);
+    const row = document.getElementById("composer-model-row");
+    const wrap = document.getElementById("composer-think-wrap");
+    const control = document.getElementById("param-think");
+    const recipesEl = document.getElementById("composer-recipes");
+    const thinking = currentContract && currentContract.capabilities && currentContract.capabilities.thinking;
+    const recipes = (currentContract && Array.isArray(currentContract.recipes)) ? currentContract.recipes : [];
+    const showThink = Boolean(thinking && thinking.kind && thinking.kind !== "none");
+    const showRecipes = recipes.length > 0;
+    if (row) row.hidden = !showThink && !showRecipes;
+    if (wrap) wrap.hidden = !showThink;
+    if (control) {
+      if (showThink) {
+        fillThinkOptions(control, thinking);
+        const spec = (currentContract.params && currentContract.params.think) || {
+          api_key: "think",
+          type: thinking.kind === "levels" ? "enum" : "boolean",
+          default: thinking.default,
+        };
+        paramsConfig.params.think = spec;
+        control.disabled = false;
+        control.classList.remove("control-disabled");
+        const def = spec.default !== undefined ? spec.default : thinking.default;
+        if (def !== undefined && def !== null) paramsBaseline.think = def;
+        const allowed = Array.from(control.options).map((o) => o.value);
+        if (applyParamDefaults && def !== undefined && def !== null) {
+          control.value = thinkSelectValue(def);
+        } else if (!allowed.includes(control.value) && def !== undefined && def !== null) {
+          control.value = thinkSelectValue(def);
+        }
+      } else {
+        control.disabled = true;
+        control.classList.add("control-disabled");
+        control.innerHTML = "";
+        if (paramsConfig.params) delete paramsConfig.params.think;
+      }
+    }
+    if (recipesEl) {
+      recipesEl.hidden = !showRecipes;
+      recipesEl.innerHTML = "";
+      recipes.forEach((recipe) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "composer-recipe-chip";
+        btn.textContent = recipe.label || recipe.id;
+        btn.addEventListener("click", () => applyModelRecipe(recipe));
+        recipesEl.appendChild(btn);
+      });
+    }
+    const numCtx = document.getElementById("param-num-ctx");
+    const ctxSpec = currentContract && currentContract.params && currentContract.params.num_ctx;
+    if (numCtx && ctxSpec && ctxSpec.max != null) {
+      numCtx.setAttribute("max", String(ctxSpec.max));
+    }
+    syncContractParamBaselines();
+    if (applyParamDefaults) applyContractParamDefaults();
+  }
+
+  async function loadModelContract(opts) {
+    const applyParamDefaults = Boolean(opts && opts.applyParamDefaults);
+    const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "";
+    const modelId = (el.modelSelect && el.modelSelect.value) || "";
+    if (!provider || !modelId) {
+      currentContract = null;
+      applyThinkAndRecipesFromContract({ applyParamDefaults: false });
+      return;
+    }
+    try {
+      currentContract = await fetchJson(
+        `${API}/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(modelId)}/contract`
+      );
+      if (currentContract && currentContract.params && typeof currentContract.params === "object") {
+        paramsConfig.params = { ...paramsConfig.params, ...currentContract.params };
+      }
+    } catch (_) {
+      currentContract = null;
+    }
+    applyThinkAndRecipesFromContract({ applyParamDefaults });
+  }
+
+  function applyModelRecipe(recipe) {
+    if (!recipe || typeof recipe !== "object") return;
+    if (paramsSource === "user") {
+      const label = recipe.label || recipe.id || "esta receta";
+      const ok = window.confirm(
+        `Esto sustituye los ajustes de esta conversación por la receta «${label}». ¿Continuar?`
+      );
+      if (!ok) return;
+    }
+    applyUserParamsToControls(recipe.params || {});
+    paramsSource = "user";
+    renderParamsSourceLabel();
+    renderParamsToSend();
+    if (currentConversationId) {
+      fetchJson(`${API}/conversations/${currentConversationId}`, {
+        method: "PUT",
+        body: JSON.stringify({ model_params: buildModelParams() }),
+      }).catch(() => {});
+    }
+  }
+
   function applyParamsConfig() {
     document.querySelectorAll("[data-control-id]").forEach((control) => {
       const paramId = control.getAttribute("data-control-id");
@@ -491,6 +644,7 @@
           applyPresetToControls(preset);
           setParamsBaselineFromPreset(preset);
           paramsSource = "preset";
+          await loadModelContract({ applyParamDefaults: false });
           showNotice("Parámetros restaurados al preset del modelo.");
           return;
         }
@@ -498,6 +652,7 @@
     }
     applyParamsConfig();
     paramsSource = "default";
+    await loadModelContract({ applyParamDefaults: true });
     showNotice("Parámetros restaurados a los valores por defecto del proveedor.");
   }
 
@@ -1037,6 +1192,7 @@
     await loadModels(false);
     await loadParamsForProvider(currentProvider);
     await ensureParamsBaselineForCurrentModel();
+    await loadModelContract({ applyParamDefaults: paramsSource !== "user" });
     syncHeaderProviderModel();
     // Actualizar conversación si hay una abierta
     if (currentConversationId) {
@@ -1900,6 +2056,7 @@
       }
       rules = normalizeRulesFromApi(conv.system_instructions, conv.system_instruction_global);
       await loadParamsForProvider(currentProvider);
+      await loadModelContract({ applyParamDefaults: false });
       if (conv.model_params && typeof conv.model_params === "object" && Object.keys(conv.model_params).length > 0) {
         await ensureParamsBaselineForCurrentModel();
         applyUserParamsToControls(conv.model_params);
@@ -1919,9 +2076,11 @@
             paramsSource = "preset";
           } else {
             paramsSource = "default";
+            applyContractParamDefaults();
           }
         } catch (_) {
           paramsSource = "default";
+          applyContractParamDefaults();
         }
       }
       applyConversationTree(conv);
@@ -1944,6 +2103,7 @@
       }
       rules = [];
       await loadParamsForProvider(currentProvider);
+      await loadModelContract({ applyParamDefaults: true });
       await ensureParamsBaselineForCurrentModel();
       paramsSource = "default";
       resetConversationTree();
@@ -3038,6 +3198,8 @@
         return;
       }
     }
+    lastUsage = null;
+    await loadModelContract({ applyParamDefaults: paramsSource !== "user" });
     if (currentConversationId) {
       fetchJson(`${API}/conversations/${currentConversationId}`, {
         method: "PUT",
@@ -3047,7 +3209,6 @@
         }),
       }).catch(() => {});
     }
-    lastUsage = null;
     await loadContextLength();
     await ensureParamsBaselineForCurrentModel();
     renderParamsToSend();
@@ -6085,6 +6246,7 @@
     }
     await loadParamsForProvider(currentProvider);
     await ensureParamsBaselineForCurrentModel();
+    await loadModelContract({ applyParamDefaults: false });
     if (snap.model_params && typeof snap.model_params === "object") {
       applyUserParamsToControls(snap.model_params);
     }
@@ -6774,6 +6936,7 @@
       }
     }
     await loadParamsForProvider(currentProvider);
+    await loadModelContract({ applyParamDefaults: true });
     await loadConversations();
     const storedId = (function () {
       try {

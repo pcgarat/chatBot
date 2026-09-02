@@ -482,6 +482,26 @@ def test_send_message_ok(mock_get_provider, client):
     assert get_conv.json()["messages"][1]["content"] == "Hola, soy el asistente."
 
 
+@patch("app.routers.api_conversations.build_extra_body")
+@patch("app.routers.api_conversations.get_provider")
+def test_send_message_pasa_model_id_a_build_extra_body(mock_get_provider, mock_extra, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "ok"
+    mock_get_provider.return_value = mock_provider
+    mock_extra.return_value = {"think": "max"}
+    cid = client.post(
+        "/api/conversations",
+        json={"title": "Chat", "model_id": "deepseek-v4-flash:cloud", "provider": "ollama"},
+    ).json()["id"]
+    r = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Hola", "model_params": {"think": "max"}},
+    )
+    assert r.status_code == 200
+    mock_extra.assert_called_once()
+    assert mock_extra.call_args.kwargs.get("model_id") == "deepseek-v4-flash:cloud"
+
+
 @patch("app.routers.api_conversations.get_provider")
 def test_send_message_strips_illustration_html_del_llm(mock_get_provider, client):
     """El LLM no puede persistir imgs de ilustración: salen rotas y sin metadatos."""
