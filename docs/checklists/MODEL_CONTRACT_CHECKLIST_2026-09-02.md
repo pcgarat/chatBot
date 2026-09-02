@@ -6,9 +6,10 @@
 **Plan:** [`docs/plans/PLAN_MODEL_CONTRACT_2026-09-02.md`](../plans/PLAN_MODEL_CONTRACT_2026-09-02.md)  
 **Diseño:** [`docs/DESIGN_MODEL_CONTRACT_2026-09-02.md`](../DESIGN_MODEL_CONTRACT_2026-09-02.md)
 
-**Estado:** v1 + overlays cloud + defaults de contrato en UI. Rama `feat/model-contract`.
+**Estado:** **v1 merged** en `main` (PR [#36](https://github.com/pcgarat/chatBot/pull/36), squash `0b85cc8`). Overlays de **8 cloud** + defaults de contrato en UI. Siguiente: **v2** (sección al final).
 
-**Rama:** `feat/model-contract`
+**Rama v1:** `feat/model-contract` (borrada tras merge).  
+**Rama v2:** crear `feat/...` al empezar (p. ej. `feat/model-contract-quirks`).
 
 **Verificación habitual:** `make test` o `pytest tests/ -m "not e2e"`.
 
@@ -45,14 +46,14 @@
 **Description:** Archivo sparse por proveedor y función que lo lee (caché en memoria, como presets).
 
 **Acceptance criteria:**
-- [x] `config/model_overlays/ollama.json` con entradas **solo** `gpt-oss:120b-cloud` y `deepseek-v4-flash:cloud`
+- [x] `config/model_overlays/ollama.json` con entradas cloud (v1 arrancó con GPT-OSS + DeepSeek; **hoy: 8 cloud** — gpt-oss, deepseek-v4-flash, gemma4-31b, glm-5.3-flash, glm-5.2, kimi-k2.6, kimi-k3, mistral-large-3)
 - [x] Overlay = deltas + `capabilities` + `recipes` + `quirks`; no copia el schema entero
 - [x] Loader: archivo ausente o JSON inválido → `{}` (mismo criterio que `get_presets`)
 - [x] DeepSeek: `num_ctx.max` 1048576, default ctx ≠ max, recetas fast/coding/hard, thinking con `max` y disable
 - [x] GPT-OSS: `can_disable: false`, `true_maps_to: "medium"`, values low/medium/high, recetas, `num_ctx.max` 131072
 
 **Verification:**
-- [x] Test: loader lee las dos claves; test: provider sin archivo → `{}`
+- [x] Test: loader lee las claves cloud; test: provider sin archivo → `{}`
 
 **Dependencies:** Task 1
 
@@ -95,7 +96,7 @@
 
 - [x] Tests de dominio en verde
 - [x] El mismo merge cubre GPT-OSS y DeepSeek
-- [ ] Review humana del JSON de overlay (valores recetas) antes de API
+- [x] Review humana del JSON de overlay (valores recetas) — merge PR #36
 
 ---
 
@@ -152,7 +153,7 @@
 
 - [x] GET contract estable
 - [x] Presets/params intactos
-- [ ] Review humana: ¿el JSON sirve para pintar el knob sin más campos?
+- [x] Review humana: el JSON sirve para pintar el knob (PR #36)
 
 ---
 
@@ -331,18 +332,68 @@
 ### Checkpoint: Complete
 
 - [x] Success criteria de la spec
-- [x] `make test` (617 passed, e2e excluidos)
+- [x] `make test` (~619 passed, e2e excluidos)
 - [x] Este checklist actualizado
 - [x] Sin `if` por nombre de modelo en JS
-- [ ] Listo para review; commit/PR solo si el usuario lo pide
+- [x] Review + PR #36 mergeado en `main`
 
 ---
 
-## Explicitamente no hacer en v1
+## Explicitamente no hacer en v1 (aplazado a v2)
 
-- [ ] ~~Renderer de todo Ajustes~~
-- [ ] ~~Overlays del resto de cloud~~
-- [ ] ~~Upload de imágenes al LLM~~
-- [ ] ~~Mostrar `message.thinking`~~
-- [ ] ~~Adelgazar `config/ollama.json`~~
-- [ ] ~~Clase `GptOssAdapter` / similar~~
+- [ ] Renderer de todo Ajustes → **v2 Phase D** (parcial hide/show primero)
+- [x] ~~Overlays del resto de cloud~~ (hecho en v1+)
+- [ ] Upload de imágenes al LLM → **v2 Phase F**
+- [ ] Mostrar `message.thinking` → **v2 Phase E**
+- [ ] Adelgazar `config/ollama.json` → **v2 Phase G**
+- [x] ~~Clase `GptOssAdapter` / similar~~ (no se hará; anti-patrón)
+
+---
+
+## v2 — siguientes pasos
+
+Seguir el [plan v2](../plans/PLAN_MODEL_CONTRACT_2026-09-02.md#plan-v2--siguientes-pasos). Marcar aquí al implementar.
+
+### Phase A: Quirks de historial
+
+- [x] A1: `omit_prior_thinking` al construir mensajes hacia el LLM
+- [x] A2: Tests unitarios del builder (con/sin quirk)
+- [x] Checkpoint: Gemma multi-turn OK; resto intacto; `make test`
+
+### Phase B: Cromos en selector
+
+- [ ] B1: Cromos vision / thinking / tools / ventana desde el contrato
+- [ ] B2: Sin hardcode de nombres de modelo
+- [ ] Checkpoint: cambio de modelo actualiza cromos
+
+### Phase C: Verificación
+
+- [ ] C1: Manual — confirm receta cancelada; round-trip think
+- [ ] C2 (opcional): e2e chat con think si se toca el endpoint
+- [ ] Checkpoint: QA anotado
+
+### Phase D: Renderer Ajustes (parcial)
+
+- [ ] D1: Mostrar/ocultar controles según `contract.params`
+- [ ] D2: Progressive disclosure sin reescribir todo el HTML
+- [ ] Checkpoint: sin params fantasma; sin `if model ==`
+
+### Phase E: Stream + UI thinking
+
+- [ ] E1: Chunks `message.thinking`
+- [ ] E2: Panel colapsable; respetar quirk de no reenviar
+- [ ] Open: ¿persistir CoT en BD?
+- [ ] Checkpoint: modelos sin thinking no rompen
+
+### Phase F: Visión usuario→LLM
+
+- [ ] F1: Adjunto solo si `capabilities.vision`
+- [ ] F2: Quirk `image_before_text` si aplica
+- [ ] Checkpoint: GPT-OSS sin adjunto; Gemma/Mistral con él
+
+### Phase G: Más tarde
+
+- [ ] Gating tools/MCP por `capabilities.tools`
+- [ ] Coste estimado en UI
+- [ ] Adelgazar `config/ollama.json` hacia overlays
+- [ ] Overlays locales bajo demanda

@@ -10,6 +10,8 @@ from app.config import settings
 from app.provider_params import build_extra_body
 from app.providers import get_provider
 from app.services.image_illustration.anchors import strip_illustration_artifacts
+from app.services.model_contract import resolve_model_contract
+from app.services.model_contract.history_quirks import apply_history_quirks
 from app.slash_commands import parse_slash_command
 from app.db import get_db
 from app.crud import create_rule as crud_create_rule
@@ -461,8 +463,20 @@ def _build_llm_messages(
     messages.append({"role": "user", "content": new_content})
     if instruction_override and instruction_override.strip():
         messages.append({"role": "user", "content": instruction_override.strip()})
+    messages = apply_history_quirks(messages, _history_quirks_for_conv(conv))
     injecting = bool(global_text)
     return messages, injecting
+
+
+def _history_quirks_for_conv(conv) -> tuple[str, ...]:
+    """Quirks de historial del contrato del modelo de la conversación."""
+    provider = getattr(conv, "provider", None)
+    model_id = getattr(conv, "model_id", None)
+    if not isinstance(provider, str) or not isinstance(model_id, str):
+        return ()
+    if not provider.strip() or not model_id.strip():
+        return ()
+    return resolve_model_contract(provider, model_id).quirks
 
 
 def _emit(line: str, meta_lines: list[str], is_content_chunk: bool = False):

@@ -8,6 +8,7 @@ from app.services.model_contract.models import (
     contract_as_dict,
     empty_model_contract,
 )
+from app.services.model_contract.history_quirks import apply_history_quirks
 from app.services.model_contract.overlays import load_overlays
 from app.services.model_contract.resolve import resolve_model_contract
 from app.services.model_contract.thinking import normalize_think_value
@@ -20,6 +21,7 @@ __all__ = [
     "empty_model_contract",
     "contract_as_dict",
     "load_overlays",
+    "apply_history_quirks",
     "normalize_think_value",
     "resolve_model_contract",
 ]
