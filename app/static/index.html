@@ -194,13 +194,21 @@
     </main>
     <aside class="column-right sidebar-column" aria-label="Reglas y ajustes">
       <div class="workspace-profile-bar" role="group" aria-label="Perfiles de configuración">
-        <div class="workspace-profile-heading">Perfiles</div>
-        <div class="workspace-profile-actions">
-          <button type="button" id="btn-workspace-profile-save" class="btn btn-secondary btn-small">Guardar</button>
-          <button type="button" id="btn-workspace-profile-save-as" class="btn btn-secondary btn-small">Guardar como</button>
-        </div>
-        <ul id="workspace-profile-list" class="workspace-profile-list" aria-label="Perfiles guardados"></ul>
-        <p id="workspace-profile-empty" class="workspace-profile-empty">No hay perfiles. Guarda el actual para reutilizarlo.</p>
+        <select id="workspace-profile-select" class="param-control workspace-profile-select" aria-label="Perfil">
+          <option value="">Elegir perfil</option>
+        </select>
+        <button type="button" id="btn-workspace-profile-apply" class="icon-btn workspace-profile-icon-btn" title="aplicar perfil" aria-label="aplicar perfil">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>
+        <button type="button" id="btn-workspace-profile-save" class="icon-btn workspace-profile-icon-btn" title="guardar" aria-label="guardar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        </button>
+        <button type="button" id="btn-workspace-profile-save-as" class="icon-btn workspace-profile-icon-btn" title="guardar como" aria-label="guardar como">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+        <button type="button" id="btn-workspace-profile-delete" class="icon-btn workspace-profile-icon-btn" title="eliminar perfil" aria-label="eliminar perfil">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
       </div>
       <div class="accordion-list sidebar-accordion sidebar-main-accordion" aria-label="Panel lateral">
         <div class="accordion-section is-open" data-accordion-section="reglas" id="tab-reglas">

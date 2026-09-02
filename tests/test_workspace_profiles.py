@@ -42,6 +42,18 @@ def _minimal_snapshot(**overrides):
     return base
 
 
+def test_normalize_snapshot_keeps_full_model_params():
+    raw = _minimal_snapshot()
+    raw["model_params"] = {
+        "temperature": 0.8,
+        "top_p": 0.9,
+        "num_ctx": 2048,
+        "seed": 0,
+    }
+    out = normalize_snapshot(raw)
+    assert out["model_params"] == raw["model_params"]
+
+
 def test_normalize_snapshot_keeps_rig_and_drops_chrome():
     out = normalize_snapshot(_minimal_snapshot())
     assert out["provider"] == "ollama"

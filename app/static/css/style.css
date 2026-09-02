@@ -415,106 +415,53 @@ body {
 .workspace-profile-bar {
   flex-shrink: 0;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 10px 12px;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--stroke-divider);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
-.workspace-profile-heading {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--foreground);
-}
-
-.workspace-profile-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.workspace-profile-actions .btn {
+.workspace-profile-select {
   flex: 1;
   min-width: 0;
+  width: auto;
+  height: 28px;
+  min-height: 28px;
+  padding: 2px 22px 2px 8px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 12px;
 }
 
-.workspace-profile-list {
-  list-style: none;
-  margin: 0;
+.workspace-profile-bar .workspace-profile-icon-btn {
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  flex-shrink: 0;
   padding: 0;
-  max-height: 9.5rem;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.workspace-profile-item {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-}
-
-.workspace-profile-load {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  padding: 6px 8px;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm, 4px);
-  background: transparent;
+  background: var(--bg-input, var(--input));
   color: var(--foreground);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.workspace-profile-load:hover,
-.workspace-profile-load:focus-visible {
+.workspace-profile-bar .workspace-profile-icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.workspace-profile-bar .workspace-profile-icon-btn:hover:not(:disabled),
+.workspace-profile-bar .workspace-profile-icon-btn:focus-visible:not(:disabled) {
   background: var(--muted, var(--accent-light));
   outline: none;
 }
 
-.workspace-profile-item.is-active .workspace-profile-load {
-  background: var(--accent-light);
-  font-weight: 700;
-}
-
-.workspace-profile-delete {
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  border: none;
-  border-radius: var(--radius-sm, 4px);
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.workspace-profile-delete:hover,
-.workspace-profile-delete:focus-visible {
-  color: var(--foreground);
-  background: var(--muted);
-  outline: none;
-}
-
-.workspace-profile-empty {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--muted-foreground, var(--text-secondary));
-}
-
-.workspace-profile-empty[hidden] {
-  display: none;
+.workspace-profile-bar .workspace-profile-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .workspace-profile-name-modal {
