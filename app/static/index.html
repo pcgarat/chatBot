@@ -135,6 +135,14 @@
             </button>
           </div>
           <div class="composer-separator"></div>
+          <div class="composer-model-row" id="composer-model-row" hidden>
+            <label class="composer-think-label" id="composer-think-wrap" hidden>
+              <span>Thinking</span>
+              <select id="param-think" class="param-control composer-think-select" data-control-id="think" aria-label="Esfuerzo de razonamiento" disabled>
+              </select>
+            </label>
+            <div class="composer-recipes" id="composer-recipes" hidden role="group" aria-label="Recetas del modelo"></div>
+          </div>
           <div class="composer-main-row send-row">
             <textarea id="message-input" class="composer-textarea" rows="2" placeholder="Escribe un comando o envía un mensaje al modelo..." aria-label="Mensaje"></textarea>
             <div class="composer-actions send-row-buttons">

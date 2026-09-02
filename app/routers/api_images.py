@@ -191,7 +191,7 @@ def _build_orchestrator(
             body.prompt_system_instructions,
         )
         model_params = _parse_model_params(getattr(conv, "model_params", None))
-        extra_body = build_extra_body(provider_name, model_params) or None
+        extra_body = build_extra_body(provider_name, model_params, model_id=model) or None
     else:
         provider_name = body.prompt_provider
         model = body.prompt_model.strip()

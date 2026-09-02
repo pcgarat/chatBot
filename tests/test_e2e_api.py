@@ -310,6 +310,23 @@ def test_e2e_provider_capabilities_ollama(client, ollama_available):
     assert isinstance(data["capabilities"], list)
 
 
+def test_e2e_get_model_contract(client, ollama_available):
+    """GET /api/providers/ollama/models/{model_id}/contract devuelve el contrato."""
+    model_id = _get_first_ollama_model(client)
+    path_id = _encode_model_id(model_id)
+    r = client.get(f"/api/providers/ollama/models/{path_id}/contract")
+    assert r.status_code == 200
+    data = r.json()
+    for key in ("provider", "model", "capabilities", "params", "recipes", "quirks"):
+        assert key in data
+    assert data["provider"] == "ollama"
+    assert data["model"] == model_id
+    assert "thinking" in data["capabilities"]
+    assert isinstance(data["params"], dict)
+    assert isinstance(data["recipes"], list)
+    assert isinstance(data["quirks"], list)
+
+
 def test_e2e_get_model_info(client, ollama_available):
     """GET /api/providers/ollama/models/{model_id}/info devuelve provider_info y user_info."""
     model_id = _get_first_ollama_model(client)

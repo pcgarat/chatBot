@@ -457,3 +457,61 @@ def test_post_info_refresh_when_show_fails_returns_current(mock_get_model_detail
     data = r.json()
     assert data["provider_info"] == {}
     assert data["user_info"]["tags"] == ["keep"]
+
+
+@patch("app.routers.api_models.get_model_details", return_value=None)
+def test_get_model_contract_deepseek_shape(mock_details, client):
+    r = client.get("/api/providers/ollama/models/deepseek-v4-flash:cloud/contract")
+    assert r.status_code == 200
+    data = r.json()
+    assert set(data) >= {"provider", "model", "capabilities", "params", "recipes", "quirks"}
+    assert data["provider"] == "ollama"
+    assert data["model"] == "deepseek-v4-flash:cloud"
+    assert data["capabilities"]["thinking"]["kind"] == "levels"
+    assert data["capabilities"]["thinking"]["can_disable"] is True
+    assert "max" in data["capabilities"]["thinking"]["values"]
+    assert data["params"]["think"]["api_key"] == "think"
+    assert data["params"]["temperature"]["api_key"] == "options.temperature"
+    mock_details.assert_called_once_with("ollama", "deepseek-v4-flash:cloud")
+
+
+@patch("app.routers.api_models.get_model_details", return_value=None)
+def test_get_model_contract_gpt_oss_thinking_distinto(mock_details, client):
+    r = client.get("/api/providers/ollama/models/gpt-oss:120b-cloud/contract")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["capabilities"]["thinking"]["can_disable"] is False
+    assert data["capabilities"]["thinking"]["values"] == ["low", "medium", "high"]
+    assert data["capabilities"]["vision"] is False
+
+
+@patch("app.routers.api_models.get_model_details", return_value=None)
+def test_get_model_contract_sin_overlay_200(mock_details, client):
+    r = client.get("/api/providers/ollama/models/modelo-sin-overlay-xyz/contract")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["capabilities"]["thinking"]["kind"] == "none"
+    assert data["recipes"] == []
+    assert "think" not in data["params"]
+
+
+def test_get_model_contract_proveedor_invalido(client):
+    r = client.get("/api/providers/nonexistent_provider_xyz/models/llama3.2/contract")
+    assert r.status_code == 400
+
+
+@patch("app.routers.api_models.get_model_details", side_effect=ConnectionError("down"))
+def test_get_model_contract_show_falla_sigue_200(mock_details, client):
+    r = client.get("/api/providers/ollama/models/deepseek-v4-flash:cloud/contract")
+    assert r.status_code == 200
+    assert r.json()["capabilities"]["thinking"]["kind"] == "levels"
+
+
+def test_get_params_y_presets_siguen_igual(client):
+    params = client.get("/api/providers/ollama/params")
+    presets = client.get("/api/providers/ollama/presets")
+    assert params.status_code == 200
+    assert "params" in params.json()
+    assert "temperature" in params.json()["params"]
+    assert presets.status_code == 200
+    assert "presets" in presets.json()

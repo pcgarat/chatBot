@@ -504,6 +504,7 @@ def test_build_orchestrator_use_chat_config_takes_conv_model_rules_and_params(db
     assert captured.get("extra_body") == {"options": {"temperature": 0.3}}
     mock_extra.assert_called_once()
     assert mock_extra.call_args[0][0] == "abliteration"
+    assert mock_extra.call_args.kwargs.get("model_id") == "abliterated-model"
 
 
 def test_illustrate_request_requires_prompt_model_unless_use_chat_config():

@@ -710,7 +710,7 @@ async def send_message_stream(
         fut = loop.run_in_executor(None, _add_user_to_rag)
         fut.add_done_callback(_on_rag_done)
 
-    extra_body = build_extra_body(conv.provider, body.model_params)
+    extra_body = build_extra_body(conv.provider, body.model_params, model_id=conv.model_id)
     return StreamingResponse(
         _stream_generator_async(
             conversation_id,
@@ -770,7 +770,7 @@ def send_message(
         rag_context=rag_context,
     )
 
-    extra_body = build_extra_body(conv.provider, body.model_params)
+    extra_body = build_extra_body(conv.provider, body.model_params, model_id=conv.model_id)
     try:
         provider = get_provider(conv.provider)
         assistant_content = provider.chat(conv.model_id, llm_messages, extra_body=extra_body)

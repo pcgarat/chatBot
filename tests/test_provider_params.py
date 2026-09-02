@@ -136,6 +136,33 @@ def test_build_extra_body_proveedor_sin_specs(mock_get_params):
     assert result == {}
 
 
+def test_build_extra_body_think_top_level_deepseek():
+    """think viaja en la raíz del payload, no dentro de options."""
+    extra = build_extra_body(
+        "ollama",
+        {"think": "max", "temperature": 0.2},
+        model_id="deepseek-v4-flash:cloud",
+    )
+    assert extra.get("think") == "max"
+    assert extra["options"]["temperature"] == 0.2
+    assert "think" not in extra.get("options", {})
+
+
+def test_build_extra_body_think_gpt_oss_coerce_false():
+    extra = build_extra_body(
+        "ollama",
+        {"think": False},
+        model_id="gpt-oss:120b-cloud",
+    )
+    assert extra.get("think") == "medium"
+
+
+def test_build_extra_body_sin_model_id_ignora_think():
+    extra = build_extra_body("ollama", {"think": "max", "temperature": 0.5})
+    assert "think" not in extra
+    assert extra["options"]["temperature"] == 0.5
+
+
 # ----- get_context_length_max -----
 
 

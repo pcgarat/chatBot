@@ -2238,6 +2238,48 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   margin: 0 12px;
 }
 
+.composer-model-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 6px 14px 0;
+}
+
+.composer-think-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.composer-think-select {
+  min-width: 7.5rem;
+  font-size: 12px;
+}
+
+.composer-recipes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.composer-recipe-chip {
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--border, var(--stroke-divider));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.composer-recipe-chip:hover,
+.composer-recipe-chip:focus-visible {
+  background: var(--muted);
+}
+
 .composer-main-row.send-row {
   display: flex;
   align-items: flex-end;

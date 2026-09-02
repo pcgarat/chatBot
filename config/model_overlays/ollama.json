@@ -1,0 +1,61 @@
+{
+  "gpt-oss:120b-cloud": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["low", "medium", "high"],
+        "can_disable": false,
+        "true_maps_to": "medium",
+        "default": "medium"
+      }
+    },
+    "params": {
+      "temperature": { "default": 0.4 },
+      "num_ctx": { "default": 32768, "max": 131072 },
+      "think": {
+        "api_key": "think",
+        "type": "enum",
+        "values": ["low", "medium", "high"],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "low", "temperature": 0.3, "num_ctx": 8192 } },
+      { "id": "analysis", "label": "Análisis", "params": { "think": "medium", "temperature": 0.4, "num_ctx": 32768 } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "high", "temperature": 0.2, "num_ctx": 65536 } }
+    ],
+    "quirks": []
+  },
+  "deepseek-v4-flash:cloud": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["false", "true", "max"],
+        "can_disable": true,
+        "default": true
+      }
+    },
+    "params": {
+      "temperature": { "default": 0.3 },
+      "num_ctx": { "default": 32768, "max": 1048576 },
+      "think": {
+        "api_key": "think",
+        "type": "enum",
+        "values": ["false", "true", "max"],
+        "default": true
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": false, "temperature": 0.5, "num_ctx": 16384 } },
+      { "id": "coding", "label": "Coding", "params": { "think": true, "temperature": 0.2, "num_ctx": 131072 } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.1, "num_ctx": 65536 } }
+    ],
+    "quirks": []
+  }
+}
