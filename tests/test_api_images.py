@@ -391,6 +391,18 @@ def test_generate_remaining_forwards_forge_param_overrides(client, db_session):
     assert ov.as_dict() == {"steps": 12, "seed": 42}
 
 
+def test_forge_reactor_defaults_api(client):
+    res = client.get("/api/forge/reactor-defaults")
+    assert res.status_code == 200
+    data = res.json()
+    assert "defaults" in data
+    defaults = data["defaults"]
+    assert defaults["model"] == "inswapper_128.onnx"
+    assert "upscaler" in defaults
+    assert "codeformer_weight" in defaults
+    assert "gender_source" in defaults
+
+
 def test_forge_last_generation_params_unavailable_without_data_path(client, monkeypatch):
     monkeypatch.setattr("app.routers.api_images.settings.forge_data_path", "")
     res = client.get("/api/forge/last-generation-params")

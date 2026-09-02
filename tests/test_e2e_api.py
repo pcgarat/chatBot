@@ -1277,3 +1277,14 @@ def test_e2e_forge_last_generation_params_shape(client, ollama_available):
     assert isinstance(body.get("available"), bool)
     for key in ("steps", "width", "height", "seed", "mode", "detail"):
         assert key in body
+
+
+def test_e2e_forge_reactor_defaults_shape(client, ollama_available):
+    """GET /api/forge/reactor-defaults responde 200 con defaults ReActor."""
+    r = client.get("/api/forge/reactor-defaults")
+    assert r.status_code == 200
+    body = r.json()
+    defaults = body.get("defaults")
+    assert isinstance(defaults, dict)
+    for key in ("model", "upscaler", "face_restorer", "codeformer_weight"):
+        assert key in defaults

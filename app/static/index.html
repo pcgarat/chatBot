@@ -510,6 +510,106 @@
                 </div>
                 <p class="images-tab-hint panel-hint">Se rellenan con el último gen de Forge. Si los cambias, se usan tus valores. Vacío = no sobrescribir. «Recargar desde Forge» vuelve a leer el último gen.</p>
               </section>
+              <section class="panel-section" aria-labelledby="images-reactor-heading">
+                <h3 id="images-reactor-heading" class="panel-section-title">ReActor</h3>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-enabled">Aplicar face swap</label>
+                  <input type="checkbox" id="images-reactor-enabled" title="Tras generar en Forge, aplica ReActor antes de guardar la imagen" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-female-enabled">Mujer</label>
+                  <input type="checkbox" id="images-reactor-female-enabled" title="Aplicar facemodel solo a caras femeninas detectadas" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-female-face-model">Facemodel mujer</label>
+                  <input type="text" id="images-reactor-female-face-model" class="param-control" maxlength="256" placeholder="p. ej. elena.safetensors" disabled title="Nombre del facemodel en Forge (models/reactor/faces)" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-male-enabled">Hombre</label>
+                  <input type="checkbox" id="images-reactor-male-enabled" title="Aplicar facemodel solo a caras masculinas detectadas" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-male-face-model">Facemodel hombre</label>
+                  <input type="text" id="images-reactor-male-face-model" class="param-control" maxlength="256" placeholder="p. ej. john.safetensors" disabled title="Nombre del facemodel en Forge (models/reactor/faces)" />
+                </div>
+                <p class="images-tab-hint panel-hint">Si activas Mujer/Hombre, se usa el facemodel indicado por género. Si no, se usa <code>FORGE_REACTOR_SOURCE_IMAGE</code> del .env. Vacío en un campo = valor del .env.</p>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-model">Modelo swap</label>
+                  <input type="text" id="images-reactor-model" class="param-control" maxlength="256" placeholder="Del .env" title="Modelo InsightFace, p. ej. inswapper_128.onnx" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-source-faces-index">Índices cara fuente</label>
+                  <input type="text" id="images-reactor-source-faces-index" class="param-control" maxlength="64" placeholder="Del .env" title="Índices separados por coma en la imagen fuente" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-face-index">Índices cara destino</label>
+                  <input type="text" id="images-reactor-face-index" class="param-control" maxlength="64" placeholder="Del .env" title="Índices separados por coma en la imagen generada" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-upscaler">Upscaler</label>
+                  <input type="text" id="images-reactor-upscaler" class="param-control" maxlength="256" placeholder="Del .env" title="None para desactivar upscale" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-scale">Escala upscale</label>
+                  <input type="number" id="images-reactor-scale" class="param-control" min="0.1" max="8" step="0.1" placeholder="Del .env" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-upscale-visibility">Visibilidad upscale</label>
+                  <input type="number" id="images-reactor-upscale-visibility" class="param-control" min="0" max="1" step="0.05" placeholder="Del .env" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-face-restorer">Restaurador</label>
+                  <input type="text" id="images-reactor-face-restorer" class="param-control" maxlength="64" placeholder="Del .env" title="CodeFormer, GFPGAN o None" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-restorer-visibility">Visibilidad restaurador</label>
+                  <input type="number" id="images-reactor-restorer-visibility" class="param-control" min="0" max="1" step="0.05" placeholder="Del .env" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-codeformer-weight">Peso CodeFormer</label>
+                  <input type="number" id="images-reactor-codeformer-weight" class="param-control" min="0" max="1" step="0.05" placeholder="Del .env" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-restore-first">Restaurar primero</label>
+                  <input type="number" id="images-reactor-restore-first" class="param-control" min="0" max="1" step="1" placeholder="Del .env" title="1 = restaurar antes del upscale" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-gender-source">Género fuente</label>
+                  <input type="number" id="images-reactor-gender-source" class="param-control" min="0" max="2" step="1" placeholder="Del .env" title="0=any, 1=mujer, 2=hombre (modo imagen fuente)" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-gender-target">Género destino</label>
+                  <input type="number" id="images-reactor-gender-target" class="param-control" min="0" max="2" step="1" placeholder="Del .env" title="0=any, 1=mujer, 2=hombre (modo imagen fuente)" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-device">Dispositivo</label>
+                  <input type="text" id="images-reactor-device" class="param-control" maxlength="32" placeholder="Del .env" title="CUDA o CPU" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-mask-face">Máscara facial</label>
+                  <input type="number" id="images-reactor-mask-face" class="param-control" min="0" max="1" step="1" placeholder="Del .env" title="1=máscara, 0=bbox" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-select-source">Origen fuente</label>
+                  <input type="number" id="images-reactor-select-source" class="param-control" min="0" max="2" step="1" placeholder="Del .env" title="0=imagen, 1=facemodel, 2=carpeta" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-face-model">Facemodel genérico</label>
+                  <input type="text" id="images-reactor-face-model" class="param-control" maxlength="256" placeholder="Del .env" title="Solo si origen fuente=1 y no usas Mujer/Hombre" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-source-folder">Carpeta fuente</label>
+                  <input type="text" id="images-reactor-source-folder" class="param-control" maxlength="512" placeholder="Del .env" title="Solo si origen fuente=2" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-random-image">Imagen aleatoria</label>
+                  <input type="number" id="images-reactor-random-image" class="param-control" min="0" max="1" step="1" placeholder="Del .env" title="1=elige al azar de la carpeta fuente" />
+                </div>
+                <div class="sidebar-option">
+                  <label class="param-label" for="images-reactor-upscale-force">Forzar upscale</label>
+                  <input type="number" id="images-reactor-upscale-force" class="param-control" min="0" max="1" step="1" placeholder="Del .env" title="1=upscale aunque no detecte cara" />
+                </div>
+              </section>
             </div>
           </div>
         </div>

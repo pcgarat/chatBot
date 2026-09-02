@@ -32,6 +32,7 @@ class ImagesSnapshot:
     width: int | None = None
     height: int | None = None
     seed: int | None = None
+    reactor: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -48,6 +49,7 @@ class ImagesSnapshot:
             "width": self.width,
             "height": self.height,
             "seed": self.seed,
+            "reactor": dict(self.reactor),
         }
 
 

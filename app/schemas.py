@@ -235,6 +235,41 @@ class ForgePanelParamFields(BaseModel):
     )
 
 
+class ReactorPanelSettings(BaseModel):
+    """Prefs ReActor del panel Imágenes; vacío = usar defaults de .env."""
+
+    enabled: bool = False
+    female_enabled: bool = False
+    female_face_model: str = Field(default="", max_length=256)
+    male_enabled: bool = False
+    male_face_model: str = Field(default="", max_length=256)
+    model: Optional[str] = Field(default=None, max_length=256)
+    source_faces_index: Optional[str] = Field(default=None, max_length=64)
+    face_index: Optional[str] = Field(default=None, max_length=64)
+    upscaler: Optional[str] = Field(default=None, max_length=256)
+    scale: Optional[float] = Field(default=None, ge=0.1, le=8.0)
+    upscale_visibility: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    face_restorer: Optional[str] = Field(default=None, max_length=64)
+    restorer_visibility: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    codeformer_weight: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    restore_first: Optional[int] = Field(default=None, ge=0, le=1)
+    gender_source: Optional[int] = Field(default=None, ge=0, le=2)
+    gender_target: Optional[int] = Field(default=None, ge=0, le=2)
+    device: Optional[str] = Field(default=None, max_length=32)
+    mask_face: Optional[int] = Field(default=None, ge=0, le=1)
+    select_source: Optional[int] = Field(default=None, ge=0, le=2)
+    face_model: Optional[str] = Field(default=None, max_length=256)
+    source_folder: Optional[str] = Field(default=None, max_length=512)
+    random_image: Optional[int] = Field(default=None, ge=0, le=1)
+    upscale_force: Optional[int] = Field(default=None, ge=0, le=1)
+
+
+class ReactorDefaultsResponse(BaseModel):
+    """Valores por defecto ReActor leídos de .env (autorrelleno del panel)."""
+
+    defaults: dict[str, Any] = Field(default_factory=dict)
+
+
 class IllustrateRequest(ForgePanelParamFields):
     """Opciones del panel Imágenes para POST .../illustrate."""
 
@@ -271,7 +306,26 @@ class IllustrateRequest(ForgePanelParamFields):
         default=False,
         description="Si true, emite eventos llm_debug (request/response del planificador) por escena.",
     )
+    reactor: ReactorPanelSettings = Field(default_factory=ReactorPanelSettings)
     debug: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_reactor_enabled(cls, data):
+        if not isinstance(data, dict):
+            return data
+        if "reactor_enabled" not in data:
+            return data
+        migrated = dict(data)
+        legacy = bool(migrated.pop("reactor_enabled"))
+        reactor = migrated.get("reactor")
+        if isinstance(reactor, dict):
+            reactor = dict(reactor)
+            reactor.setdefault("enabled", legacy)
+            migrated["reactor"] = reactor
+        else:
+            migrated["reactor"] = {"enabled": legacy}
+        return migrated
 
     @model_validator(mode="after")
     def _require_prompt_model_unless_chat_config(self):
@@ -300,7 +354,26 @@ class GenerateRemainingRequest(ForgePanelParamFields):
         ge=1,
         description="Tamaño de lote al regenerar imágenes pendientes en Forge.",
     )
+    reactor: ReactorPanelSettings = Field(default_factory=ReactorPanelSettings)
     debug: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_reactor_enabled(cls, data):
+        if not isinstance(data, dict):
+            return data
+        if "reactor_enabled" not in data:
+            return data
+        migrated = dict(data)
+        legacy = bool(migrated.pop("reactor_enabled"))
+        reactor = migrated.get("reactor")
+        if isinstance(reactor, dict):
+            reactor = dict(reactor)
+            reactor.setdefault("enabled", legacy)
+            migrated["reactor"] = reactor
+        else:
+            migrated["reactor"] = {"enabled": legacy}
+        return migrated
 
 
 class ForgeLastGenerationParamsResponse(BaseModel):
@@ -450,6 +523,7 @@ class WorkspaceImagesSnapshot(ForgePanelParamFields):
     prompt_system_instructions: list[RuleItem] = Field(default_factory=list)
     prompt_provider: str = ""
     prompt_model: str = ""
+    reactor: ReactorPanelSettings = Field(default_factory=ReactorPanelSettings)
 
     @field_validator("prompt_system_instructions", mode="before")
     @classmethod

@@ -58,6 +58,26 @@ ENV_VARS_TO_SYNC = [
     "FORGE_DATA_PATH",
     "FORGE_STYLE_INIT_DIR",
     "FORGE_TIMEOUT_SECONDS",
+    "FORGE_REACTOR_SOURCE_IMAGE",
+    "FORGE_REACTOR_MODEL",
+    "FORGE_REACTOR_SOURCE_FACES_INDEX",
+    "FORGE_REACTOR_FACE_INDEX",
+    "FORGE_REACTOR_UPSCALER",
+    "FORGE_REACTOR_SCALE",
+    "FORGE_REACTOR_UPSCALE_VISIBILITY",
+    "FORGE_REACTOR_FACE_RESTORER",
+    "FORGE_REACTOR_RESTORER_VISIBILITY",
+    "FORGE_REACTOR_CODEFORMER_WEIGHT",
+    "FORGE_REACTOR_RESTORE_FIRST",
+    "FORGE_REACTOR_GENDER_SOURCE",
+    "FORGE_REACTOR_GENDER_TARGET",
+    "FORGE_REACTOR_DEVICE",
+    "FORGE_REACTOR_MASK_FACE",
+    "FORGE_REACTOR_SELECT_SOURCE",
+    "FORGE_REACTOR_FACE_MODEL",
+    "FORGE_REACTOR_SOURCE_FOLDER",
+    "FORGE_REACTOR_RANDOM_IMAGE",
+    "FORGE_REACTOR_UPSCALE_FORCE",
 ]
 
 
@@ -105,6 +125,86 @@ class Settings(BaseSettings):
     forge_timeout_seconds: float = Field(
         default=600.0,
         validation_alias="FORGE_TIMEOUT_SECONDS",
+    )
+    forge_reactor_source_image: str = Field(
+        default="",
+        validation_alias="FORGE_REACTOR_SOURCE_IMAGE",
+    )
+    forge_reactor_model: str = Field(
+        default="inswapper_128.onnx",
+        validation_alias="FORGE_REACTOR_MODEL",
+    )
+    forge_reactor_face_restorer: str = Field(
+        default="CodeFormer",
+        validation_alias="FORGE_REACTOR_FACE_RESTORER",
+    )
+    forge_reactor_restorer_visibility: float = Field(
+        default=1.0,
+        validation_alias="FORGE_REACTOR_RESTORER_VISIBILITY",
+    )
+    forge_reactor_upscaler: str = Field(
+        default="None",
+        validation_alias="FORGE_REACTOR_UPSCALER",
+    )
+    forge_reactor_scale: float = Field(
+        default=1.0,
+        validation_alias="FORGE_REACTOR_SCALE",
+    )
+    forge_reactor_source_faces_index: str = Field(
+        default="0",
+        validation_alias="FORGE_REACTOR_SOURCE_FACES_INDEX",
+    )
+    forge_reactor_face_index: str = Field(
+        default="0",
+        validation_alias="FORGE_REACTOR_FACE_INDEX",
+    )
+    forge_reactor_upscale_visibility: float = Field(
+        default=1.0,
+        validation_alias="FORGE_REACTOR_UPSCALE_VISIBILITY",
+    )
+    forge_reactor_codeformer_weight: float = Field(
+        default=0.5,
+        validation_alias="FORGE_REACTOR_CODEFORMER_WEIGHT",
+    )
+    forge_reactor_restore_first: int = Field(
+        default=1,
+        validation_alias="FORGE_REACTOR_RESTORE_FIRST",
+    )
+    forge_reactor_gender_source: int = Field(
+        default=0,
+        validation_alias="FORGE_REACTOR_GENDER_SOURCE",
+    )
+    forge_reactor_gender_target: int = Field(
+        default=0,
+        validation_alias="FORGE_REACTOR_GENDER_TARGET",
+    )
+    forge_reactor_device: str = Field(
+        default="CUDA",
+        validation_alias="FORGE_REACTOR_DEVICE",
+    )
+    forge_reactor_mask_face: int = Field(
+        default=1,
+        validation_alias="FORGE_REACTOR_MASK_FACE",
+    )
+    forge_reactor_select_source: int = Field(
+        default=0,
+        validation_alias="FORGE_REACTOR_SELECT_SOURCE",
+    )
+    forge_reactor_face_model: str = Field(
+        default="",
+        validation_alias="FORGE_REACTOR_FACE_MODEL",
+    )
+    forge_reactor_source_folder: str = Field(
+        default="",
+        validation_alias="FORGE_REACTOR_SOURCE_FOLDER",
+    )
+    forge_reactor_random_image: int = Field(
+        default=0,
+        validation_alias="FORGE_REACTOR_RANDOM_IMAGE",
+    )
+    forge_reactor_upscale_force: int = Field(
+        default=0,
+        validation_alias="FORGE_REACTOR_UPSCALE_FORCE",
     )
 
     @field_validator("ollama_history_turns", mode="before")
