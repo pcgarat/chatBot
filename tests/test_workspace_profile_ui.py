@@ -28,9 +28,9 @@ def test_profile_bar_is_at_top_of_right_column():
     html = INDEX.read_text(encoding="utf-8")
     right = html.split('aria-label="Reglas y ajustes"')[1]
     profile_pos = right.find("workspace-profile-bar")
-    accordion_pos = right.find("sidebar-main-accordion")
+    tabs_pos = right.find("sidebar-side-layout")
     assert profile_pos >= 0
-    assert accordion_pos > profile_pos
+    assert tabs_pos > profile_pos
     assert 'id="workspace-profile-name-modal"' in html
 
 
