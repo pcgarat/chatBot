@@ -315,6 +315,10 @@ class IllustrateRequest(ForgePanelParamFields):
     )
     prompt_provider: str = Field(default="ollama", min_length=1)
     prompt_model: str = Field(default="", description="Obligatorio salvo use_chat_config.")
+    prompt_model_params: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Params/receta del modelo del planificador si no se usa use_chat_config.",
+    )
     retries: int = Field(default=1, ge=0, le=10)
     prompt: str = Field(
         default="",
@@ -554,6 +558,7 @@ class WorkspaceImagesSnapshot(ForgePanelParamFields):
     prompt_system_instructions: list[RuleItem] = Field(default_factory=list)
     prompt_provider: str = ""
     prompt_model: str = ""
+    prompt_model_params: dict[str, Any] = Field(default_factory=dict)
     reactor: ReactorPanelSettings = Field(default_factory=ReactorPanelSettings)
 
     @field_validator("prompt_system_instructions", mode="before")

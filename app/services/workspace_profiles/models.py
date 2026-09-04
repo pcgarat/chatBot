@@ -28,6 +28,7 @@ class ImagesSnapshot:
     prompt_system_instructions: list[dict] = field(default_factory=list)
     prompt_provider: str = ""
     prompt_model: str = ""
+    prompt_model_params: dict = field(default_factory=dict)
     steps: int | None = None
     width: int | None = None
     height: int | None = None
@@ -45,6 +46,7 @@ class ImagesSnapshot:
             "prompt_system_instructions": self.prompt_system_instructions,
             "prompt_provider": self.prompt_provider,
             "prompt_model": self.prompt_model,
+            "prompt_model_params": dict(self.prompt_model_params),
             "steps": self.steps,
             "width": self.width,
             "height": self.height,

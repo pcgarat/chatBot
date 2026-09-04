@@ -507,6 +507,69 @@ def test_build_orchestrator_use_chat_config_takes_conv_model_rules_and_params(db
     assert mock_extra.call_args.kwargs.get("model_id") == "abliterated-model"
 
 
+def test_build_orchestrator_uses_prompt_model_params_when_not_chat_config():
+    from app.routers.api_images import _build_orchestrator
+    from app.schemas import IllustrateRequest
+
+    captured: dict = {}
+    with (
+        patch("app.routers.api_images.get_provider", return_value=MagicMock()),
+        patch("app.routers.api_images.LlmScenePlanner") as mock_planner,
+        patch("app.routers.api_images.FileSystemLastPayloadSource"),
+        patch("app.routers.api_images.ForgeHttpClient"),
+        patch(
+            "app.routers.api_images.build_extra_body",
+            return_value={"think": False, "options": {"temperature": 0.5}},
+        ) as mock_extra,
+    ):
+        mock_planner.side_effect = lambda **kwargs: captured.update(kwargs) or MagicMock()
+        body = IllustrateRequest(
+            prompt_provider="ollama",
+            prompt_model="gemma4:31b-cloud",
+            prompt_model_params={"think": False, "temperature": 0.5, "num_ctx": 16384},
+        )
+        _build_orchestrator(body)
+
+    mock_extra.assert_called_once()
+    assert mock_extra.call_args[0][0] == "ollama"
+    assert mock_extra.call_args[0][1] == {"think": False, "temperature": 0.5, "num_ctx": 16384}
+    assert mock_extra.call_args.kwargs.get("model_id") == "gemma4:31b-cloud"
+    assert captured.get("extra_body") == {"think": False, "options": {"temperature": 0.5}}
+
+
+def test_build_orchestrator_chat_config_ignores_prompt_model_params(db_session):
+    from app import crud
+    from app.routers.api_images import _build_orchestrator
+    from app.schemas import IllustrateRequest
+
+    conv = crud.create_conversation(
+        db_session, title="t", model_id="m1", provider="ollama"
+    )
+    crud.update_conversation(db_session, conv.id, model_params={"temperature": 0.2})
+    conv = crud.get_conversation(db_session, conv.id)
+    captured: dict = {}
+    with (
+        patch("app.routers.api_images.get_provider", return_value=MagicMock()),
+        patch("app.routers.api_images.LlmScenePlanner") as mock_planner,
+        patch("app.routers.api_images.FileSystemLastPayloadSource"),
+        patch("app.routers.api_images.ForgeHttpClient"),
+        patch(
+            "app.routers.api_images.build_extra_body",
+            return_value={"options": {"temperature": 0.2}},
+        ) as mock_extra,
+    ):
+        mock_planner.side_effect = lambda **kwargs: captured.update(kwargs) or MagicMock()
+        body = IllustrateRequest(
+            use_chat_config=True,
+            prompt_model="ignored",
+            prompt_model_params={"temperature": 0.9, "think": "max"},
+        )
+        _build_orchestrator(body, conv=conv, db=db_session)
+
+    assert mock_extra.call_args[0][1] == {"temperature": 0.2}
+    assert captured.get("extra_body") == {"options": {"temperature": 0.2}}
+
+
 def test_illustrate_request_requires_prompt_model_unless_use_chat_config():
     from pydantic import ValidationError
 

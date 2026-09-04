@@ -774,6 +774,91 @@ body {
   padding: 0 10px 10px 8px;
 }
 
+.settings-model-pin {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 6px 10px 8px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.settings-model-pin-header {
+  margin-bottom: 4px;
+}
+
+.settings-model-pin-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sidebar-foreground);
+}
+
+.settings-model-pin-caption {
+  margin: 1px 0 0;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+
+.settings-model-pin .param-option {
+  padding: 0.14rem 0;
+}
+
+.settings-model-pin .model-select-input,
+.settings-model-pin .param-control {
+  padding: 0.2rem 0.45rem;
+  font-size: 12px;
+}
+
+.settings-model-pin .model-capability-chips {
+  margin-top: 3px;
+}
+
+.sidebar-tab-panel > .accordion-list.sidebar-accordion-params > .accordion-section > .accordion-header {
+  padding: 6px 8px 6px 4px;
+}
+
+.settings-presets-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 4px 0 8px;
+}
+
+.settings-presets-empty {
+  margin: 4px 0 8px;
+}
+
+.settings-recipe-params {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.settings-recipe-param {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7.5rem;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-recipe-param.is-owned {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.settings-recipe-param-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.settings-recipe-param .param-control {
+  width: 100%;
+  min-width: 0;
+}
+
 .sidebar-tab-panel > .rules-tab-scroll,
 .sidebar-tab-panel > .panel-scroll {
   flex: 1;
@@ -2448,6 +2533,23 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   background: var(--muted);
 }
 
+.composer-recipe-chip.is-active {
+  background: var(--accent);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+
+.composer-recipe-chip.is-active:hover,
+.composer-recipe-chip.is-active:focus-visible {
+  background: var(--accent-hover);
+  color: var(--primary-foreground);
+}
+
+.composer-recipe-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .composer-main-row.send-row {
   display: flex;
   align-items: flex-end;
@@ -3799,13 +3901,22 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   margin: 0.75rem 0 0;
   line-height: 1.35;
 }
-.sidebar-option.is-disabled-by-chat-config {
+[data-images-chat-config-control].is-disabled-by-chat-config {
   opacity: 0.45;
 }
-.sidebar-option.is-disabled-by-chat-config .param-control,
-.sidebar-option.is-disabled-by-chat-config textarea,
-.sidebar-option.is-disabled-by-chat-config select {
+[data-images-chat-config-control].is-disabled-by-chat-config input,
+[data-images-chat-config-control].is-disabled-by-chat-config select,
+[data-images-chat-config-control].is-disabled-by-chat-config button,
+[data-images-chat-config-control].is-disabled-by-chat-config textarea {
   pointer-events: none;
+}
+
+.planner-presets {
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+.planner-presets > .param-label {
+  margin: 0 0 6px;
 }
 .images-prompt-textarea {
   width: 100%;

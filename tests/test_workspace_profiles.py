@@ -76,6 +76,21 @@ def test_normalize_snapshot_keeps_rig_and_drops_chrome():
     assert "font_size" not in out
 
 
+def test_normalize_snapshot_keeps_planner_prompt_model_params():
+    raw = _minimal_snapshot()
+    raw["images"]["prompt_model_params"] = {
+        "think": False,
+        "temperature": 0.5,
+        "num_ctx": 16384,
+    }
+    out = normalize_snapshot(raw)
+    assert out["images"]["prompt_model_params"] == {
+        "think": False,
+        "temperature": 0.5,
+        "num_ctx": 16384,
+    }
+
+
 def test_normalize_snapshot_keeps_planner_rule_list():
     raw = _minimal_snapshot()
     raw["images"]["prompt_system_instructions"] = [
