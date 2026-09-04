@@ -47,7 +47,7 @@ def test_refreshing_same_conversation_does_not_reset_collapse_or_force_scroll():
     assert "preserveView: true" in refresh_fn
     save_fn = _fn(js, "async function saveConversation", "async function deleteMessageFromHistory")
     assert "preserveView: true" in save_fn
-    open_fn = _fn(js, "async function openConversation", "async function newConversation")
+    open_fn = _fn(js, "async function openConversation", "async function openConsultaTurn")
     assert "preserveView" not in open_fn or "preserveView: true" not in open_fn
 
 

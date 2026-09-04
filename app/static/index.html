@@ -30,6 +30,9 @@
       if (localStorage.getItem("composerCollapsed") === "true") {
         document.documentElement.setAttribute("data-composer", "collapsed");
       }
+      if (localStorage.getItem("leftHistoryMode") === "messages") {
+        document.documentElement.setAttribute("data-history-consulta", "on");
+      }
     })();
   </script>
 </head>
@@ -58,6 +61,10 @@
           <button type="button" id="btn-center-chat" class="sidebar-add-btn" title="Mostrar u ocultar la conversación" aria-label="Conversación" aria-pressed="true" aria-controls="chat-column">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span class="sidebar-add-btn-text">Conversación</span>
+          </button>
+          <button type="button" id="btn-history-messages" class="sidebar-add-btn" title="Historial de respuestas del modelo" aria-label="Mensajes" aria-pressed="false" aria-controls="conversations-list">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="3.5" cy="6" r=".5"/><circle cx="3.5" cy="12" r=".5"/><circle cx="3.5" cy="18" r=".5"/></svg>
+            <span class="sidebar-add-btn-text">Mensajes</span>
           </button>
           <button type="button" id="btn-image-gallery" class="sidebar-add-btn" title="Mostrar u ocultar la galería" aria-label="Galería de imágenes" aria-pressed="false" aria-controls="image-gallery-panel">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>

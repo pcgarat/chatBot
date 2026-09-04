@@ -239,6 +239,18 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
+class MessageHistoryItem(BaseModel):
+    id: str
+    conversation_id: str
+    conversation_title: str
+    parent_id: Optional[str] = None
+    content_preview: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class ForgePanelParamFields(BaseModel):
     """steps/width/height/seed opcionales del panel Imágenes (None = replay del último gen)."""
 
