@@ -397,3 +397,4 @@ Seguir el [plan v2](../plans/PLAN_MODEL_CONTRACT_2026-09-02.md#plan-v2--siguient
 - [ ] Coste estimado en UI
 - [ ] Adelgazar `config/ollama.json` hacia overlays
 - [ ] Overlays locales bajo demanda
+- [ ] Generador de overlays (stub auto + propuesta research): ver [`SPEC_OVERLAY_GENERATOR_2026-09-02.md`](../specs/SPEC_OVERLAY_GENERATOR_2026-09-02.md) / rama `feat/overlay-generator`
