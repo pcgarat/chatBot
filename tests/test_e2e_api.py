@@ -111,6 +111,37 @@ def test_e2e_conversation_create_and_send_message(client, ollama_available):
     assert "assistant" in roles
 
 
+def test_e2e_list_messages_includes_assistant_reply(client, ollama_available):
+    """GET /api/messages lista la respuesta assistant tras un turno real."""
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={
+            "title": "E2E messages index",
+            "model_id": model_name,
+            "provider": "ollama",
+        },
+    )
+    assert r_create.status_code == 200
+    conversation_id = r_create.json()["id"]
+    r_msg = client.post(
+        f"/api/conversations/{conversation_id}/messages",
+        json={"content": "Responde con una sola palabra: OK"},
+    )
+    assert r_msg.status_code == 200
+    assistant_id = r_msg.json().get("id")
+    r_list = client.get("/api/messages")
+    assert r_list.status_code == 200
+    items = r_list.json()
+    assert isinstance(items, list)
+    match = next((it for it in items if it.get("conversation_id") == conversation_id), None)
+    assert match is not None
+    assert match.get("content_preview")
+    assert match.get("parent_id")
+    if assistant_id:
+        assert match["id"] == assistant_id
+
+
 def test_e2e_conversation_history_turns(client, ollama_available):
     """
     GET conversación incluye history_turns; PUT con history_turns persiste;

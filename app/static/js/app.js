@@ -12,6 +12,8 @@
   let messages = [];
   let allMessages = [];
   let activeLeafId = null;
+  let leftHistoryMode = "conversations";
+  let consultaAssistantId = null;
   let providers = [];
   let models = [];
   let currentProvider = "ollama";
@@ -76,6 +78,7 @@
     instructionOverride: document.getElementById("instruction-override"),
     messageInput: document.getElementById("message-input"),
     btnNewChat: document.getElementById("btn-new-chat"),
+    btnHistoryMessages: document.getElementById("btn-history-messages"),
     btnSave: document.getElementById("btn-save"),
     btnSend: document.getElementById("btn-send"),
     btnClearMemory: document.getElementById("btn-clear-memory"),
@@ -1490,6 +1493,73 @@
     }
   }
 
+  const LEFT_HISTORY_MODE_KEY = "leftHistoryMode";
+
+  function isMessagesHistoryMode() {
+    return leftHistoryMode === "messages";
+  }
+
+  function readStoredLeftHistoryMode() {
+    try {
+      return localStorage.getItem(LEFT_HISTORY_MODE_KEY) === "messages" ? "messages" : "conversations";
+    } catch (_) {
+      return "conversations";
+    }
+  }
+
+  function persistLeftHistoryMode(mode) {
+    try {
+      localStorage.setItem(LEFT_HISTORY_MODE_KEY, mode);
+    } catch (_) {}
+  }
+
+  function isConsultaChromeActive() {
+    return isMessagesHistoryMode() || Boolean(consultaAssistantId);
+  }
+
+  function applyConsultaChrome() {
+    if (isConsultaChromeActive()) {
+      document.documentElement.setAttribute("data-history-consulta", "on");
+    } else {
+      document.documentElement.removeAttribute("data-history-consulta");
+    }
+    if (el.btnHistoryMessages) {
+      el.btnHistoryMessages.setAttribute("aria-pressed", isMessagesHistoryMode() ? "true" : "false");
+    }
+  }
+
+  function messagesForDisplay() {
+    if (!consultaAssistantId) return messages;
+    const assistant = messages.find(function (m) { return m.id === consultaAssistantId; });
+    if (!assistant) return messages;
+    const parent = assistant.parent_id
+      ? messages.find(function (m) { return m.id === assistant.parent_id; })
+      : null;
+    return parent ? [parent, assistant] : [assistant];
+  }
+
+  async function refreshLeftHistory() {
+    if (isMessagesHistoryMode()) return loadMessageHistory();
+    return loadConversations();
+  }
+
+  async function loadMessageHistory() {
+    if (el.conversationsTrash) el.conversationsTrash.hidden = true;
+    try {
+      const list = await fetchJson(`${API}/messages`);
+      renderMessageHistoryList(list || []);
+    } catch (e) {
+      showError("Error al cargar mensajes: " + e.message);
+    }
+  }
+
+  async function setLeftHistoryMode(mode) {
+    leftHistoryMode = mode === "messages" ? "messages" : "conversations";
+    persistLeftHistoryMode(leftHistoryMode);
+    applyConsultaChrome();
+    await refreshLeftHistory();
+  }
+
   async function loadDeletedConversations() {
     if (!el.conversationsTrash || !el.conversationsTrashList) return;
     try {
@@ -1536,7 +1606,7 @@
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || res.statusText);
       }
-      await loadConversations();
+      await refreshLeftHistory();
       await openConversation(id);
       showNotice("Conversación restaurada.");
     } catch (e) {
@@ -1637,6 +1707,47 @@
     });
   }
 
+  function renderMessageHistoryList(list) {
+    if (!el.conversationsList) return;
+    const items = list || [];
+    if (items.length === 0) {
+      el.conversationsList.innerHTML = '<p class="conv-group-label">No hay respuestas todavía.</p>';
+      return;
+    }
+    const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
+    items.forEach(function (item) {
+      groups[getConversationGroup(item.created_at)].push(item);
+    });
+    const order = ["hoy", "ayer", "semana", "anteriores"];
+    el.conversationsList.innerHTML = order
+      .filter(function (key) { return groups[key].length > 0; })
+      .map(function (key) {
+        const header = `<div class="conv-group-label" aria-hidden="true">${escapeHtml(CONV_GROUP_LABELS[key])}</div>`;
+        const rows = groups[key]
+          .map(function (item) {
+            const when = formatDate(item.created_at);
+            const preview = item.content_preview || "(sin texto)";
+            const convTitle = item.conversation_title || "Conversación";
+            const active = item.id === consultaAssistantId ? " active" : "";
+            return `<div class="conversation-item message-history-item${active}" data-id="${escapeHtml(item.id)}" data-conversation-id="${escapeHtml(item.conversation_id)}" title="${escapeHtml(convTitle + " · " + when)}">
+                <div class="conv-row">
+                  <span class="conv-title">${escapeHtml(preview)}</span>
+                  <span class="conv-when">${escapeHtml(when)}</span>
+                </div>
+                <div class="conv-meta">${escapeHtml(convTitle)}</div>
+              </div>`;
+          })
+          .join("");
+        return header + rows;
+      })
+      .join("");
+    el.conversationsList.querySelectorAll(".message-history-item").forEach(function (node) {
+      node.addEventListener("click", function () {
+        openConsultaTurn(node.dataset.conversationId, node.dataset.id);
+      });
+    });
+  }
+
   async function deleteConversation(id) {
     try {
       const res = await fetch(`${API}/conversations/${id}`, { method: "DELETE" });
@@ -1645,7 +1756,7 @@
         throw new Error(err.detail || res.statusText);
       }
       if (currentConversationId === id) setCurrentConversation(null);
-      loadConversations();
+      refreshLeftHistory();
       showNotice("Conversación movida a la papelera.");
     } catch (e) {
       showError("Error al eliminar: " + e.message);
@@ -2275,6 +2386,7 @@
   async function forkConversationFromMessage(messageId) {
     if (!messageId || !currentConversationId) return;
     try {
+      if (isMessagesHistoryMode()) await setLeftHistoryMode("conversations");
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}/fork`, {
         method: "POST",
         body: JSON.stringify({ message_id: messageId }),
@@ -2290,6 +2402,10 @@
 
   async function setCurrentConversation(conv, options) {
     const preserveView = !!(options && options.preserveView);
+    if (!(options && options.keepConsulta)) {
+      consultaAssistantId = null;
+    }
+    applyConsultaChrome();
     const previousConvId = currentConversationId;
     if (previousConvId && (!conv || conv.id !== previousConvId)) {
       const payload = {};
@@ -2382,7 +2498,7 @@
     renderParamsToSend();
     renderMessages();
     if (conv && !preserveView) scheduleScrollMessagesToBottom();
-    loadConversations();
+    refreshLeftHistory();
     lastUsage = null;
     await loadContextLength();
     // Si el panel Reglas está abierto, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
@@ -2656,6 +2772,8 @@
   bindRuleTagList(el.plannerRulesList, "planner");
 
   async function openConversation(id, options) {
+    consultaAssistantId = null;
+    applyConsultaChrome();
     setChatPanelVisible(true);
     if (isGalleryPanelVisible()) {
       galleryUserChoseAll = false;
@@ -2674,7 +2792,23 @@
     }
   }
 
+  async function openConsultaTurn(conversationId, assistantId) {
+    if (!conversationId || !assistantId) return;
+    setChatPanelVisible(true);
+    consultaAssistantId = assistantId;
+    applyConsultaChrome();
+    try {
+      const conv = await fetchJson(`${API}/conversations/${conversationId}`);
+      await setCurrentConversation(conv, { preserveView: true, keepConsulta: true });
+    } catch (e) {
+      showError("Error al abrir el mensaje: " + e.message);
+    }
+  }
+
   async function newConversation() {
+    if (isMessagesHistoryMode()) await setLeftHistoryMode("conversations");
+    consultaAssistantId = null;
+    applyConsultaChrome();
     setChatPanelVisible(true);
     try {
       const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
@@ -2714,7 +2848,7 @@
         body: JSON.stringify({ auto_title: currentAutoTitle }),
       });
       if (el.conversationTitle && conv && conv.title) el.conversationTitle.value = conv.title;
-      loadConversations();
+      refreshLeftHistory();
     } catch (e) {
       showError("Error al guardar el título automático: " + e.message);
     }
@@ -2730,7 +2864,7 @@
         method: "PUT",
         body: JSON.stringify({ title }),
       });
-      loadConversations();
+      refreshLeftHistory();
     } catch (e) {
       showError("Error al guardar el título: " + e.message);
     }
@@ -2779,9 +2913,13 @@
       });
       allMessages = allMessages.filter((m) => m.id !== messageId);
       if (activeLeafId === messageId) activeLeafId = deleted ? deleted.parent_id : null;
+      if (consultaAssistantId === messageId) {
+        consultaAssistantId = null;
+        applyConsultaChrome();
+      }
       syncVisibleMessages();
       renderMessages();
-      loadConversations();
+      refreshLeftHistory();
       showNotice("Mensaje eliminado del historial.");
     } catch (e) {
       showError("Error al eliminar: " + e.message);
@@ -2852,18 +2990,24 @@
 
   function renderMessages() {
     if (!el.messagesContainer) return;
-    if (messages.length === 0) {
+    const displayMessages = messagesForDisplay();
+    if (displayMessages.length === 0) {
       el.messagesContainer.innerHTML = '<div class="empty-state chat-empty-state"><div class="empty-state-inner"><img src="/static/img/logo_256.png" alt="" class="empty-state-logo" /><p class="empty-state-text">Empieza escribiendo una orden. El agente mantendrá el contexto técnico y el tono estable.</p></div></div>';
       return;
     }
     const prevScrollTop = el.messagesContainer.scrollTop;
     const showDebug = isShowDebugMode();
-    el.messagesContainer.innerHTML = messages
+    const consulta = Boolean(consultaAssistantId);
+    el.messagesContainer.innerHTML = displayMessages
       .map(
-        (m, idx) => {
+        (m, displayIdx) => {
+          const idx = (function () {
+            const found = messages.findIndex((x) => x === m || (m.id && x.id === m.id));
+            return found >= 0 ? found : displayIdx;
+          })();
           const hasContent = m.content && m.content.trim();
           const isEphemeralDebug = !!m.ephemeral_debug;
-          const toInputBtn = hasContent && !isEphemeralDebug
+          const toInputBtn = hasContent && !isEphemeralDebug && !consulta
             ? `<button type="button" class="msg-action-btn msg-to-input-btn" data-msg-index="${idx}" title="Enviar texto al cuadro de mensaje">${msgToInputIconSvg}</button>`
             : "";
           const isInherited = !!m.inherited;
@@ -2910,7 +3054,7 @@
           }
           const isUser = m.role === "user";
           const rowClass = `${isUser ? "message-row user-row" : "message-row"}${isInherited ? " message-row-inherited" : ""}`;
-          const inheritedSplit = isInherited && (!messages[idx + 1] || messages[idx + 1].inherited !== true)
+          const inheritedSplit = isInherited && (!displayMessages[displayIdx + 1] || displayMessages[displayIdx + 1].inherited !== true)
             ? `<div class="message-inherited-split">Historial de la conversación original</div>`
             : "";
           const bubbleClass = isUser ? "message-bubble user" : "message-bubble assistant";
@@ -3203,6 +3347,7 @@
   }
 
   async function sendMessage() {
+    if (isConsultaChromeActive()) return;
     if (currentAbortController) return;
     const content = (el.messageInput && el.messageInput.value.trim()) || "";
     if (!content) return;
@@ -3366,7 +3511,7 @@
               if (assistantMsg.id) activeLeafId = assistantMsg.id;
               syncVisibleMessages();
               renderMessages();
-              loadConversations();
+              refreshLeftHistory();
               if (assistantMsg.id) {
                 maybeIllustrateAssistantMessage(assistantMsg.id);
               }
@@ -3494,6 +3639,11 @@
   setComposerPrimaryActionState();
 
   if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
+  if (el.btnHistoryMessages) {
+    el.btnHistoryMessages.addEventListener("click", function () {
+      setLeftHistoryMode(isMessagesHistoryMode() ? "conversations" : "messages");
+    });
+  }
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
   if (el.conversationTitle) {
     el.conversationTitle.addEventListener("change", commitConversationTitle);
@@ -7473,19 +7623,23 @@
     }
     await loadParamsForProvider(currentProvider);
     await loadModelContract({ applyParamDefaults: true });
-    await loadConversations();
-    const storedId = (function () {
-      try {
-        return localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
-      } catch (_) {
-        return null;
-      }
-    })();
-    if (storedId) {
-      try {
-        await openConversation(storedId);
-      } catch (_) {
-        saveLastConversationId(null);
+    leftHistoryMode = readStoredLeftHistoryMode();
+    applyConsultaChrome();
+    await refreshLeftHistory();
+    if (!isMessagesHistoryMode()) {
+      const storedId = (function () {
+        try {
+          return localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
+        } catch (_) {
+          return null;
+        }
+      })();
+      if (storedId) {
+        try {
+          await openConversation(storedId);
+        } catch (_) {
+          saveLastConversationId(null);
+        }
       }
     }
     await loadContextLength();

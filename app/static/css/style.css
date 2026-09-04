@@ -6360,6 +6360,21 @@ html[data-composer="collapsed"] .composer-expand-btn,
   display: inline-flex;
 }
 
+html[data-history-consulta="on"] #composer-panel,
+html[data-history-consulta="on"] .composer-expand-btn {
+  display: none !important;
+}
+
+.column-left .message-history-item .conv-meta {
+  margin-top: 1px;
+  font-size: 9px;
+  color: var(--text-secondary);
+  opacity: 0.9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .column-left {
     transition: none;

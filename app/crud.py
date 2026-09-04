@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Conversation, IllustratedImage, ImageGenerationJob, Message, Rule
 from app.services.conversation_title import derive_auto_title
+from app.services.image_illustration.anchors import strip_illustration_artifacts
 from app.services.conversation_tree import path_from_messages
 from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
 from app.services.workspace_profiles.snapshot import normalize_images_snapshot
@@ -134,6 +135,40 @@ def list_deleted_conversations(db: Session) -> list[Conversation]:
         db.query(Conversation)
         .filter(Conversation.deleted_at.isnot(None))
         .order_by(Conversation.deleted_at.desc())
+        .all()
+    )
+
+
+MESSAGE_HISTORY_PREVIEW_LEN = 80
+MESSAGE_HISTORY_LIMIT_DEFAULT = 200
+MESSAGE_HISTORY_LIMIT_MAX = 200
+
+
+def clamp_message_history_limit(limit: int | None) -> int:
+    if limit is None or limit < 1:
+        return MESSAGE_HISTORY_LIMIT_DEFAULT
+    return min(limit, MESSAGE_HISTORY_LIMIT_MAX)
+
+
+def message_content_preview(content: str, max_len: int = MESSAGE_HISTORY_PREVIEW_LEN) -> str:
+    cleaned = strip_illustration_artifacts(content or "")
+    first_line = cleaned.splitlines()[0] if cleaned else ""
+    first_line = " ".join(first_line.split())
+    if len(first_line) <= max_len:
+        return first_line
+    return first_line[:max_len].rstrip()
+
+
+def list_assistant_messages(db: Session, limit: int | None = None) -> list[tuple[Message, str]]:
+    """Respuestas assistant de conversaciones activas, más recientes primero."""
+    capped = clamp_message_history_limit(limit)
+    return (
+        db.query(Message, Conversation.title)
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .filter(Message.role == "assistant")
+        .filter(Conversation.deleted_at.is_(None))
+        .order_by(Message.created_at.desc())
+        .limit(capped)
         .all()
     )
 

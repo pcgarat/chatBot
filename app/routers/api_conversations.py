@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ from app.schemas import (
     ConversationListItem,
     ConversationOut,
     ConversationUpdate,
+    MessageHistoryItem,
     MessageInChat,
     MessageResponse,
     MessageSend,
@@ -260,6 +261,25 @@ def _resolve_send_parent(db, conv, requested_parent_id: str | None) -> str | Non
 def list_conversations(db: Session = Depends(get_db)):
     convs = crud.list_conversations(db)
     return convs
+
+
+@router.get("/messages", response_model=list[MessageHistoryItem])
+def list_messages(
+    limit: int = Query(default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT),
+    db: Session = Depends(get_db),
+):
+    rows = crud.list_assistant_messages(db, limit=limit)
+    return [
+        MessageHistoryItem(
+            id=msg.id,
+            conversation_id=msg.conversation_id,
+            conversation_title=title or "",
+            parent_id=msg.parent_id,
+            content_preview=crud.message_content_preview(msg.content),
+            created_at=msg.created_at,
+        )
+        for msg, title in rows
+    ]
 
 
 @router.get("/conversations/deleted", response_model=list[ConversationListItem])

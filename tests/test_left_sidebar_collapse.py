@@ -26,8 +26,9 @@ def test_left_sidebar_collapse_persists_in_js():
 def test_conversation_list_is_single_line_dense():
     js = APP_JS.read_text(encoding="utf-8")
     assert "conv-when" in js
-    assert "conv-meta" not in js.split("function renderConversationsList")[1].split("async function deleteConversation")[0]
-    assert "conv-icon" not in js.split("function renderConversationsList")[1].split("async function deleteConversation")[0]
+    conv_list_fn = js.split("function renderConversationsList")[1].split("function renderMessageHistoryList")[0]
+    assert "conv-meta" not in conv_list_fn
+    assert "conv-icon" not in conv_list_fn
 
 
 def test_index_serves_sidebar_collapse_markup(client):
@@ -35,3 +36,12 @@ def test_index_serves_sidebar_collapse_markup(client):
     assert r.status_code == 200
     assert 'id="btn-collapse-left"' in r.text
     assert 'id="btn-expand-left"' in r.text
+
+
+def test_mensajes_button_sits_between_conversacion_and_galeria():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    chat = html.index('id="btn-center-chat"')
+    messages = html.index('id="btn-history-messages"')
+    gallery = html.index('id="btn-image-gallery"')
+    assert chat < messages < gallery
+    assert 'aria-label="Mensajes"' in html
