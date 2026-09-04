@@ -52,7 +52,8 @@ def test_ajustes_subsections_are_principal_accordion():
     ajustes = html.split('id="tab-parametros"')[1].split('id="tab-imagenes"')[0]
     assert "sidebar-accordion-params" in ajustes
     for section_id in (
-        "params-modelo",
+        "params-presets",
+        "params-contexto",
         "params-instruccion",
         "params-longitud",
         "params-aleatoriedad",
@@ -60,6 +61,7 @@ def test_ajustes_subsections_are_principal_accordion():
         "params-payload",
     ):
         assert f'data-accordion-section="{section_id}"' in ajustes
+    assert 'data-accordion-section="params-modelo"' not in ajustes
     assert 'data-accordion-section="parametros"' not in html
 
 

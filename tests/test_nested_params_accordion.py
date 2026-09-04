@@ -32,7 +32,8 @@ def test_ajustes_has_principal_param_accordion_sections():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert "sidebar-accordion-params" in html
     for section_id in (
-        "params-modelo",
+        "params-presets",
+        "params-contexto",
         "params-instruccion",
         "params-longitud",
         "params-aleatoriedad",
@@ -40,6 +41,7 @@ def test_ajustes_has_principal_param_accordion_sections():
         "params-payload",
     ):
         assert f'data-accordion-section="{section_id}"' in html
+    assert 'data-accordion-section="params-modelo"' not in html
 
 
 def test_accordion_click_targets_closest_section_only():

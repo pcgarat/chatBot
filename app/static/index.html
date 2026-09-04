@@ -288,22 +288,17 @@
             </div>
         </div>
         <div class="sidebar-tab-panel" id="tab-parametros" role="tabpanel" data-sidebar-panel="parametros" aria-labelledby="sidebar-tab-parametros" hidden>
-              <div class="accordion-list sidebar-accordion sidebar-accordion-params">
-                <div class="accordion-section param-group" data-accordion-section="params-modelo">
-                  <button type="button" class="accordion-header" aria-expanded="false" aria-controls="accordion-params-modelo" id="accordion-params-modelo-btn">
-                    <div>
-                      <span class="accordion-title">Modelo y contexto</span>
-                      <span class="accordion-caption">Proveedor, modelo, ventana e historial del prompt</span>
-                    </div>
-                    <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                  </button>
-                  <div class="accordion-content" id="accordion-params-modelo" role="region" aria-labelledby="accordion-params-modelo-btn">
+              <section class="settings-model-pin" id="settings-model-pin" aria-labelledby="settings-model-heading">
+                <header class="settings-model-pin-header">
+                  <h3 id="settings-model-heading" class="settings-model-pin-title">Modelo</h3>
+                  <p class="settings-model-pin-caption">Proveedor y modelo activos</p>
+                </header>
                     <div class="sidebar-option param-option">
                       <label class="param-label" for="provider-select">Proveedor</label>
                       <select id="provider-select" class="param-control selector-control select-native" aria-label="Proveedor"></select>
                     </div>
                     <div class="sidebar-option param-option">
-                      <label class="param-label" for="model-select-input">Modelo</label>
+                      <label class="param-label param-help-trigger" for="model-select-input" data-control-id="model" title="Mantén el cursor 2 s para ver ayuda">Modelo</label>
                       <div class="model-select-wrap">
                         <input type="text" id="model-select-input" class="model-select-input param-control" autocomplete="off" placeholder="Escribir para filtrar..." aria-label="Modelo (escribir para filtrar)" aria-autocomplete="list" aria-expanded="false" aria-controls="model-select-list" />
                         <select id="model-select" class="model-select-native" aria-hidden="true" tabindex="-1"></select>
@@ -311,9 +306,37 @@
                       </div>
                       <div id="settings-model-capabilities" class="model-capability-chips" hidden role="list" aria-label="Capacidades del modelo"></div>
                     </div>
-                    <div class="sidebar-option param-option">
-                      <span class="param-label param-help-trigger" data-control-id="model" title="Mantén el cursor 2 s para ver ayuda">Selección de modelo (cabecera)</span>
+              </section>
+              <div class="accordion-list sidebar-accordion sidebar-accordion-params">
+                <div class="accordion-section param-group is-open" data-accordion-section="params-presets">
+                  <button type="button" class="accordion-header" aria-expanded="true" aria-controls="accordion-params-presets" id="accordion-params-presets-btn">
+                    <div>
+                      <span class="accordion-title">Presets</span>
+                      <span class="accordion-caption">Recetas del modelo y los parámetros que cambian</span>
                     </div>
+                    <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="accordion-content" id="accordion-params-presets" role="region" aria-labelledby="accordion-params-presets-btn">
+                    <p id="settings-presets-empty" class="param-note settings-presets-empty">Este modelo no tiene recetas.</p>
+                    <div class="settings-presets-controls" id="settings-presets-controls" hidden>
+                      <label class="composer-think-label" id="settings-think-wrap" hidden>
+                        <span>Thinking</span>
+                        <select id="settings-think" class="param-control composer-think-select" aria-label="Esfuerzo de razonamiento" disabled></select>
+                      </label>
+                      <div class="composer-recipes" id="settings-recipes" hidden role="group" aria-label="Recetas del modelo"></div>
+                    </div>
+                    <div id="settings-recipe-params" class="settings-recipe-params" hidden></div>
+                  </div>
+                </div>
+                <div class="accordion-section param-group" data-accordion-section="params-contexto">
+                  <button type="button" class="accordion-header" aria-expanded="false" aria-controls="accordion-params-contexto" id="accordion-params-contexto-btn">
+                    <div>
+                      <span class="accordion-title">Contexto</span>
+                      <span class="accordion-caption">Ventana, truncado e historial del prompt</span>
+                    </div>
+                    <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="accordion-content" id="accordion-params-contexto" role="region" aria-labelledby="accordion-params-contexto-btn">
                     <div class="sidebar-option param-option">
                       <label class="param-label" for="param-truncation">Truncado del input</label>
                       <select id="param-truncation" class="param-control control-disabled" disabled data-control-id="truncation">
@@ -463,6 +486,19 @@
                 <div class="sidebar-option" data-images-chat-config-control>
                   <label class="param-label" for="images-prompt-model">Modelo LLM prompts</label>
                   <select id="images-prompt-model" class="param-control" aria-label="Modelo para prompts de imagen"></select>
+                </div>
+                <div class="planner-presets" id="planner-presets" data-images-chat-config-control>
+                  <p class="param-label">Presets</p>
+                  <p id="planner-presets-empty" class="param-note">Este modelo no tiene recetas.</p>
+                  <p id="planner-presets-chat-hint" class="param-note" hidden>Con la configuración del chat, las recetas se eligen en Ajustes.</p>
+                  <div class="settings-presets-controls" id="planner-presets-controls" hidden>
+                    <label class="composer-think-label" id="planner-think-wrap" hidden>
+                      <span>Thinking</span>
+                      <select id="planner-think" class="param-control composer-think-select" aria-label="Esfuerzo de razonamiento del planificador" disabled></select>
+                    </label>
+                    <div class="composer-recipes" id="planner-recipes" hidden role="group" aria-label="Recetas del planificador"></div>
+                  </div>
+                  <div id="planner-recipe-params" class="settings-recipe-params" hidden></div>
                 </div>
                 <div class="planner-rules-panel">
                   <h3 id="planner-rules-heading" class="panel-section-title">Reglas del planificador</h3>

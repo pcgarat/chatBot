@@ -236,6 +236,7 @@ def test_conversation_images_persist_across_get(client):
         "prompt_system_instructions": [{"title": "Estilo", "content": "luz dura"}],
         "prompt_provider": "ollama",
         "prompt_model": "llama3.2",
+        "prompt_model_params": {"think": False, "temperature": 0.5, "num_ctx": 16384},
         "steps": 28,
         "width": 768,
         "height": 1024,
@@ -251,6 +252,8 @@ def test_conversation_images_persist_across_get(client):
     assert images["steps"] == 28
     assert images["width"] == 768
     assert images["prompt_model"] == "llama3.2"
+    assert images["prompt_model_params"]["temperature"] == 0.5
+    assert images["prompt_model_params"]["think"] is False
     assert images["prompt_system_instructions"][0]["content"] == "luz dura"
     assert "debug" not in images
     get_r = client.get(f"/api/conversations/{cid}")

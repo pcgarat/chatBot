@@ -199,6 +199,7 @@ def _normalize_images(value: object) -> ImagesSnapshot:
         ),
         prompt_provider=_bounded_str(data.get("prompt_provider") or "", 64),
         prompt_model=_bounded_str(data.get("prompt_model") or "", 128),
+        prompt_model_params=_as_dict(data.get("prompt_model_params")),
         steps=_optional_int(data.get("steps"), 1, 150),
         width=_optional_int(data.get("width"), 64, 4096),
         height=_optional_int(data.get("height"), 64, 4096),

@@ -17,18 +17,20 @@ def _stream_wrap_block(html: str) -> str:
     return html[start:end]
 
 
-def _ajustes_modelo_block(html: str) -> str:
-    start = html.index('id="accordion-params-modelo"')
+def _ajustes_contexto_block(html: str) -> str:
+    start = html.index('id="accordion-params-contexto"')
     end = html.index('id="accordion-params-instruccion"', start)
     return html[start:end]
 
 
-def test_history_turns_lives_in_ajustes_modelo_y_contexto():
+def test_history_turns_lives_in_ajustes_contexto():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    modelo = _ajustes_modelo_block(html)
-    assert 'id="history-turns-input"' in modelo
-    assert "Mensajes de historial" in modelo
+    contexto = _ajustes_contexto_block(html)
+    assert 'id="history-turns-input"' in contexto
+    assert "Mensajes de historial" in contexto
     assert 'id="history-turns-input"' not in _header_block(html)
+    pin = html[html.index('id="settings-model-pin"') : html.index('id="accordion-params-presets"')]
+    assert 'id="history-turns-input"' not in pin
 
 
 def test_stream_view_controls_float_in_conversation_panel_corner():

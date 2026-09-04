@@ -165,6 +165,7 @@ def test_e2e_conversation_images_persist(client, ollama_available):
         "images_per_response": 3,
         "prompt_provider": "ollama",
         "prompt_model": model_name,
+        "prompt_model_params": {"temperature": 0.4},
         "steps": 20,
         "width": 768,
         "height": 1024,
@@ -178,6 +179,7 @@ def test_e2e_conversation_images_persist(client, ollama_available):
     assert r_get.status_code == 200
     assert r_get.json()["images"]["enabled"] is True
     assert r_get.json()["images"]["prompt_model"] == model_name
+    assert r_get.json()["images"]["prompt_model_params"]["temperature"] == 0.4
     assert r_get.json()["images"]["steps"] == 20
 
 
@@ -1117,7 +1119,12 @@ def test_e2e_illustrate_rejects_non_assistant(client, ollama_available):
     assert user and user.get("id")
     r = client.post(
         f"/api/conversations/{cid}/messages/{user['id']}/illustrate",
-        json={"prompt_model": model_name, "prompt_provider": "ollama", "images_per_response": 1},
+        json={
+            "prompt_model": model_name,
+            "prompt_provider": "ollama",
+            "images_per_response": 1,
+            "prompt_model_params": {"temperature": 0.3},
+        },
     )
     assert r.status_code == 400
 

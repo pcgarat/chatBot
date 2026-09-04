@@ -196,7 +196,9 @@ def _build_orchestrator(
         provider_name = body.prompt_provider
         model = body.prompt_model.strip()
         system_instructions = concat_instruction_texts(body.prompt_system_instructions)
-        extra_body = None
+        extra_body = (
+            build_extra_body(provider_name, body.prompt_model_params, model_id=model) or None
+        )
 
     provider = get_provider(provider_name)
     planner = LlmScenePlanner(
