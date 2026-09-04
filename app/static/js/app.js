@@ -2190,7 +2190,7 @@
     await loadContextLength();
     // Si el panel Reglas está abierto, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
     const reglasPanel = document.getElementById("tab-reglas");
-    if (reglasPanel && reglasPanel.classList.contains("is-open")) loadLibraryRules();
+    if (reglasPanel && !reglasPanel.hidden) loadLibraryRules();
   }
 
   let saveRulesDebounceTimer = null;
@@ -4348,56 +4348,70 @@
     }
   }
 
-  function migrateSidebarTabToAccordionState(state) {
+  function resolveSidebarTabId() {
     try {
-      const t = localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY);
-      if (!t) return state;
-      const tabId = SIDEBAR_MAIN_SECTION_IDS.includes(t) ? t : t === "conversaciones" ? "reglas" : null;
-      if (!tabId) return state;
-      const next = Object.assign({}, state || {});
-      SIDEBAR_MAIN_SECTION_IDS.forEach((id) => {
-        next[id] = id === tabId;
-      });
-      localStorage.removeItem(SIDEBAR_TAB_STORAGE_KEY);
-      return next;
-    } catch (_) {
-      return state;
+      const stored = localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY);
+      if (SIDEBAR_MAIN_SECTION_IDS.includes(stored)) return stored;
+      if (stored === "conversaciones") return "reglas";
+    } catch (_) {}
+    const acc = getAccordionState();
+    if (acc) {
+      const fromAccordion = SIDEBAR_MAIN_SECTION_IDS.find((id) => acc[id] === true);
+      if (fromAccordion) return fromAccordion;
     }
+    return "reglas";
   }
 
-  function ensureExclusiveMainAccordion(state) {
-    const next = Object.assign({}, state || {});
-    const openMain = SIDEBAR_MAIN_SECTION_IDS.filter((id) => next[id] === true);
-    if (openMain.length === 0) {
-      next.reglas = true;
-      SIDEBAR_MAIN_SECTION_IDS.filter((id) => id !== "reglas").forEach((id) => {
-        next[id] = false;
+  function setSidebarTab(tabId) {
+    const id = SIDEBAR_MAIN_SECTION_IDS.includes(tabId) ? tabId : "reglas";
+    document.querySelectorAll(".sidebar-tab-rail [role='tab']").forEach((tab) => {
+      const selected = tab.dataset.sidebarTab === id;
+      tab.classList.toggle("is-active", selected);
+      tab.setAttribute("aria-selected", selected ? "true" : "false");
+      tab.tabIndex = selected ? 0 : -1;
+    });
+    document.querySelectorAll(".sidebar-tab-panel").forEach((panel) => {
+      const selected = panel.dataset.sidebarPanel === id;
+      panel.classList.toggle("is-active", selected);
+      panel.hidden = !selected;
+    });
+    try {
+      localStorage.setItem(SIDEBAR_TAB_STORAGE_KEY, id);
+    } catch (_) {}
+    onSidebarMainSectionOpened(id);
+  }
+
+  function initSidebarTabs() {
+    setSidebarTab(resolveSidebarTabId());
+    const tabs = Array.from(document.querySelectorAll(".sidebar-tab-rail [role='tab']"));
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        setSidebarTab(tab.dataset.sidebarTab);
       });
-      return next;
-    }
-    if (openMain.length > 1) {
-      const keep = openMain[0];
-      SIDEBAR_MAIN_SECTION_IDS.forEach((id) => {
-        next[id] = id === keep;
+      tab.addEventListener("keydown", (e) => {
+        const i = tabs.indexOf(tab);
+        let next = -1;
+        if (e.key === "ArrowDown" || e.key === "ArrowRight") next = (i + 1) % tabs.length;
+        else if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === "Home") next = 0;
+        else if (e.key === "End") next = tabs.length - 1;
+        if (next < 0) return;
+        e.preventDefault();
+        tabs[next].focus();
+        setSidebarTab(tabs[next].dataset.sidebarTab);
       });
-    }
-    return next;
+    });
   }
 
   function initAccordionState() {
-    let state = getAccordionState();
-    state = migrateSidebarTabToAccordionState(state);
-    state = ensureExclusiveMainAccordion(state);
+    const state = getAccordionState();
     document.querySelectorAll(".accordion-section[data-accordion-section]").forEach((section) => {
       const id = section.dataset.accordionSection;
+      if (SIDEBAR_MAIN_SECTION_IDS.includes(id)) return;
       const isOpen = state && typeof state[id] === "boolean" ? state[id] : section.classList.contains("is-open");
       setAccordionSectionOpen(section, !!isOpen);
     });
     saveAccordionState();
-    const openMain = document.querySelector(
-      ".sidebar-main-accordion > .accordion-section.is-open[data-accordion-section]"
-    );
-    if (openMain) onSidebarMainSectionOpened(openMain.dataset.accordionSection);
   }
 
   const IMAGES_PREFS_KEY = "chatbot_images_prefs";
@@ -4416,13 +4430,11 @@
         }
         setAccordionSectionOpen(section, !wasOpen);
         saveAccordionState();
-        if (!wasOpen && section.closest(".sidebar-main-accordion") === section.parentElement) {
-          onSidebarMainSectionOpened(section.dataset.accordionSection);
-        }
       });
     });
   }
 
+  initSidebarTabs();
   initSidebarAccordion();
   initConversationFontSize();
   initConversationScrollNav();

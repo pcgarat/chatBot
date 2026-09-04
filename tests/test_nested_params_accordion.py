@@ -28,7 +28,7 @@ def test_accordion_open_max_height_uses_child_combinator_not_descendant():
     assert fixed is not None
 
 
-def test_ajustes_has_nested_param_accordion_sections():
+def test_ajustes_has_principal_param_accordion_sections():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert "sidebar-accordion-params" in html
     for section_id in (
@@ -37,6 +37,7 @@ def test_ajustes_has_nested_param_accordion_sections():
         "params-longitud",
         "params-aleatoriedad",
         "params-seguridad",
+        "params-payload",
     ):
         assert f'data-accordion-section="{section_id}"' in html
 
