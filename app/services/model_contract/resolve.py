@@ -12,6 +12,7 @@ from app.services.model_contract.models import (
     ThinkingCapability,
 )
 from app.services.model_contract.overlays import load_overlays
+from app.services.model_contract.show_live import live_caps_from_show
 
 
 def resolve_model_contract(
@@ -29,7 +30,7 @@ def resolve_model_contract(
     show_dict = show if isinstance(show, dict) else {}
     overlay = _overlay_for(provider, model_id)
     base = _copy_specs(get_params_config(provider))
-    live = _live_from_show(show_dict)
+    live = live_caps_from_show(show_dict)
 
     params = _apply_live_context(base, live.get("context_length"))
     overlay_params = overlay.get("params") if isinstance(overlay.get("params"), dict) else {}
@@ -89,36 +90,6 @@ def _apply_live_context(params: dict[str, Any], context_length: int | None) -> d
     if isinstance(spec, dict):
         spec["max"] = context_length
     return out
-
-
-def _live_from_show(show: dict[str, Any]) -> dict[str, Any]:
-    raw_caps = show.get("capabilities") or []
-    if isinstance(raw_caps, str):
-        raw_caps = [raw_caps]
-    if not isinstance(raw_caps, list):
-        raw_caps = []
-    names = {str(c).lower() for c in raw_caps}
-    return {
-        "vision": "vision" in names,
-        "tools": "tools" in names or "tool_use" in names,
-        "thinking_flag": "thinking" in names,
-        "context_length": _context_from_show(show),
-    }
-
-
-def _context_from_show(show: dict[str, Any]) -> int | None:
-    model_info = show.get("model_info") if isinstance(show.get("model_info"), dict) else {}
-    details = show.get("details") if isinstance(show.get("details"), dict) else {}
-    ctx = (
-        model_info.get("llama.context_length")
-        or model_info.get("context_length")
-        or details.get("context_length")
-        or show.get("context_length")
-    )
-    try:
-        return int(ctx) if ctx is not None else None
-    except (TypeError, ValueError):
-        return None
 
 
 def _resolve_thinking(overlay: dict[str, Any], live: dict[str, Any]) -> ThinkingCapability:

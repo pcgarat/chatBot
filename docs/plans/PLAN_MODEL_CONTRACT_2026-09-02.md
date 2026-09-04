@@ -116,6 +116,7 @@ flowchart TB
 - [ ] Coste estimado (research × tokens).
 - [ ] Adelgazar `config/ollama.json` hacia overlays (sin romper «Cargar preset»).
 - [ ] Overlays de modelos locales bajo demanda.
+- [ ] Generador de overlays: [`SPEC_OVERLAY_GENERATOR_2026-09-02.md`](../specs/SPEC_OVERLAY_GENERATOR_2026-09-02.md).
 
 ## Cortes verticales v2
 

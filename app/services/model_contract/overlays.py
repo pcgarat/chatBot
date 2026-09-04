@@ -33,3 +33,24 @@ def load_overlays(provider_name: str) -> dict[str, Any]:
         return _cache[provider_name]
     _cache[provider_name] = data
     return data
+
+
+def overlays_path(provider_name: str) -> Path:
+    """Ruta del JSON de overlays del proveedor."""
+    return _OVERLAYS_DIR / f"{provider_name}.json"
+
+
+def save_overlays(provider_name: str, data: dict[str, Any], *, path: Path | None = None) -> Path:
+    """
+    Persiste overlays y invalida la caché del proveedor.
+
+    Returns:
+        Path escrito.
+    """
+    target = path if path is not None else overlays_path(provider_name)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with open(target, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    _cache.pop(provider_name, None)
+    return target
