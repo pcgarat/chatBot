@@ -6192,6 +6192,7 @@
   let imageQueuePaused = false;
   const imageQueueSelectedIds = new Set();
   let imageQueueSelectionAnchor = -1;
+  const imageQueueLastStatusById = {};
   const IMAGE_QUEUE_POLL_MS = 2500;
   const GALLERY_TOOLBAR_FILTER_IDS = [
     "gallery-filter-prompt-model",
@@ -6650,11 +6651,68 @@
     }
   }
 
+  function takeNewlySettledQueueJobs(items) {
+    const settled = [];
+    (items || []).forEach(function (item) {
+      if (!item || !item.id) return;
+      const prev = imageQueueLastStatusById[item.id] || imageQueueDebugSeen[item.id];
+      const now = item.status;
+      imageQueueLastStatusById[item.id] = now;
+      if (
+        (now === "completed" || now === "failed") &&
+        prev &&
+        prev !== now
+      ) {
+        settled.push(item);
+      }
+    });
+    return settled;
+  }
+
+  function syncReadingModeContentPreservingScroll() {
+    if (!isReadingModeOpen() || readingModeMessageIndex == null) return;
+    const msg = messages[readingModeMessageIndex];
+    const body = document.getElementById("reading-mode-body");
+    if (!msg || !body) return;
+    const prevScrollTop = body.scrollTop;
+    body.innerHTML = formatMessageHtml(msg.content || "");
+    enhanceIllustrationFrames(body);
+    applyConversationFontSize(getStoredFontSize());
+    applyConversationImageSize(getStoredImageSize());
+    body.scrollTop = prevScrollTop;
+  }
+
+  function applyIllustrationContentToOpenView(conv) {
+    if (!conv || conv.id !== currentConversationId) return;
+    const byId = {};
+    []
+      .concat(conv.inherited_messages || [])
+      .concat(conv.messages || [])
+      .forEach(function (raw) {
+        const mapped = mapApiMessage(raw);
+        if (mapped.id) byId[mapped.id] = mapped;
+      });
+    let changed = false;
+    function patchList(list) {
+      list.forEach(function (m) {
+        const src = m.id && byId[m.id];
+        if (!src || src.content === m.content) return;
+        m.content = src.content;
+        changed = true;
+      });
+    }
+    patchList(allMessages);
+    patchList(messages);
+    if (!changed) return;
+    renderMessages();
+    syncReadingModeContentPreservingScroll();
+  }
+
   async function refreshCurrentConversationMessages() {
     if (!currentConversationId) return;
     try {
       const conv = await fetchJson(`${API}/conversations/${currentConversationId}`);
-      await setCurrentConversation(conv, { preserveView: true });
+      applyIllustrationContentToOpenView(conv);
     } catch (_) {}
   }
 
@@ -6666,7 +6724,6 @@
       if (isQueuePanelVisible() && imageQueueFilterStatus) params.set("status", imageQueueFilterStatus);
       params.set("limit", "100");
       const data = await fetchJson(`${API}/image-generation-queue?${params}`);
-      const prevActive = imageQueueKnownActive;
       imageQueuePaused = Boolean(data.paused);
       imageQueueKnownActive = data.active_count || 0;
       syncImageQueueActiveCount(data.active_count);
@@ -6675,15 +6732,13 @@
         imageQueueItems = data.items || [];
         renderImageQueueList();
       }
+      const newlySettled = takeNewlySettledQueueJobs(data.items);
       ingestQueueItemsForDebug(data.items);
-      const activeDropped = prevActive > 0 && (data.active_count || 0) < prevActive;
-      if (activeDropped && currentConversationId) {
-        const touched = (data.items || []).some(function (item) {
-          return item.conversation_id === currentConversationId && item.status === "completed";
-        });
-        if (touched || prevActive > (data.active_count || 0)) {
-          await refreshCurrentConversationMessages();
-        }
+      const settledHere = newlySettled.some(function (item) {
+        return item.conversation_id === currentConversationId;
+      });
+      if (settledHere) {
+        await refreshCurrentConversationMessages();
       }
       maybeStopImageQueuePoll();
     } catch (_) {

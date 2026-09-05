@@ -3517,6 +3517,7 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
 .messages-container {
   flex: 1;
   overflow-y: auto;
+  overflow-anchor: none;
   padding: 1rem 1.5rem;
   display: flex;
   flex-direction: column;
