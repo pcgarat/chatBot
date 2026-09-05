@@ -160,14 +160,13 @@ def list_deleted_conversations(db: Session) -> list[Conversation]:
 
 
 MESSAGE_HISTORY_PREVIEW_LEN = 80
-MESSAGE_HISTORY_LIMIT_DEFAULT = 200
-MESSAGE_HISTORY_LIMIT_MAX = 200
+MESSAGE_HISTORY_LIMIT_DEFAULT = None
 
 
-def clamp_message_history_limit(limit: int | None) -> int:
+def clamp_message_history_limit(limit: int | None) -> int | None:
     if limit is None or limit < 1:
-        return MESSAGE_HISTORY_LIMIT_DEFAULT
-    return min(limit, MESSAGE_HISTORY_LIMIT_MAX)
+        return None
+    return int(limit)
 
 
 def message_content_preview(content: str, max_len: int = MESSAGE_HISTORY_PREVIEW_LEN) -> str:
@@ -179,12 +178,29 @@ def message_content_preview(content: str, max_len: int = MESSAGE_HISTORY_PREVIEW
     return first_line[:max_len].rstrip()
 
 
+def _unique_assistant_history_rows(
+    rows: list[tuple],
+) -> list[tuple[Message, str, datetime | None]]:
+    seen: set[str] = set()
+    unique: list[tuple[Message, str, datetime | None]] = []
+    for row in rows:
+        msg = row[0]
+        if not msg or msg.id in seen:
+            continue
+        seen.add(msg.id)
+        if len(row) == 3:
+            unique.append((msg, row[1], row[2]))
+        else:
+            unique.append((msg, row[1], None))
+    return unique
+
+
 def list_assistant_messages(
     db: Session,
     limit: int | None = None,
     sort: str | None = None,
 ) -> list[tuple[Message, str, datetime | None]]:
-    """Respuestas assistant de conversaciones activas, más recientes primero."""
+    """Respuestas assistant de conversaciones activas, cada id una vez."""
     capped = clamp_message_history_limit(limit)
     if normalize_message_history_sort(sort) == MESSAGE_HISTORY_SORT_IMAGE:
         latest_image = (
@@ -195,7 +211,7 @@ def list_assistant_messages(
             .group_by(IllustratedImage.message_id)
             .subquery()
         )
-        rows = (
+        query = (
             db.query(Message, Conversation.title, latest_image.c.latest_image_at)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .outerjoin(latest_image, latest_image.c.message_id == Message.id)
@@ -206,20 +222,20 @@ def list_assistant_messages(
                 latest_image.c.latest_image_at.desc(),
                 Message.created_at.desc(),
             )
-            .limit(capped)
-            .all()
         )
-        return [(msg, title, img_at) for msg, title, img_at in rows]
-    rows = (
+        if capped is not None:
+            query = query.limit(capped)
+        return _unique_assistant_history_rows(query.all())
+    query = (
         db.query(Message, Conversation.title)
         .join(Conversation, Conversation.id == Message.conversation_id)
         .filter(Message.role == "assistant")
         .filter(Conversation.deleted_at.is_(None))
         .order_by(Message.created_at.desc())
-        .limit(capped)
-        .all()
     )
-    return [(msg, title, None) for msg, title in rows]
+    if capped is not None:
+        query = query.limit(capped)
+    return _unique_assistant_history_rows(query.all())
 
 
 def update_conversation(

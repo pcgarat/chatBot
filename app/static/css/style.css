@@ -6634,11 +6634,25 @@ html[data-history-consulta="on"] .composer-expand-btn {
   display: none !important;
 }
 
-.column-left .message-history-item .conv-meta {
+.column-left .message-history-item {
+  white-space: normal;
+  overflow: visible;
+}
+
+.column-left .message-history-item .conv-title {
+  display: block;
+}
+
+.column-left .message-history-item .message-history-created {
+  display: block;
   margin-top: 1px;
   font-size: calc(0.5625rem * var(--sidebar-left-font-scale, 1));
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
   color: var(--text-secondary);
-  opacity: 0.9;
+  opacity: 0.78;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

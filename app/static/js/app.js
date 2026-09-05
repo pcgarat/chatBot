@@ -2173,16 +2173,16 @@
         const header = `<div class="conv-group-label" aria-hidden="true">${escapeHtml(CONV_GROUP_LABELS[key])}</div>`;
         const rows = groups[key]
           .map(function (item) {
-            const when = formatDate(messageHistoryWhenIso(item, sort));
+            const created = formatDateTime(item.created_at);
             const preview = item.content_preview || "(sin texto)";
             const convTitle = item.conversation_title || "Conversación";
             const active = item.id === consultaAssistantId ? " active" : "";
-            return `<div class="conversation-item message-history-item${active}" data-id="${escapeHtml(item.id)}" data-conversation-id="${escapeHtml(item.conversation_id)}" title="${escapeHtml(convTitle + " · " + when)}">
+            const createdAttr = item.created_at ? escapeHtml(item.created_at) : "";
+            return `<div class="conversation-item message-history-item${active}" data-id="${escapeHtml(item.id)}" data-conversation-id="${escapeHtml(item.conversation_id)}" title="${escapeHtml(convTitle + " · " + created)}">
                 <div class="conv-row">
                   <span class="conv-title">${escapeHtml(preview)}</span>
-                  <span class="conv-when">${escapeHtml(when)}</span>
                 </div>
-                <div class="conv-meta">${escapeHtml(convTitle)}</div>
+                <time class="conv-meta message-history-created" datetime="${createdAttr}">${escapeHtml(created)}</time>
               </div>`;
           })
           .join("");
@@ -2232,6 +2232,22 @@
     try {
       const d = new Date(iso);
       return d.toLocaleDateString("es", { day: "numeric", month: "short", year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined });
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function formatDateTime(iso) {
+    try {
+      const d = new Date(iso);
+      const sameYear = d.getFullYear() === new Date().getFullYear();
+      return d.toLocaleString("es", {
+        day: "numeric",
+        month: "short",
+        year: sameYear ? undefined : "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     } catch (_) {
       return "";
     }

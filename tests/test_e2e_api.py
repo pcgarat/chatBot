@@ -259,6 +259,13 @@ def test_e2e_conversation_fork(client, ollama_available):
     origin2 = client.get(f"/api/conversations/{origin_id}").json()
     assert len(origin2["messages"]) >= 4
     assert child2["messages"][0]["id"] not in {m["id"] for m in origin2["messages"]}
+    listed = client.get("/api/messages").json()
+    listed_ids = [it["id"] for it in listed]
+    assert len(listed_ids) == len(set(listed_ids))
+    origin_assistants = [m["id"] for m in origin2["messages"] if m["role"] == "assistant"]
+    child_assistants = [m["id"] for m in child2["messages"] if m["role"] == "assistant"]
+    for msg_id in origin_assistants + child_assistants:
+        assert msg_id in listed_ids
 
 
 def test_e2e_fork_inherited_content_mutations(client, ollama_available):
