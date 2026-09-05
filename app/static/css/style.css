@@ -7539,6 +7539,15 @@ html[data-center-queue="on"] #btn-image-queue {
   background: rgba(15, 23, 42, 0.8);
 }
 
+.image-gallery-lightbox-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.image-gallery-lightbox-nav:disabled:hover {
+  background: rgba(15, 23, 42, 0.55);
+}
+
 #image-gallery-lightbox-prev {
   left: 8px;
 }
