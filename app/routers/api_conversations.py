@@ -268,7 +268,7 @@ def list_conversations(
 
 @router.get("/messages", response_model=list[MessageHistoryItem])
 def list_messages(
-    limit: int = Query(default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT),
+    limit: int | None = Query(default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT, ge=1),
     sort: Literal["message", "image"] = Query(default="message"),
     db: Session = Depends(get_db),
 ):

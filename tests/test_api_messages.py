@@ -97,7 +97,7 @@ def test_list_messages_preview_strips_illustration_html(client, db_session):
 
 
 @patch("app.routers.api_conversations.get_provider")
-def test_list_messages_respects_limit_and_clamps_above_200(mock_get_provider, client):
+def test_list_messages_respects_optional_limit(mock_get_provider, client):
     for i in range(3):
         _send_turn(client, mock_get_provider, f"C{i}", "hola", f"r{i}")
 
@@ -106,9 +106,48 @@ def test_list_messages_respects_limit_and_clamps_above_200(mock_get_provider, cl
     assert len(limited.json()) == 1
     assert limited.json()[0]["content_preview"] == "r2"
 
-    clamped = client.get("/api/messages", params={"limit": 999})
-    assert clamped.status_code == 200
-    assert len(clamped.json()) == 3
+    unbounded = client.get("/api/messages")
+    assert unbounded.status_code == 200
+    assert len(unbounded.json()) == 3
+
+
+def test_list_messages_returns_more_than_former_200_cap(client, db_session):
+    conv = Conversation(title="Muchas", model_id="llama3.2")
+    db_session.add(conv)
+    db_session.commit()
+    for i in range(201):
+        db_session.add(
+            Message(conversation_id=conv.id, role="assistant", content=f"respuesta-{i:03d}")
+        )
+    db_session.commit()
+
+    items = client.get("/api/messages").json()
+    assert len(items) == 201
+    ids = [it["id"] for it in items]
+    assert len(ids) == len(set(ids))
+
+
+def test_list_messages_fork_lists_inherited_reply_only_once(client, db_session):
+    from app import crud
+
+    origin = crud.create_conversation(db_session, title="Origen", model_id="m")
+    crud.add_message(db_session, origin.id, "user", "pregunta origen")
+    origin_reply = crud.add_message(db_session, origin.id, "assistant", "respuesta-origen")
+    child = crud.fork_conversation(db_session, origin.id, origin_reply.id)
+    assert child is not None
+    crud.add_message(db_session, child.id, "user", "pregunta fork")
+    fork_reply = crud.add_message(db_session, child.id, "assistant", "respuesta-fork")
+
+    items = client.get("/api/messages").json()
+    previews = [it["content_preview"] for it in items]
+    assert previews.count("respuesta-origen") == 1
+    assert previews.count("respuesta-fork") == 1
+    ids = [it["id"] for it in items]
+    assert len(ids) == len(set(ids))
+    assert origin_reply.id in ids
+    assert fork_reply.id in ids
+    origin_item = next(it for it in items if it["id"] == origin_reply.id)
+    assert origin_item["conversation_id"] == origin.id
 
 
 def test_list_messages_sort_image_promotes_old_message_with_new_image(client, db_session):
