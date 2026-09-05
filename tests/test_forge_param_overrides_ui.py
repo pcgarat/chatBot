@@ -8,7 +8,7 @@ APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
 def test_images_panel_has_forge_param_controls():
     html = INDEX.read_text(encoding="utf-8")
-    images = html.split('id="tab-imagenes"')[1].split('id="images-debug-mode"')[0]
+    images = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
     assert 'id="images-forge-steps"' in images
     assert 'id="images-forge-width"' in images
     assert 'id="images-forge-height"' in images

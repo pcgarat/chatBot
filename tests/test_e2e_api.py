@@ -138,8 +138,12 @@ def test_e2e_list_messages_includes_assistant_reply(client, ollama_available):
     assert match is not None
     assert match.get("content_preview")
     assert match.get("parent_id")
+    assert "created_at" in match
+    assert "latest_image_at" in match
     if assistant_id:
         assert match["id"] == assistant_id
+    r_sorted = client.get("/api/messages", params={"sort": "message"})
+    assert r_sorted.status_code == 200
 
 
 def test_e2e_conversation_history_turns(client, ollama_available):
@@ -857,6 +861,11 @@ def test_e2e_list_conversations(client, ollama_available):
     assert r.status_code == 200
     data = r.json()
     assert isinstance(data, list)
+    r_created = client.get("/api/conversations", params={"sort": "created_at"})
+    assert r_created.status_code == 200
+    assert isinstance(r_created.json(), list)
+    if r_created.json():
+        assert "created_at" in r_created.json()[0]
 
 
 def test_e2e_create_conversation(client, ollama_available):

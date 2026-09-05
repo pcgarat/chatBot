@@ -26,7 +26,7 @@ def _visible_text(chunk: str) -> str:
 
 def test_profile_bar_is_at_top_of_right_column():
     html = INDEX.read_text(encoding="utf-8")
-    right = html.split('aria-label="Reglas y ajustes"')[1]
+    right = html.split('id="column-right"')[1]
     profile_pos = right.find("workspace-profile-bar")
     tabs_pos = right.find("sidebar-side-layout")
     assert profile_pos >= 0
@@ -45,13 +45,13 @@ def test_profile_bar_is_select_plus_icon_actions():
     save_as_btn = _button_chunk(html, "btn-workspace-profile-save-as")
     delete_btn = _button_chunk(html, "btn-workspace-profile-delete")
 
-    assert 'title="aplicar perfil"' in apply_btn
-    assert 'aria-label="aplicar perfil"' in apply_btn
-    assert 'title="guardar"' in save_btn
-    assert 'aria-label="guardar"' in save_btn
-    assert 'title="guardar como"' in save_as_btn
-    assert 'aria-label="guardar como"' in save_as_btn
-    assert 'title="eliminar perfil"' in delete_btn
+    assert 'title="Aplicar perfil"' in apply_btn
+    assert 'aria-label="Aplicar perfil"' in apply_btn
+    assert 'title="Guardar"' in save_btn
+    assert 'aria-label="Guardar"' in save_btn
+    assert 'title="Guardar como"' in save_as_btn
+    assert 'aria-label="Guardar como"' in save_as_btn
+    assert 'title="Eliminar perfil"' in delete_btn
 
     for chunk in (apply_btn, save_btn, save_as_btn, delete_btn):
         assert "<svg" in chunk

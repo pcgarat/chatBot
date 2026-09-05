@@ -205,6 +205,7 @@ class ConversationListItem(BaseModel):
     auto_title: bool = False
     model_id: str
     provider: str = "ollama"  # ollama | mancer | openai
+    created_at: datetime
     updated_at: datetime
     last_message_at: datetime | None = None
     deleted_at: datetime | None = None
@@ -246,6 +247,7 @@ class MessageHistoryItem(BaseModel):
     parent_id: Optional[str] = None
     content_preview: str
     created_at: datetime
+    latest_image_at: datetime | None = None
 
     class Config:
         from_attributes = True

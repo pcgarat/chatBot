@@ -6,26 +6,31 @@ INDEX = ROOT / "app" / "static" / "index.html"
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
 
-def _images_html() -> str:
+def _planner_html() -> str:
     html = INDEX.read_text(encoding="utf-8")
-    return html.split('id="tab-imagenes"')[1].split('id="images-limits-heading"')[0]
+    images = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
+    return images.split('data-accordion-section="images-planner"')[1].split(
+        'data-accordion-section="images-planner-rules"'
+    )[0]
 
 
 def test_planner_panel_has_recipe_controls_tied_to_chat_config():
-    images = _images_html()
-    model_pos = images.find('id="images-prompt-model"')
-    recipes_pos = images.find('id="planner-recipes"')
-    rules_pos = images.find('id="planner-rules-list"')
+    planner = _planner_html()
+    model_pos = planner.find('id="images-prompt-model"')
+    recipes_pos = planner.find('id="planner-recipes"')
     assert model_pos >= 0
     assert recipes_pos > model_pos
-    assert rules_pos > recipes_pos
-    presets = images[recipes_pos - 400 : rules_pos]
-    assert 'id="planner-presets"' in images
-    assert 'id="planner-think"' in images
-    assert 'id="planner-recipe-params"' in images
-    tag = images.split('id="planner-presets"')[0][-120:] + 'id="planner-presets"' + images.split('id="planner-presets"')[1][:80]
+    assert 'id="planner-rules-list"' not in planner
+    assert 'id="planner-presets"' in planner
+    assert 'id="planner-think"' in planner
+    assert 'id="planner-recipe-params"' in planner
+    tag = (
+        planner.split('id="planner-presets"')[0][-120:]
+        + 'id="planner-presets"'
+        + planner.split('id="planner-presets"')[1][:80]
+    )
     assert "data-images-chat-config-control" in tag
-    assert 'data-control-id="think"' not in images.split('id="planner-presets"')[1].split('id="planner-rules-list"')[0]
+    assert 'data-control-id="think"' not in planner.split('id="planner-presets"')[1]
 
 
 def test_js_loads_planner_contract_and_sends_prompt_model_params():
