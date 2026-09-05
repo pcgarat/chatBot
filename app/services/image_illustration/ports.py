@@ -35,5 +35,6 @@ class ScenePlannerPort(Protocol):
         existing_prompts: list[str] | None = None,
         pinned: bool = False,
         focus_excerpt: str | None = None,
+        visual_consistency: bool = True,
     ) -> ScenePlan:
         ...

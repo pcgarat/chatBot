@@ -205,17 +205,20 @@ def test_e2e_conversation_images_persist(client, ollama_available):
         "width": 768,
         "height": 1024,
         "seed": -1,
+        "visual_consistency": False,
     }
     r_put = client.put(f"/api/conversations/{cid}", json={"images": payload})
     assert r_put.status_code == 200
     assert r_put.json()["images"]["enabled"] is True
     assert r_put.json()["images"]["prompt"] == "film still"
+    assert r_put.json()["images"]["visual_consistency"] is False
     r_get = client.get(f"/api/conversations/{cid}")
     assert r_get.status_code == 200
     assert r_get.json()["images"]["enabled"] is True
     assert r_get.json()["images"]["prompt_model"] == model_name
     assert r_get.json()["images"]["prompt_model_params"]["temperature"] == 0.4
     assert r_get.json()["images"]["steps"] == 20
+    assert r_get.json()["images"]["visual_consistency"] is False
 
 
 def test_e2e_conversation_fork(client, ollama_available):
@@ -1164,6 +1167,7 @@ def test_e2e_illustrate_rejects_non_assistant(client, ollama_available):
             "prompt_provider": "ollama",
             "images_per_response": 1,
             "prompt_model_params": {"temperature": 0.3},
+            "visual_consistency": False,
         },
     )
     assert r.status_code == 400
@@ -1215,7 +1219,12 @@ def test_e2e_illustrate_at_rejects_non_assistant(client, ollama_available):
     assert user and user.get("id")
     r = client.post(
         f"/api/conversations/{cid}/messages/{user['id']}/illustrations/illustrate-at",
-        json={"prompt_model": model_name, "prompt_provider": "ollama", "paragraph_index": 0},
+        json={
+            "prompt_model": model_name,
+            "prompt_provider": "ollama",
+            "paragraph_index": 0,
+            "visual_consistency": True,
+        },
     )
     assert r.status_code == 400
 

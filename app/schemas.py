@@ -355,6 +355,13 @@ class IllustrateRequest(ForgePanelParamFields):
         default=False,
         description="Si true, emite eventos llm_debug (request/response del planificador) por escena.",
     )
+    visual_consistency: bool = Field(
+        default=True,
+        description=(
+            "Si true, el planificador reutiliza tokens de identidad (edad, vestuario, aspecto) "
+            "entre las escenas del mensaje. Si false, prioriza variedad de look."
+        ),
+    )
     reactor: ReactorPanelSettings = Field(default_factory=ReactorPanelSettings)
     debug: bool = False
 
@@ -565,6 +572,7 @@ class WorkspaceImagesSnapshot(ForgePanelParamFields):
 
     enabled: bool = False
     use_chat_config: bool = False
+    visual_consistency: bool = True
     images_per_response: int = 2
     batch_size: int = 10
     retries: int = 1

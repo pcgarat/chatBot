@@ -34,7 +34,8 @@ Reglas:
 - Si el mensaje trae «párrafos asignados» (sin ubicación fijada), NO elijas ubicación: escribe un prompt visual en inglés para CADA paragraph_index listado (en ese orden). El prompt debe describir la escena de ESE párrafo. anchor_excerpt puede ir vacío; paragraph_index es obligatorio y debe coincidir.
 - Si NO hay párrafos asignados: elige hasta max_images escenas repartidas a lo largo del relato (puntos medios entre imágenes existentes); anchor_excerpt literal o paragraph_index.
 - No concentres varias escenas al inicio ni en el mismo párrafo (salvo ubicación fijada).
-- Si el mensaje lista prompts ya usados y NO hay ubicación fijada, NO generes escenas visualmente similares (mismo sujeto, pose, vestuario, encuadre o momento). Cada prompt nuevo debe aportar una escena distinta del relato.
+- Si el mensaje trae «consistencia visual: ON»: TODAS las escenas de este JSON (y respecto a prompts ya usados) DEBEN copiar los mismos tokens de identidad: edad, cuerpo, pelo, etnia, ropa. No parafrasees. Varía solo acción, pose, encuadre e instante. Escenario e iluminación se mantienen si es la misma escena narrativa; si el relato cambia de sitio o de ropa, gana el texto.
+- Si el mensaje lista prompts ya usados y consistencia visual está OFF (y NO hay ubicación fijada), NO generes escenas visualmente similares (mismo sujeto, pose, vestuario, encuadre o momento). Cada prompt nuevo debe aportar una escena distinta del relato.
 """
 
 
@@ -117,10 +118,69 @@ def plan_from_dict(data: dict[str, Any], max_images: int) -> ScenePlan:
     return ScenePlan(illustrate=illustrate and bool(scenes), reason=reason, scenes=scenes)
 
 
+_PROMPT_CLIP_DIVERSITY = 220
+_PROMPT_CLIP_CONSISTENCY = 900
+
+
+def _clip_prompt(prompt: str, limit: int) -> str:
+    text = (prompt or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)] + "…"
+
+
+def _visual_policy_block(*, visual_consistency: bool, scene_count: int) -> str:
+    """Instrucción de política: canon de identidad vs variedad de look."""
+    if visual_consistency:
+        lines = [
+            "Consistencia visual: ON.",
+            "Canon (bloqueado): personajes, edad, cuerpo, pelo, etnia y ropa. "
+            "Copia los mismos tokens en TODAS las escenas de este JSON; no los parafrasees.",
+            "Libre: pose, acción, instante y encuadre. No dupliques el mismo plano.",
+            "Si el relato cambia de ropa o de lugar, gana el texto.",
+        ]
+        if scene_count > 1:
+            lines.append(
+                "Este lote pide varias escenas: la ficha de identidad debe ser idéntica en cada prompt."
+            )
+        return "\n".join(lines) + "\n\n"
+    return (
+        "Consistencia visual: OFF.\n"
+        "Prioriza variedad de escena; no clones la misma toma.\n\n"
+    )
+
+
+def _existing_prompts_lines(
+    prompts: list[str],
+    *,
+    visual_consistency: bool,
+) -> list[str]:
+    if not prompts:
+        return []
+    limit = _PROMPT_CLIP_CONSISTENCY if visual_consistency else _PROMPT_CLIP_DIVERSITY
+    if visual_consistency:
+        header = (
+            "Prompts visuales YA usados. Son el canon de identidad. "
+            "Reutiliza edad, cuerpo, pelo, ropa y (si es el mismo sitio) escenario/luz. "
+            "Cambia momento, pose y encuadre:"
+        )
+    else:
+        header = (
+            "Prompts visuales YA usados. NO generes imágenes similares "
+            "(mismo sujeto, pose, encuadre, vestuario o escena casi igual). "
+            "Varía momento narrativo, composición y detalles:"
+        )
+    lines = [header]
+    for p in prompts:
+        lines.append(f'- "{_clip_prompt(p, limit)}"')
+    return lines
+
+
 def _already_planned_block(
     already_planned: list[SceneSpec] | None,
     *,
     existing_prompts: list[str] | None = None,
+    visual_consistency: bool = True,
 ) -> str:
     scenes = already_planned or []
     prompts = [p.strip() for p in (existing_prompts or []) if (p or "").strip()]
@@ -145,15 +205,9 @@ def _already_planned_block(
                 lines.append(f"- id={s.id} paragraph_index={s.paragraph_index}")
             else:
                 lines.append(f"- id={s.id}")
-    if prompts:
-        lines.append(
-            "Prompts visuales YA usados. NO generes imágenes similares "
-            "(mismo sujeto, pose, encuadre, vestuario o escena casi igual). "
-            "Varía momento narrativo, composición y detalles:"
-        )
-        for p in prompts:
-            clipped = p if len(p) <= 220 else p[:219] + "…"
-            lines.append(f'- "{clipped}"')
+    lines.extend(
+        _existing_prompts_lines(prompts, visual_consistency=visual_consistency)
+    )
     return "\n".join(lines) + "\n\n"
 
 
@@ -180,6 +234,7 @@ def _pinned_location_block(
     *,
     focus_excerpt: str | None = None,
     existing_prompts: list[str] | None = None,
+    visual_consistency: bool = True,
 ) -> str:
     """Instrucciones cuando el usuario elige el párrafo (y opcionalmente un excerpt)."""
     para = paragraphs[0] if paragraphs else None
@@ -194,24 +249,33 @@ def _pinned_location_block(
         "NO elijas otro párrafo.",
         f"paragraph_index={idx} (obligatorio).",
         f'Párrafo: "{preview}"' if preview else f"Párrafo {idx}.",
-        "Continuidad visual con TODO el relato: mismos personajes, ropa, "
-        "escenario, iluminación y estilo. El foco es este momento; varía "
-        "acción, pose y encuadre.",
-        "Si este párrafo ya tiene imagen(es), esta va AL LADO: mismo entorno, "
-        "otro instante o ángulo, no un duplicado.",
     ]
+    if visual_consistency:
+        lines.extend(
+            [
+                "Continuidad visual con TODO el relato: mismos personajes, ropa, "
+                "escenario, iluminación y estilo. El foco es este momento; varía "
+                "acción, pose y encuadre.",
+                "Si este párrafo ya tiene imagen(es), esta va AL LADO: mismo entorno, "
+                "otro instante o ángulo, no un duplicado.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "Ilustra este momento. Varía pose y encuadre respecto a imágenes previas.",
+                "Si este párrafo ya tiene imagen(es), esta va AL LADO: otro instante "
+                "o ángulo, no un duplicado.",
+            ]
+        )
     if excerpt:
         clipped = excerpt if len(excerpt) <= 240 else excerpt[:239] + "…"
         lines.append(f'Foco (texto seleccionado): "{clipped}"')
     prompts = [p.strip() for p in (existing_prompts or []) if (p or "").strip()]
     if prompts:
-        lines.append(
-            "Prompts ya usados en el mensaje. Conserva vestuario/escenario; "
-            "cambia el instante:"
+        lines.extend(
+            _existing_prompts_lines(prompts, visual_consistency=visual_consistency)
         )
-        for p in prompts:
-            clipped = p if len(p) <= 220 else p[:219] + "…"
-            lines.append(f'- "{clipped}"')
     lines.append(
         "En el JSON: illustrate=true, una scene con ese paragraph_index y un prompt."
     )
@@ -272,28 +336,36 @@ class LlmScenePlanner:
         existing_prompts: list[str] | None = None,
         pinned: bool = False,
         focus_excerpt: str | None = None,
+        visual_consistency: bool = True,
     ) -> ScenePlan:
         self.last_debug = None
         assigned = list(assigned_paragraphs or [])
         limit = 1 if pinned else (len(assigned) if assigned else max_images)
         if limit <= 0:
             return ScenePlan(illustrate=False, reason="max_images<=0", scenes=[])
+        policy_block = _visual_policy_block(
+            visual_consistency=visual_consistency, scene_count=limit
+        )
         if pinned:
             already_block = ""
             assigned_section = _pinned_location_block(
                 assigned,
                 focus_excerpt=focus_excerpt,
                 existing_prompts=existing_prompts,
+                visual_consistency=visual_consistency,
             )
         else:
             already_block = _already_planned_block(
-                already_planned, existing_prompts=existing_prompts
+                already_planned,
+                existing_prompts=existing_prompts,
+                visual_consistency=visual_consistency,
             )
             assigned_section = _assigned_paragraphs_block(assigned) if assigned else ""
         coverage = (coverage_block or "").strip()
         coverage_section = "" if pinned else (f"{coverage}\n" if coverage else "")
         user = (
             f"max_images={limit}\n\n"
+            f"{policy_block}"
             f"{assigned_section}"
             f"{coverage_section}"
             f"{already_block}"

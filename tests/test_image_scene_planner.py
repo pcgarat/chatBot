@@ -253,9 +253,69 @@ def test_planner_pinned_forces_illustrate_and_continuity():
     assert "paragraph_index=1" in user
     assert "el mismo abrigo" in user
     assert "AL LADO" in user
-    assert "Conserva vestuario" in user
+    assert "canon de identidad" in user
     assert "NO reutilices las mismas anclas" not in user
     assert "max_images=1" in user
+
+
+def test_planner_consistency_on_asks_for_identity_canon():
+    from app.services.image_illustration.coverage import ParagraphInfo
+
+    provider = FakeProvider(
+        json.dumps(
+            {
+                "illustrate": True,
+                "reason": "relato",
+                "scenes": [
+                    {"id": "s1", "prompt": "same woman at the table", "paragraph_index": 0},
+                    {"id": "s2", "prompt": "same woman at the door", "paragraph_index": 1},
+                ],
+            }
+        )
+    )
+    planner = LlmScenePlanner(provider, model="m1", system_prompt="SYS")
+    assigned = [
+        ParagraphInfo(index=0, text="Se sentó.", illustration_count=0),
+        ParagraphInfo(index=1, text="Abrió la puerta.", illustration_count=0),
+    ]
+    planner.plan(
+        "Se sentó.\n\nAbrió la puerta.",
+        max_images=2,
+        assigned_paragraphs=assigned,
+        existing_prompts=["25 year old woman, auburn hair, cream dress"],
+        visual_consistency=True,
+    )
+    user = provider.calls[0]["messages"][1]["content"]
+    assert "Consistencia visual: ON" in user
+    assert "ficha de identidad" in user
+    assert "25 year old woman, auburn hair, cream dress" in user
+    assert "canon de identidad" in user
+    assert "NO generes imágenes similares" not in user
+
+
+def test_planner_consistency_off_asks_for_diversity():
+    provider = FakeProvider(
+        json.dumps({"illustrate": False, "reason": "nada", "scenes": []})
+    )
+    planner = LlmScenePlanner(provider, model="m1", system_prompt="SYS")
+    planner.plan(
+        "Había un faro.",
+        max_images=1,
+        existing_prompts=["woman in red coat"],
+        visual_consistency=False,
+    )
+    user = provider.calls[0]["messages"][1]["content"]
+    assert "Consistencia visual: OFF" in user
+    assert "woman in red coat" in user
+    assert "similares" in user.lower() or "similar" in user.lower()
+
+
+def test_planner_system_prompt_mentions_visual_consistency_policy():
+    from app.services.image_illustration.scene_planner import load_planner_system_prompt
+
+    text = load_planner_system_prompt()
+    assert "consistencia visual: ON" in text
+    assert "consistencia visual está OFF" in text
 
 
 def test_planner_pinned_without_prompt_stays_false():

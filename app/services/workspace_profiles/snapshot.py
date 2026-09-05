@@ -190,6 +190,9 @@ def _normalize_images(value: object) -> ImagesSnapshot:
     return ImagesSnapshot(
         enabled=bool(data.get("enabled")),
         use_chat_config=bool(data.get("use_chat_config")),
+        visual_consistency=(
+            True if data.get("visual_consistency") is None else bool(data.get("visual_consistency"))
+        ),
         images_per_response=_clamp_int(data.get("images_per_response"), 1, 50, 2),
         batch_size=_clamp_int(data.get("batch_size"), 1, 50, 10),
         retries=_clamp_int(data.get("retries"), 0, 10, 1),

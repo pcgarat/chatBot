@@ -21,6 +21,7 @@ class WorkspaceProfile:
 class ImagesSnapshot:
     enabled: bool = False
     use_chat_config: bool = False
+    visual_consistency: bool = True
     images_per_response: int = 2
     batch_size: int = 10
     retries: int = 1
@@ -39,6 +40,7 @@ class ImagesSnapshot:
         return {
             "enabled": self.enabled,
             "use_chat_config": self.use_chat_config,
+            "visual_consistency": self.visual_consistency,
             "images_per_response": self.images_per_response,
             "batch_size": self.batch_size,
             "retries": self.retries,

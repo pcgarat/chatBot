@@ -74,6 +74,14 @@ def test_normalize_snapshot_keeps_rig_and_drops_chrome():
     assert "debug" not in out["images"]
     assert "darkMode" not in out["images"]
     assert "font_size" not in out
+    assert out["images"]["visual_consistency"] is True
+
+
+def test_normalize_images_snapshot_keeps_visual_consistency_off():
+    raw = _minimal_snapshot()
+    raw["images"]["visual_consistency"] = False
+    out = normalize_snapshot(raw)
+    assert out["images"]["visual_consistency"] is False
 
 
 def test_normalize_snapshot_keeps_planner_prompt_model_params():
