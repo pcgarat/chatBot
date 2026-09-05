@@ -145,3 +145,15 @@ class WorkspaceProfileRecord(Base):
     snapshot_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PlannerRulePresetRecord(Base):
+    """Preset nombrado de la selección de reglas del planificador."""
+
+    __tablename__ = "planner_rule_presets"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    name = Column(String(80), nullable=False, unique=True)
+    snapshot_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

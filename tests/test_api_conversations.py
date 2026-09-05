@@ -291,7 +291,7 @@ def test_conversation_images_persist_across_get(client):
     assert images["prompt_model"] == "llama3.2"
     assert images["prompt_model_params"]["temperature"] == 0.5
     assert images["prompt_model_params"]["think"] is False
-    assert images["prompt_system_instructions"][0]["content"] == "luz dura"
+    assert images.get("prompt_system_instructions") in (None, [])
     assert images["visual_consistency"] is True
     assert "debug" not in images
     get_r = client.get(f"/api/conversations/{cid}")
@@ -303,6 +303,30 @@ def test_conversation_images_persist_across_get(client):
     assert other.status_code == 200
     assert other.json()["title"] == "Sigue con imágenes"
     assert other.json()["images"]["prompt"] == "cinematic still"
+
+
+def test_conversation_images_drop_planner_rules(client):
+    """Las reglas del planificador son globales: no se persisten en la conversación."""
+    create = client.post("/api/conversations", json={"title": "Reglas globales", "model_id": "m"})
+    cid = create.json()["id"]
+    r = client.put(
+        f"/api/conversations/{cid}",
+        json={
+            "images": {
+                "enabled": True,
+                "prompt": "film still",
+                "prompt_system_instructions": [
+                    {"title": "Estilo", "content": "luz dura", "rule_id": "pr1"}
+                ],
+            }
+        },
+    )
+    assert r.status_code == 200
+    images = r.json()["images"]
+    assert images["prompt"] == "film still"
+    assert images.get("prompt_system_instructions") in (None, [])
+    got = client.get(f"/api/conversations/{cid}")
+    assert got.json()["images"].get("prompt_system_instructions") in (None, [])
 
 
 def test_conversation_history_turns(client):

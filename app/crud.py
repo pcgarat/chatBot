@@ -10,7 +10,7 @@ from app.services.conversation_title import derive_auto_title
 from app.services.image_illustration.anchors import strip_illustration_artifacts
 from app.services.conversation_tree import path_from_messages
 from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
-from app.services.workspace_profiles.snapshot import normalize_images_snapshot
+from app.services.workspace_profiles.snapshot import conversation_images_snapshot
 
 # Sentinel para "no actualizar inject_instruction_every" en update_conversation
 _INJECT_UNSET = object()
@@ -103,7 +103,7 @@ def create_conversation(
         history_turns=history_turns if history_turns and history_turns > 0 else 5,
         forked_from_conversation_id=forked_from_conversation_id,
         forked_from_message_id=forked_from_message_id,
-        images=json.dumps(normalize_images_snapshot(images)) if images is not None else None,
+        images=json.dumps(conversation_images_snapshot(images)) if images is not None else None,
     )
     db.add(conv)
     db.commit()
@@ -268,7 +268,7 @@ def update_conversation(
             return None
         conv.active_leaf_message_id = active_leaf_message_id
     if images is not IMAGES_UNSET:
-        conv.images = json.dumps(normalize_images_snapshot(images)) if images is not None else None
+        conv.images = json.dumps(conversation_images_snapshot(images)) if images is not None else None
     if conv.auto_title:
         apply_auto_title(db, conv)
     # No actualizar updated_at si solo cambió instruction_override (al hacer click en otra conversación no debe reordenar la lista)

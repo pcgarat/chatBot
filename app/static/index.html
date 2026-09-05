@@ -585,6 +585,23 @@
                   <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
                 <div class="accordion-content planner-rules-panel" id="accordion-images-planner-rules" role="region" aria-labelledby="accordion-images-planner-rules-btn">
+                  <div class="workspace-profile-bar planner-rule-preset-bar" role="group" aria-label="Presets de reglas del planificador">
+                    <select id="planner-rule-preset-select" class="param-control workspace-profile-select" aria-label="Preset de reglas">
+                      <option value="">Elegir preset</option>
+                    </select>
+                    <button type="button" id="btn-planner-rule-preset-apply" class="icon-btn workspace-profile-icon-btn" title="Aplicar preset" aria-label="Aplicar preset">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button type="button" id="btn-planner-rule-preset-save" class="icon-btn workspace-profile-icon-btn" title="Guardar" aria-label="Guardar preset">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    </button>
+                    <button type="button" id="btn-planner-rule-preset-save-as" class="icon-btn workspace-profile-icon-btn" title="Guardar como" aria-label="Guardar preset como">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                    <button type="button" id="btn-planner-rule-preset-delete" class="icon-btn workspace-profile-icon-btn" title="Eliminar preset" aria-label="Eliminar preset">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                  </div>
                   <div id="planner-rules-list" class="rules-list" role="list"></div>
                   <div class="rules-add-existing">
                     <select id="planner-rule-library-select" class="rule-library-select" aria-label="Seleccionar regla del planificador">
@@ -1105,7 +1122,7 @@
   <div id="workspace-profile-name-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="workspace-profile-name-title" hidden>
     <div class="modal-content workspace-profile-name-modal">
       <h2 id="workspace-profile-name-title" class="modal-title">Nombre del perfil</h2>
-      <label class="workspace-profile-name-label" for="workspace-profile-name-input">Cómo se llama este rig</label>
+      <label id="workspace-profile-name-label" class="workspace-profile-name-label" for="workspace-profile-name-input">Cómo se llama este rig</label>
       <input type="text" id="workspace-profile-name-input" class="workspace-profile-name-input" maxlength="80" placeholder="Relato · faro" autocomplete="off" />
       <div class="workspace-profile-name-actions">
         <button type="button" id="workspace-profile-name-cancel" class="btn btn-secondary">Cancelar</button>

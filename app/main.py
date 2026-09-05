@@ -16,6 +16,7 @@ from app.routers import (
     api_images,
     api_models,
     api_ollama,
+    api_planner_rule_presets,
     api_rules,
     api_workspace_profiles,
 )
@@ -28,6 +29,7 @@ app.include_router(api_rules.router)
 app.include_router(api_ollama.router)
 app.include_router(api_images.router)
 app.include_router(api_workspace_profiles.router)
+app.include_router(api_planner_rule_presets.router)
 
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():

@@ -16,7 +16,7 @@ def test_js_persists_images_on_conversation_with_other_workspace_fields():
         "async function applyWorkspaceSnapshot"
     )[0]
     assert "images:" in persist or "images :" in persist
-    assert "collectImagesSnapshot()" in persist or "snap.images" in persist
+    assert "imagesSnapshotForConversation()" in persist
 
 
 def test_js_restores_images_when_opening_conversation():
@@ -62,7 +62,7 @@ def test_js_new_conversation_copies_current_images():
     create = js.split("async function newConversation")[1].split(
         "function applyAutoTitleUi"
     )[0]
-    assert "collectImagesSnapshot()" in create
+    assert "imagesSnapshotForConversation()" in create
     assert "images:" in create
 
 
