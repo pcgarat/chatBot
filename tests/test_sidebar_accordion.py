@@ -16,6 +16,7 @@ def test_right_panel_uses_vertical_side_tabs():
         ("sidebar-tab-reglas", "tab-reglas"),
         ("sidebar-tab-parametros", "tab-parametros"),
         ("sidebar-tab-imagenes", "tab-imagenes"),
+        ("sidebar-tab-preferencias", "tab-preferencias"),
     ):
         assert f'id="{tab_id}"' in html
         assert f'id="{panel_id}"' in html
@@ -67,10 +68,11 @@ def test_ajustes_subsections_are_principal_accordion():
 
 def test_imagenes_subsections_are_principal_accordion():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    imagenes = html.split('id="tab-imagenes"')[1].split("sidebar-footer")[0]
+    imagenes = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
     for section_id in (
         "images-activation",
         "images-planner",
+        "images-planner-rules",
         "images-limits",
         "images-forge",
         "images-forge-params",
@@ -79,6 +81,7 @@ def test_imagenes_subsections_are_principal_accordion():
         assert f'data-accordion-section="{section_id}"' in imagenes
     assert 'data-accordion-section="imagenes"' not in html
     assert 'id="images-activation-heading"' in imagenes
+    assert 'id="images-planner-rules-heading"' in imagenes
     assert 'id="images-limits-heading"' in imagenes
 
 

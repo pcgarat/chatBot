@@ -6,9 +6,13 @@ INDEX = ROOT / "app" / "static" / "index.html"
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
 
-def test_images_panel_has_planner_rule_set_not_textarea():
+def _imagenes_html() -> str:
     html = INDEX.read_text(encoding="utf-8")
-    images = html.split('id="tab-imagenes"')[1].split('id="images-limits-heading"')[0]
+    return html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
+
+
+def test_images_panel_has_planner_rule_set_not_textarea():
+    images = _imagenes_html()
     assert 'id="images-prompt-system"' not in images
     assert 'id="planner-rules-list"' in images
     assert 'id="planner-rule-library-select"' in images
@@ -16,10 +20,29 @@ def test_images_panel_has_planner_rule_set_not_textarea():
     assert 'id="btn-add-planner-rule"' in images
 
 
+def test_planner_rules_are_sibling_accordion_not_nested_in_planner():
+    images = _imagenes_html()
+    assert 'data-accordion-section="images-planner-rules"' in images
+    planner = images.split('data-accordion-section="images-planner"')[1].split(
+        'data-accordion-section="images-planner-rules"'
+    )[0]
+    rules = images.split('data-accordion-section="images-planner-rules"')[1].split(
+        'data-accordion-section="images-limits"'
+    )[0]
+    assert 'id="planner-rules-list"' not in planner
+    assert 'id="planner-rules-list"' in rules
+    assert 'id="images-planner-rules-heading"' in rules
+    assert "accordion-title" in rules
+    assert "accordion-caption" in rules
+    assert "panel-section-title" not in rules
+    assert "panel-hint" not in rules
+
+
 def test_planner_rules_stay_enabled_with_chat_config():
-    html = INDEX.read_text(encoding="utf-8")
-    after_list = html.split('id="planner-rules-list"')[1]
-    planner_ui = after_list.split('id="images-limits-heading"')[0]
+    images = _imagenes_html()
+    planner_ui = images.split('data-accordion-section="images-planner-rules"')[1].split(
+        'data-accordion-section="images-limits"'
+    )[0]
     assert "data-images-chat-config-control" not in planner_ui
 
 

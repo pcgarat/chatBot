@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -258,17 +259,20 @@ def _resolve_send_parent(db, conv, requested_parent_id: str | None) -> str | Non
 
 
 @router.get("/conversations", response_model=list[ConversationListItem])
-def list_conversations(db: Session = Depends(get_db)):
-    convs = crud.list_conversations(db)
-    return convs
+def list_conversations(
+    sort: Literal["activity", "created_at"] = Query(default="activity"),
+    db: Session = Depends(get_db),
+):
+    return crud.list_conversations(db, sort=sort)
 
 
 @router.get("/messages", response_model=list[MessageHistoryItem])
 def list_messages(
     limit: int = Query(default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT),
+    sort: Literal["message", "image"] = Query(default="message"),
     db: Session = Depends(get_db),
 ):
-    rows = crud.list_assistant_messages(db, limit=limit)
+    rows = crud.list_assistant_messages(db, limit=limit, sort=sort)
     return [
         MessageHistoryItem(
             id=msg.id,
@@ -277,8 +281,9 @@ def list_messages(
             parent_id=msg.parent_id,
             content_preview=crud.message_content_preview(msg.content),
             created_at=msg.created_at,
+            latest_image_at=latest_image_at,
         )
-        for msg, title in rows
+        for msg, title, latest_image_at in rows
     ]
 
 

@@ -1,4 +1,4 @@
-"""Modelo activo, Ctx y preferencias viven en la barra de estado inferior."""
+"""Modelo activo y Ctx viven en la barra de estado inferior."""
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
@@ -26,8 +26,8 @@ def test_model_and_ctx_live_in_status_bar_right():
     assert 'id="connection-status-dot"' in footer
     assert 'id="context-usage-row"' in footer
     assert 'id="context-usage-badge"' in footer
-    assert 'id="dark-mode-toggle"' in footer
-    assert 'id="auto-scroll-during-generation"' in footer
+    assert 'id="dark-mode-toggle"' not in footer
+    assert 'id="auto-scroll-during-generation"' not in footer
 
 
 def test_header_no_longer_hosts_model_or_ctx():
@@ -54,14 +54,14 @@ def test_status_bar_ctx_shows_used_and_available_detail():
     assert "ventana" in js
 
 
-def test_autoscroll_sits_beside_theme_toggle_in_status_bar():
+def test_theme_and_autoscroll_live_in_preferences_not_status_bar():
     html = INDEX_HTML.read_text(encoding="utf-8")
     footer = _footer_block(html)
-    auto_pos = footer.index('id="auto-scroll-during-generation"')
-    theme_pos = footer.index('id="dark-mode-toggle"')
-    assert auto_pos < theme_pos
-    assert "status-bar-autoscroll" in footer
-    assert "status-bar-theme" in footer
+    prefs = html.split('id="tab-preferencias"')[1].split("sidebar-footer")[0]
+    assert 'id="dark-mode-toggle"' not in footer
+    assert 'id="auto-scroll-during-generation"' not in footer
+    assert 'id="dark-mode-toggle"' in prefs
+    assert 'id="auto-scroll-during-generation"' in prefs
 
 
 def test_context_usage_render_sets_status_bar_title(client):
@@ -73,3 +73,5 @@ def test_context_usage_render_sets_status_bar_title(client):
     assert 'class="app-status-bar-right"' in r.text
     assert 'id="context-usage-row"' in r.text
     assert 'id="auto-scroll-during-generation"' in r.text
+    footer = r.text[r.text.index('id="app-status-bar"') : r.text.index("</footer>")]
+    assert 'id="auto-scroll-during-generation"' not in footer

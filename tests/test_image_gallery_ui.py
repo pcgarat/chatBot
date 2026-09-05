@@ -1,5 +1,6 @@
 """Vista de galería de imágenes generadas (listado, filtros, lightbox)."""
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML = ROOT / "app" / "static" / "index.html"
@@ -128,6 +129,56 @@ def test_gallery_css_toggles_panels_independently():
         + 200
     ]
     assert "display: none" in chunk or "display:none" in chunk
+
+
+def test_gallery_thumbs_keep_original_aspect_ratio():
+    """Las miniaturas no deben recortarse a un recuadro fijo (cover + alto fijo)."""
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    js = APP_JS.read_text(encoding="utf-8")
+    block = re.search(r"\.image-gallery-card img\s*\{([^}]+)\}", css)
+    assert block, "Falta regla .image-gallery-card img"
+    body = block.group(1)
+    assert "object-fit: cover" not in body
+    assert not re.search(r"\bheight\s*:\s*\d+px", body), (
+        "Un alto fijo aplasta retrato y panorama al mismo recuadro"
+    )
+    assert re.search(r"height\s*:\s*auto", body)
+    assert "object-fit: contain" in body
+    assert not re.search(r"aspect-ratio\s*:\s*[\d.]+", body)
+    render = js[js.index("function renderGalleryGrid") : js.index("function loadGalleryPage")]
+    assert 'width="' in render
+    assert "item.width" in render
+    assert "item.height" in render
+
+
+def test_gallery_cards_do_not_overflow_grid_rows():
+    """Retrato y paisaje juntos no deben pintar unas tarjetas encima de otras.
+
+    min-height en el img hace cíclico el track sizing del grid: la fila queda
+    más baja que la imagen y la tarjeta (button) se desborda a la fila siguiente.
+    """
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    js = APP_JS.read_text(encoding="utf-8")
+    img = re.search(r"\.image-gallery-card img\s*\{([^}]+)\}", css)
+    assert img, "Falta regla .image-gallery-card img"
+    img_body = img.group(1)
+    assert "min-height" not in img_body, (
+        "min-height en el thumb subestima la fila y las tarjetas se pisan"
+    )
+    card = re.search(r"\.image-gallery-card\s*\{([^}]+)\}", css)
+    assert card, "Falta regla .image-gallery-card"
+    card_body = card.group(1)
+    assert "width: 100%" in card_body
+    assert "min-width: 0" in card_body
+    assert "height: max-content" in card_body
+    assert "appearance: none" in card_body
+    grid = re.search(r"\.image-gallery-grid\s*\{([^}]+)\}", css)
+    assert grid, "Falta regla .image-gallery-grid"
+    assert "align-items: start" in grid.group(1)
+    render = js[js.index("function renderGalleryGrid") : js.index("function loadGalleryPage")]
+    assert "aspect-ratio:" in render
+    assert "item.width" in render
+    assert "item.height" in render
 
 
 def test_index_serves_gallery_button(client):

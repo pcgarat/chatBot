@@ -18,9 +18,7 @@
   let models = [];
   let currentProvider = "ollama";
   let currentAbortController = null;
-  /** Referencias al mensaje en streaming para poder mostrar/ocultar debug sin re-renderizar. */
   let currentStreamingMsgEl = null;
-  let currentStreamingDebugEl = null;
   /** Parámetros del proveedor actual: { provider, params: { paramId: { type, default, min, max, api_key } } } */
   let paramsConfig = { provider: "", params: {} };
   /** Origen de los parámetros mostrados: "user" | "preset" | "default" */
@@ -42,6 +40,7 @@
 
   const el = {
     conversationsList: document.getElementById("conversations-list"),
+    leftHistorySortSelect: document.getElementById("left-history-sort-select"),
     conversationsTrash: document.getElementById("conversations-trash"),
     conversationsTrashList: document.getElementById("conversations-trash-list"),
     conversationTitle: document.getElementById("conversation-title"),
@@ -72,7 +71,6 @@
     ruleEditBtnSaveNew: document.getElementById("rule-edit-btn-save-new"),
     saveToChromadbSelect: document.getElementById("save-to-chromadb-select"),
     historyTurnsInput: document.getElementById("history-turns-input"),
-    showDebugModeCheck: document.getElementById("show-debug-mode"),
     autoScrollDuringGenerationCheck: document.getElementById("auto-scroll-during-generation"),
     messagesContainer: document.getElementById("messages-container"),
     instructionOverride: document.getElementById("instruction-override"),
@@ -126,6 +124,362 @@
   const illustratingMessageIds = new Set();
   const illustrateAbortControllers = new Set();
   let readingModeMessageIndex = null;
+
+  const DEBUG_LOG_SIZE_STORAGE_KEY = "chatbot_debug_log_size";
+  const DEBUG_LOG_SIZE_DEFAULT = 100;
+  const DEBUG_LOG_SIZE_MIN = 20;
+  const DEBUG_LOG_SIZE_MAX = 500;
+  const DEBUG_LOG_SIZE_STEP = 20;
+
+  function getStoredDebugLogSize() {
+    try {
+      const raw = localStorage.getItem(DEBUG_LOG_SIZE_STORAGE_KEY);
+      if (raw == null) return DEBUG_LOG_SIZE_DEFAULT;
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n)) {
+        return Math.max(DEBUG_LOG_SIZE_MIN, Math.min(DEBUG_LOG_SIZE_MAX, n));
+      }
+    } catch (_) {}
+    return DEBUG_LOG_SIZE_DEFAULT;
+  }
+
+  function setStoredDebugLogSize(n) {
+    try {
+      localStorage.setItem(DEBUG_LOG_SIZE_STORAGE_KEY, String(n));
+    } catch (_) {}
+  }
+
+  function createDebugLogBuffer(getMaxSize) {
+    const items = [];
+    function maxSize() {
+      const n = typeof getMaxSize === "function" ? getMaxSize() : getMaxSize;
+      const parsed = parseInt(n, 10);
+      return Math.max(1, Number.isFinite(parsed) ? parsed : 1);
+    }
+    function trim() {
+      const max = maxSize();
+      while (items.length > max) items.shift();
+    }
+    function push(entry) {
+      items.push(entry);
+      trim();
+      return entry;
+    }
+    function list() {
+      return items.slice();
+    }
+    return { push: push, list: list, trim: trim };
+  }
+
+  const chatDebugBuffer = createDebugLogBuffer(getStoredDebugLogSize);
+  const imagesDebugBuffer = createDebugLogBuffer(getStoredDebugLogSize);
+  let chatDebugSeq = 0;
+  let imagesDebugSeq = 0;
+  let openDebugPanel = null;
+  const imageQueueDebugSeen = {};
+  const DEBUG_STATUS_LABELS = {
+    sending: "Enviando",
+    waiting: "Esperando respuesta",
+    streaming: "Recibiendo",
+    done: "Completado",
+    error: "Error",
+    cancelled: "Cancelado",
+    pending: "Encolada",
+    generating: "Generándose",
+    completed: "Generada",
+    failed: "Fallida",
+    info: "Log",
+  };
+
+  function isDebugPanelOpen(which) {
+    return openDebugPanel === which;
+  }
+
+  function formatDebugPayload(value) {
+    if (value == null || value === "") return "";
+    if (typeof value === "string") return value;
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (_) {
+      return String(value);
+    }
+  }
+
+  function debugEntryShouldExpand(entry) {
+    return (
+      entry.status === "sending" ||
+      entry.status === "waiting" ||
+      entry.status === "streaming" ||
+      entry.status === "generating"
+    );
+  }
+
+  function debugEntryBodyHtml(entry) {
+    const parts = [];
+    if (entry.request) {
+      parts.push("<pre>" + escapeHtml("Request:\n" + formatDebugPayload(entry.request)) + "</pre>");
+    }
+    if (entry.response) {
+      parts.push("<pre>" + escapeHtml("Response:\n" + formatDebugPayload(entry.response)) + "</pre>");
+    }
+    if (entry.details) {
+      parts.push("<pre>" + escapeHtml(formatDebugPayload(entry.details)) + "</pre>");
+    }
+    if (entry.imageLink) {
+      const link = entry.imageLink;
+      const label = link.filename || link.sceneId || "imagen";
+      parts.push(
+        '<a href="#" class="debug-image-link"' +
+          ' data-conversation-id="' + escapeHtml(link.conversationId || "") + '"' +
+          ' data-message-id="' + escapeHtml(link.messageId || "") + '"' +
+          ' data-filename="' + escapeHtml(link.filename || "") + '"' +
+          ' data-scene-id="' + escapeHtml(link.sceneId || "") + '">' +
+          escapeHtml("Ver en la conversación: " + label) +
+          "</a>"
+      );
+    }
+    return parts.join("");
+  }
+
+  function debugEntryHtml(entry) {
+    const expanded = debugEntryShouldExpand(entry);
+    const status = DEBUG_STATUS_LABELS[entry.status] || entry.status || "";
+    const body = debugEntryBodyHtml(entry);
+    return (
+      '<article class="debug-entry" data-debug-id="' + escapeHtml(entry.id) + '">' +
+        '<button type="button" class="debug-entry-toggle" aria-expanded="' +
+        (expanded ? "true" : "false") +
+        '">' +
+          '<span class="debug-entry-time">' + escapeHtml(entry.ts || "") + "</span>" +
+          '<span class="debug-entry-status">' + escapeHtml(status) + "</span>" +
+          '<span class="debug-entry-title">' + escapeHtml(entry.title || "") + "</span>" +
+        "</button>" +
+        (body
+          ? '<div class="debug-entry-body"' + (expanded ? "" : " hidden") + ">" + body + "</div>"
+          : "") +
+      "</article>"
+    );
+  }
+
+  function renderDebugLog(logId, buffer) {
+    const log = document.getElementById(logId);
+    if (!log) return;
+    const items = buffer.list();
+    log.innerHTML = items.length
+      ? items.map(debugEntryHtml).join("")
+      : '<p class="debug-log-empty">Sin eventos todavía.</p>';
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function renderChatDebugLog() {
+    if (!isDebugPanelOpen("chat")) return;
+    renderDebugLog("chat-debug-log", chatDebugBuffer);
+  }
+
+  function renderImagesDebugLog() {
+    if (!isDebugPanelOpen("images")) return;
+    renderDebugLog("images-debug-log", imagesDebugBuffer);
+  }
+
+  function pushChatDebugEntry(partial) {
+    const entry = Object.assign(
+      {
+        id: "chat-" + (++chatDebugSeq),
+        ts: new Date().toISOString().slice(11, 19),
+        kind: "llm",
+        title: "LLM chat",
+        status: "sending",
+        request: null,
+        response: null,
+        details: null,
+      },
+      partial || {}
+    );
+    chatDebugBuffer.push(entry);
+    renderChatDebugLog();
+    return entry;
+  }
+
+  function updateChatDebugEntry(id, patch) {
+    const entry = chatDebugBuffer.list().find(function (item) {
+      return item.id === id;
+    });
+    if (!entry) return;
+    Object.assign(entry, patch || {});
+    renderChatDebugLog();
+  }
+
+  function pushImagesDebugEntry(partial) {
+    const entry = Object.assign(
+      {
+        id: "img-" + (++imagesDebugSeq),
+        ts: new Date().toISOString().slice(11, 19),
+        kind: "log",
+        title: "",
+        status: "info",
+        request: null,
+        response: null,
+        details: null,
+        imageLink: null,
+      },
+      partial || {}
+    );
+    imagesDebugBuffer.push(entry);
+    renderImagesDebugLog();
+    return entry;
+  }
+
+  function appendImagesDebugLog(line) {
+    pushImagesDebugEntry({
+      kind: "log",
+      title: String(line || ""),
+      status: "info",
+    });
+  }
+
+  function setDebugPanelOpen(which) {
+    const next = openDebugPanel === which ? null : which || null;
+    openDebugPanel = next;
+    const column = document.getElementById("column-right");
+    if (column) column.classList.toggle("is-debug-expanded", !!next);
+    ["chat", "images"].forEach(function (id) {
+      const section = document.getElementById("debug-accordion-" + id);
+      const toggle = document.getElementById("debug-" + id + "-toggle");
+      const body = document.getElementById("debug-" + id + "-body");
+      const open = next === id;
+      if (section) section.classList.toggle("is-open", open);
+      if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      if (body) body.hidden = !open;
+    });
+    if (next === "chat") renderChatDebugLog();
+    if (next === "images") {
+      renderImagesDebugLog();
+      loadImageQueueForDebug();
+    } else {
+      maybeStopImageQueuePoll();
+    }
+  }
+
+  function syncDebugLogSizeControl(size) {
+    const decreaseBtn = document.getElementById("pref-debug-log-decrease");
+    const increaseBtn = document.getElementById("pref-debug-log-increase");
+    const valueEl = document.getElementById("pref-debug-log-value");
+    if (decreaseBtn) decreaseBtn.disabled = size <= DEBUG_LOG_SIZE_MIN;
+    if (increaseBtn) increaseBtn.disabled = size >= DEBUG_LOG_SIZE_MAX;
+    if (valueEl) valueEl.textContent = String(size);
+  }
+
+  function setDebugLogSize(delta) {
+    const current = getStoredDebugLogSize();
+    let next = Math.round((current + (delta || 0)) / DEBUG_LOG_SIZE_STEP) * DEBUG_LOG_SIZE_STEP;
+    next = Math.max(DEBUG_LOG_SIZE_MIN, Math.min(DEBUG_LOG_SIZE_MAX, next));
+    setStoredDebugLogSize(next);
+    chatDebugBuffer.trim();
+    imagesDebugBuffer.trim();
+    syncDebugLogSizeControl(next);
+    renderChatDebugLog();
+    renderImagesDebugLog();
+  }
+
+  function ingestQueueItemsForDebug(items) {
+    (items || []).forEach(function (item) {
+      if (!item || !item.id) return;
+      const prev = imageQueueDebugSeen[item.id];
+      if (prev === item.status) return;
+      imageQueueDebugSeen[item.id] = item.status;
+      if (prev == null && item.status !== "pending" && item.status !== "generating") {
+        return;
+      }
+      const entry = {
+        kind: "queue",
+        title: item.scene_id ? "Escena " + item.scene_id : "Job " + item.id,
+        status: item.status,
+        details: {
+          job_id: item.id,
+          scene_id: item.scene_id,
+          message_id: item.message_id,
+          conversation_id: item.conversation_id,
+          error: item.error_message || null,
+          filename: item.result_filename || null,
+        },
+      };
+      if (item.status === "completed") {
+        entry.title = "Imagen generada · " + (item.result_filename || item.scene_id || item.id);
+        entry.imageLink = {
+          conversationId: item.conversation_id,
+          messageId: item.message_id,
+          filename: item.result_filename || "",
+          sceneId: item.scene_id || "",
+        };
+      } else if (item.status === "failed") {
+        entry.title = "Imagen fallida · " + (item.scene_id || item.id);
+      } else if (item.status === "generating") {
+        entry.title = "Generando imagen · " + (item.scene_id || item.id);
+      } else if (item.status === "pending") {
+        entry.title = "Encolada · " + (item.scene_id || item.id);
+      }
+      pushImagesDebugEntry(entry);
+    });
+  }
+
+  function initDebugDock() {
+    syncDebugLogSizeControl(getStoredDebugLogSize());
+    const chatToggle = document.getElementById("debug-chat-toggle");
+    const imagesToggle = document.getElementById("debug-images-toggle");
+    if (chatToggle) {
+      chatToggle.addEventListener("click", function () {
+        setDebugPanelOpen("chat");
+      });
+    }
+    if (imagesToggle) {
+      imagesToggle.addEventListener("click", function () {
+        setDebugPanelOpen("images");
+      });
+    }
+    const stopBtn = document.getElementById("images-debug-stop");
+    if (stopBtn) {
+      stopBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        abortAllIllustrations();
+      });
+    }
+    const prefDec = document.getElementById("pref-debug-log-decrease");
+    const prefInc = document.getElementById("pref-debug-log-increase");
+    if (prefDec) {
+      prefDec.addEventListener("click", function () {
+        if (!this.disabled) setDebugLogSize(-DEBUG_LOG_SIZE_STEP);
+      });
+    }
+    if (prefInc) {
+      prefInc.addEventListener("click", function () {
+        if (!this.disabled) setDebugLogSize(DEBUG_LOG_SIZE_STEP);
+      });
+    }
+    const dock = document.getElementById("debug-dock");
+    if (dock) {
+      dock.addEventListener("click", function (e) {
+        const toggle = e.target.closest(".debug-entry-toggle");
+        if (toggle && dock.contains(toggle)) {
+          const body = toggle.parentElement && toggle.parentElement.querySelector(".debug-entry-body");
+          if (!body) return;
+          const open = body.hidden;
+          body.hidden = !open;
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+          return;
+        }
+        const link = e.target.closest("a.debug-image-link");
+        if (!link || !dock.contains(link)) return;
+        e.preventDefault();
+        openConversationAtIllustration(
+          link.getAttribute("data-conversation-id"),
+          link.getAttribute("data-message-id"),
+          link.getAttribute("data-filename"),
+          link.getAttribute("data-scene-id")
+        );
+      });
+    }
+  }
 
   /** Etiquetas profesionales para la barra de estado (códigos → texto). */
   const STATUS_LABELS = {
@@ -1481,7 +1835,8 @@
 
   async function loadConversations() {
     try {
-      const list = await fetchJson(`${API}/conversations`);
+      const sort = readStoredConversationSort();
+      const list = await fetchJson(`${API}/conversations?sort=${encodeURIComponent(sort)}`);
       renderConversationsList(list);
       if (currentAutoTitle && currentConversationId && el.conversationTitle) {
         const item = (list || []).find(function (c) { return c.id === currentConversationId; });
@@ -1494,9 +1849,82 @@
   }
 
   const LEFT_HISTORY_MODE_KEY = "leftHistoryMode";
+  const LEFT_HISTORY_SORT_CONVERSATIONS_KEY = "leftHistorySortConversations";
+  const LEFT_HISTORY_SORT_MESSAGES_KEY = "leftHistorySortMessages";
+  const CONV_SORT_OPTIONS = [
+    { value: "activity", label: "Actividad" },
+    { value: "created_at", label: "Creación" },
+  ];
+  const MSG_SORT_OPTIONS = [
+    { value: "message", label: "Mensaje" },
+    { value: "image", label: "Imagen" },
+  ];
 
   function isMessagesHistoryMode() {
     return leftHistoryMode === "messages";
+  }
+
+  function readStoredConversationSort() {
+    try {
+      return localStorage.getItem(LEFT_HISTORY_SORT_CONVERSATIONS_KEY) === "created_at"
+        ? "created_at"
+        : "activity";
+    } catch (_) {
+      return "activity";
+    }
+  }
+
+  function persistConversationSort(sort) {
+    try {
+      localStorage.setItem(
+        LEFT_HISTORY_SORT_CONVERSATIONS_KEY,
+        sort === "created_at" ? "created_at" : "activity"
+      );
+    } catch (_) {}
+  }
+
+  function readStoredMessageSort() {
+    try {
+      return localStorage.getItem(LEFT_HISTORY_SORT_MESSAGES_KEY) === "image" ? "image" : "message";
+    } catch (_) {
+      return "message";
+    }
+  }
+
+  function persistMessageSort(sort) {
+    try {
+      localStorage.setItem(
+        LEFT_HISTORY_SORT_MESSAGES_KEY,
+        sort === "image" ? "image" : "message"
+      );
+    } catch (_) {}
+  }
+
+  function currentLeftHistorySort() {
+    return isMessagesHistoryMode() ? readStoredMessageSort() : readStoredConversationSort();
+  }
+
+  function syncLeftHistorySortControl() {
+    const select = el.leftHistorySortSelect;
+    if (!select) return;
+    const options = isMessagesHistoryMode() ? MSG_SORT_OPTIONS : CONV_SORT_OPTIONS;
+    const current = currentLeftHistorySort();
+    select.innerHTML = options
+      .map(function (o) {
+        return `<option value="${o.value}">${o.label}</option>`;
+      })
+      .join("");
+    select.value = current;
+  }
+
+  function onLeftHistorySortChange() {
+    const value = el.leftHistorySortSelect && el.leftHistorySortSelect.value;
+    if (isMessagesHistoryMode()) {
+      persistMessageSort(value === "image" ? "image" : "message");
+    } else {
+      persistConversationSort(value === "created_at" ? "created_at" : "activity");
+    }
+    refreshLeftHistory();
   }
 
   function readStoredLeftHistoryMode() {
@@ -1539,6 +1967,7 @@
   }
 
   async function refreshLeftHistory() {
+    syncLeftHistorySortControl();
     if (isMessagesHistoryMode()) return loadMessageHistory();
     return loadConversations();
   }
@@ -1546,7 +1975,8 @@
   async function loadMessageHistory() {
     if (el.conversationsTrash) el.conversationsTrash.hidden = true;
     try {
-      const list = await fetchJson(`${API}/messages`);
+      const sort = readStoredMessageSort();
+      const list = await fetchJson(`${API}/messages?sort=${encodeURIComponent(sort)}`);
       renderMessageHistoryList(list || []);
     } catch (e) {
       showError("Error al cargar mensajes: " + e.message);
@@ -1557,6 +1987,7 @@
     leftHistoryMode = mode === "messages" ? "messages" : "conversations";
     persistLeftHistoryMode(leftHistoryMode);
     applyConsultaChrome();
+    syncLeftHistorySortControl();
     await refreshLeftHistory();
   }
 
@@ -1640,7 +2071,17 @@
     return t;
   }
 
-  function buildConversationForest(list) {
+  function conversationWhenIso(c, sort) {
+    if (sort === "created_at") return c.created_at;
+    return c.last_message_at || c.updated_at;
+  }
+
+  function conversationGroupTs(c, childrenByParent, sort) {
+    if (sort === "created_at") return new Date(c.created_at || 0).getTime();
+    return conversationActivityTs(c, childrenByParent);
+  }
+
+  function buildConversationForest(list, sort) {
     const byId = new Map(list.map((c) => [c.id, c]));
     const childrenByParent = new Map();
     list.forEach((c) => {
@@ -1652,7 +2093,7 @@
     });
     childrenByParent.forEach((kids) => {
       kids.sort(
-        (a, b) => conversationActivityTs(b, childrenByParent) - conversationActivityTs(a, childrenByParent)
+        (a, b) => conversationGroupTs(b, childrenByParent, sort) - conversationGroupTs(a, childrenByParent, sort)
       );
     });
     const roots = list.filter(
@@ -1663,15 +2104,16 @@
 
   function renderConversationsList(list) {
     if (!el.conversationsList) return;
-    const { roots, childrenByParent } = buildConversationForest(list || []);
+    const sort = readStoredConversationSort();
+    const { roots, childrenByParent } = buildConversationForest(list || [], sort);
     const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
     roots.forEach((c) => {
-      const g = getConversationGroup(new Date(conversationActivityTs(c, childrenByParent)));
+      const g = getConversationGroup(new Date(conversationGroupTs(c, childrenByParent, sort)));
       groups[g].push(c);
     });
     const order = ["hoy", "ayer", "semana", "anteriores"];
     const renderItem = (c, depth) => {
-      const when = formatDate(c.last_message_at || c.updated_at);
+      const when = formatDate(conversationWhenIso(c, sort));
       const meta = `${c.provider || "ollama"}/${c.model_id} · ${when}`;
       const kids = childrenByParent.get(c.id) || [];
       const item = `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""} ${depth ? "conversation-item-fork" : ""}" data-id="${escapeHtml(c.id)}" data-depth="${depth}" title="${escapeHtml(meta)}" style="padding-left: ${8 + depth * 14}px">
@@ -1707,6 +2149,11 @@
     });
   }
 
+  function messageHistoryWhenIso(item, sort) {
+    if (sort === "image" && item.latest_image_at) return item.latest_image_at;
+    return item.created_at;
+  }
+
   function renderMessageHistoryList(list) {
     if (!el.conversationsList) return;
     const items = list || [];
@@ -1714,9 +2161,10 @@
       el.conversationsList.innerHTML = '<p class="conv-group-label">No hay respuestas todavía.</p>';
       return;
     }
+    const sort = readStoredMessageSort();
     const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
     items.forEach(function (item) {
-      groups[getConversationGroup(item.created_at)].push(item);
+      groups[getConversationGroup(messageHistoryWhenIso(item, sort))].push(item);
     });
     const order = ["hoy", "ayer", "semana", "anteriores"];
     el.conversationsList.innerHTML = order
@@ -1725,7 +2173,7 @@
         const header = `<div class="conv-group-label" aria-hidden="true">${escapeHtml(CONV_GROUP_LABELS[key])}</div>`;
         const rows = groups[key]
           .map(function (item) {
-            const when = formatDate(item.created_at);
+            const when = formatDate(messageHistoryWhenIso(item, sort));
             const preview = item.content_preview || "(sin texto)";
             const convTitle = item.conversation_title || "Conversación";
             const active = item.id === consultaAssistantId ? " active" : "";
@@ -2497,7 +2945,11 @@
     renderParamsSourceLabel();
     renderParamsToSend();
     renderMessages();
-    if (conv && !preserveView) scheduleScrollMessagesToBottom();
+    if (conv && options && options.keepConsulta) {
+      scheduleScrollMessagesToTop();
+    } else if (conv && !preserveView) {
+      scheduleScrollMessagesToBottom();
+    }
     refreshLeftHistory();
     lastUsage = null;
     await loadContextLength();
@@ -2933,11 +3385,6 @@
     );
   }
 
-  function isShowDebugMode() {
-    const el = document.getElementById("show-debug-mode");
-    return el && el.checked;
-  }
-
   /** Devuelve si el usuario quiere scroll automático al final mientras se genera la respuesta. Por defecto true. */
   function isAutoScrollDuringGeneration() {
     return !el.autoScrollDuringGenerationCheck || el.autoScrollDuringGenerationCheck.checked;
@@ -2957,9 +3404,21 @@
     return container.scrollTop + container.clientHeight >= container.scrollHeight - slack;
   }
 
+  function isMessagesScrolledToTop(threshold) {
+    const container = el.messagesContainer;
+    if (!container) return true;
+    const slack = threshold == null ? 64 : threshold;
+    return container.scrollTop <= slack;
+  }
+
   function scrollMessagesToBottom() {
     if (!el.messagesContainer) return;
     el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
+  }
+
+  function scrollMessagesToTop() {
+    if (!el.messagesContainer) return;
+    el.messagesContainer.scrollTop = 0;
   }
 
   let scrollToBottomGeneration = 0;
@@ -2988,6 +3447,26 @@
     window.setTimeout(followLayout, 400);
   }
 
+  /** Scroll al inicio al abrir una consulta; se anula si el usuario ya se alejó del top. */
+  function scheduleScrollMessagesToTop() {
+    const generation = ++scrollToBottomGeneration;
+    const run = function () {
+      if (generation !== scrollToBottomGeneration) return;
+      scrollMessagesToTop();
+    };
+    const followLayout = function () {
+      if (generation !== scrollToBottomGeneration) return;
+      if (isMessagesScrolledToTop(96)) scrollMessagesToTop();
+    };
+    run();
+    requestAnimationFrame(function () {
+      run();
+      requestAnimationFrame(run);
+    });
+    window.setTimeout(followLayout, 120);
+    window.setTimeout(followLayout, 400);
+  }
+
   function renderMessages() {
     if (!el.messagesContainer) return;
     const displayMessages = messagesForDisplay();
@@ -2996,7 +3475,6 @@
       return;
     }
     const prevScrollTop = el.messagesContainer.scrollTop;
-    const showDebug = isShowDebugMode();
     const consulta = Boolean(consultaAssistantId);
     el.messagesContainer.innerHTML = displayMessages
       .map(
@@ -3043,15 +3521,6 @@
           const footerBtns = (toInputBtn || deleteCopyBtns || illustrateBtn || readBtn || moreMenu)
             ? `<div class="message-footer"><div class="message-footer-actions">${toInputBtn}${deleteCopyBtns}${illustrateBtn}${readBtn}${moreMenu}</div></div>`
             : "";
-          let debugHtml = "";
-          if (showDebug && m.role === "assistant" && (m.debug_request || m.debug_response)) {
-            if (m.debug_request) {
-              debugHtml += `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${escapeHtml(m.debug_request)}</div>`;
-            }
-            if (m.debug_response) {
-              debugHtml += `<div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(m.debug_response)}</div>`;
-            }
-          }
           const isUser = m.role === "user";
           const rowClass = `${isUser ? "message-row user-row" : "message-row"}${isInherited ? " message-row-inherited" : ""}`;
           const inheritedSplit = isInherited && (!displayMessages[displayIdx + 1] || displayMessages[displayIdx + 1].inherited !== true)
@@ -3072,7 +3541,6 @@
           return `<div class="${rowClass}" data-msg-id="${m.id ? escapeHtml(m.id) : ""}">
             <div style="max-width: ${isUser ? "70%" : "100%"}; flex: 1; min-width: 0;">
               <div class="${bubbleClass}">${bodyHtml}</div>
-              ${debugHtml}
               ${footerBtns}
             </div>
           </div>${inheritedSplit}`;
@@ -3146,7 +3614,9 @@
     bindMessageContextMenus();
     enhanceIllustrationFrames(el.messagesContainer);
     scheduleConversationImageFilter();
-    if (isAutoScrollDuringGeneration()) {
+    if (consulta) {
+      el.messagesContainer.scrollTop = prevScrollTop;
+    } else if (isAutoScrollDuringGeneration()) {
       el.messagesContainer.scrollTop = el.messagesContainer.scrollHeight;
     } else {
       el.messagesContainer.scrollTop = prevScrollTop;
@@ -3374,14 +3844,10 @@
 
     const msgEl = document.createElement("div");
     msgEl.className = "message-row";
-    const showDebug = isShowDebugMode();
-    msgEl.innerHTML = '<div style="max-width: 100%; flex: 1; min-width: 0;"><div class="message-bubble assistant"><span class="content"></span></div><div class="message-debug-stream"></div></div>';
+    msgEl.innerHTML = '<div style="max-width: 100%; flex: 1; min-width: 0;"><div class="message-bubble assistant"><span class="content"></span></div></div>';
     if (el.messagesContainer) el.messagesContainer.appendChild(msgEl);
     const contentEl = msgEl.querySelector(".content");
-    const debugStreamEl = msgEl.querySelector(".message-debug-stream");
-    debugStreamEl.style.display = showDebug ? "block" : "none";
     currentStreamingMsgEl = msgEl;
-    currentStreamingDebugEl = debugStreamEl;
     scrollToBottomIfEnabled();
 
     let analyzingDotsInterval = null;
@@ -3402,6 +3868,7 @@
     const chatStatusId = appStatus.push("chat", "chat.preparing");
     currentAbortController = new AbortController();
     setComposerPrimaryActionState();
+    let chatDebugEntry = null;
     try {
       appStatus.update(chatStatusId, "chat.sending");
       const systemInstructionGlobal = getRulesTextForSystem();
@@ -3415,6 +3882,16 @@
       };
       if (parentId) bodyPayload.parent_message_id = parentId;
       if (Object.keys(modelParams).length > 0) bodyPayload.model_params = modelParams;
+      chatDebugEntry = pushChatDebugEntry({
+        title: "Petición al LLM de chat",
+        status: "sending",
+        details: {
+          conversation_id: currentConversationId,
+          model: (el.modelSelect && el.modelSelect.value) || "",
+          provider: currentProvider,
+          params: modelParams,
+        },
+      });
       const res = await fetch(`${API}/conversations/${currentConversationId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3426,12 +3903,13 @@
         throw new Error(err.detail || res.statusText);
       }
       appStatus.update(chatStatusId, "chat.awaiting_response");
+      updateChatDebugEntry(chatDebugEntry.id, { status: "waiting" });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let fullContent = "";
       let debugRequest = null;
-      const debugMetaLines = []; // Solo metadata (sin los chunks de content)
+      const debugMetaLines = [];
       let receivedFirstToken = false;
       while (true) {
         const { done, value } = await reader.read();
@@ -3447,15 +3925,18 @@
             const isContentChunk = data.content !== undefined && Object.keys(data).length === 1;
             if (!isContentChunk) {
               debugMetaLines.push(line);
-              if (debugStreamEl) {
-                debugStreamEl.innerHTML = `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${debugRequest ? escapeHtml(debugRequest) : "(cargando...)"}</div><div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(debugMetaLines.join("\n"))}</div>`;
-              }
+              updateChatDebugEntry(chatDebugEntry.id, {
+                request: debugRequest,
+                response: debugMetaLines.join("\n"),
+              });
             }
             if (data.debug_request) {
               debugRequest = data.debug_request;
-              if (debugStreamEl) {
-                debugStreamEl.innerHTML = `<div class="message-debug-block"><div class="debug-label-text">Request al LLM:</div>${escapeHtml(debugRequest)}</div><div class="message-debug-block"><div class="debug-label-text">Response metadata:</div>${escapeHtml(debugMetaLines.join("\n"))}</div>`;
-              }
+              updateChatDebugEntry(chatDebugEntry.id, {
+                request: debugRequest,
+                response: debugMetaLines.join("\n"),
+                status: "waiting",
+              });
             }
             if (data.mcp_contexts) {
               appStatus.update(chatStatusId, "chat.receiving_context");
@@ -3465,6 +3946,11 @@
               fullContent += `[Error: ${data.error}]`;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
               appStatus.update(chatStatusId, "chat.error");
+              updateChatDebugEntry(chatDebugEntry.id, {
+                status: "error",
+                response: debugMetaLines.join("\n"),
+                details: data.error,
+              });
             }
             if (data.user_message_id) {
               allMessages.forEach((m) => {
@@ -3481,6 +3967,7 @@
               if (!receivedFirstToken) {
                 receivedFirstToken = true;
                 appStatus.update(chatStatusId, "chat.streaming");
+                updateChatDebugEntry(chatDebugEntry.id, { status: "streaming" });
               }
               fullContent += data.content;
               contentEl.innerHTML = escapeHtml(fullContent).replace(/\n/g, "<br>");
@@ -3497,7 +3984,6 @@
               clearAnalyzingDots();
               appStatus.update(chatStatusId, "chat.finalizing");
               currentStreamingMsgEl = null;
-              currentStreamingDebugEl = null;
               msgEl.remove();
               const assistantMsg = {
                 role: "assistant",
@@ -3507,6 +3993,12 @@
                 debug_request: debugRequest || null,
                 debug_response: debugMetaLines.length > 0 ? debugMetaLines.join("\n") : null,
               };
+              updateChatDebugEntry(chatDebugEntry.id, {
+                status: "done",
+                request: debugRequest,
+                response: debugMetaLines.join("\n"),
+                details: fullContent,
+              });
               allMessages.push(assistantMsg);
               if (assistantMsg.id) activeLeafId = assistantMsg.id;
               syncVisibleMessages();
@@ -3524,14 +4016,18 @@
       }
       clearAnalyzingDots();
       currentStreamingMsgEl = null;
-      currentStreamingDebugEl = null;
       currentAbortController = null;
       setComposerPrimaryActionState();
       appStatus.pop(chatStatusId);
     } catch (e) {
       clearAnalyzingDots();
       currentStreamingMsgEl = null;
-      currentStreamingDebugEl = null;
+      if (chatDebugEntry) {
+        updateChatDebugEntry(chatDebugEntry.id, {
+          status: e.name === "AbortError" ? "cancelled" : "error",
+          details: e.message || e.name,
+        });
+      }
       if (e.name === "AbortError") {
         appStatus.update(chatStatusId, "chat.cancelled");
         allMessages = allMessages.filter((m) => m.id !== tempUserId && m.id !== resolvedUserId);
@@ -3644,6 +4140,9 @@
       setLeftHistoryMode(isMessagesHistoryMode() ? "conversations" : "messages");
     });
   }
+  if (el.leftHistorySortSelect) {
+    el.leftHistorySortSelect.addEventListener("change", onLeftHistorySortChange);
+  }
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
   if (el.conversationTitle) {
     el.conversationTitle.addEventListener("change", commitConversationTitle);
@@ -3658,23 +4157,6 @@
     el.conversationAutoTitle.addEventListener("change", commitAutoTitleFlag);
   }
   if (el.btnSend) el.btnSend.addEventListener("click", onComposerPrimaryClick);
-  function onShowDebugModeChange(checked) {
-    if (currentAbortController && currentStreamingDebugEl) {
-      currentStreamingDebugEl.style.display = checked ? "block" : "none";
-    }
-    renderMessages();
-  }
-  var debugCheckbox = document.getElementById("show-debug-mode");
-  if (debugCheckbox) {
-    debugCheckbox.addEventListener("change", function () {
-      onShowDebugModeChange(this.checked);
-    });
-  }
-  document.addEventListener("change", function (e) {
-    if (e.target && e.target.id === "show-debug-mode") {
-      onShowDebugModeChange(e.target.checked);
-    }
-  });
   if (el.btnFontSizeDecrease) {
     el.btnFontSizeDecrease.addEventListener("click", function () {
       if (!this.disabled) setConversationFontSize(-0.05);
@@ -3687,6 +4169,53 @@
   }
   if (el.btnCollapseAllMessages) {
     el.btnCollapseAllMessages.addEventListener("click", function () {
+      collapseAllMessages();
+    });
+  }
+  const prefFontDecrease = document.getElementById("pref-font-decrease");
+  const prefFontIncrease = document.getElementById("pref-font-increase");
+  if (prefFontDecrease) {
+    prefFontDecrease.addEventListener("click", function () {
+      if (!this.disabled) setConversationFontSize(-FONT_SIZE_STEP);
+    });
+  }
+  if (prefFontIncrease) {
+    prefFontIncrease.addEventListener("click", function () {
+      if (!this.disabled) setConversationFontSize(FONT_SIZE_STEP);
+    });
+  }
+  function bindSidebarFontScaleStepper(side) {
+    const prefix = side === "left" ? "pref-font-left" : "pref-font-right";
+    const decreaseBtn = document.getElementById(prefix + "-decrease");
+    const increaseBtn = document.getElementById(prefix + "-increase");
+    if (decreaseBtn) {
+      decreaseBtn.addEventListener("click", function () {
+        if (!this.disabled) setSidebarFontScale(side, -SIDEBAR_FONT_SCALE_STEP);
+      });
+    }
+    if (increaseBtn) {
+      increaseBtn.addEventListener("click", function () {
+        if (!this.disabled) setSidebarFontScale(side, SIDEBAR_FONT_SCALE_STEP);
+      });
+    }
+  }
+  bindSidebarFontScaleStepper("left");
+  bindSidebarFontScaleStepper("right");
+  const prefFontBaseDecrease = document.getElementById("pref-font-base-decrease");
+  const prefFontBaseIncrease = document.getElementById("pref-font-base-increase");
+  if (prefFontBaseDecrease) {
+    prefFontBaseDecrease.addEventListener("click", function () {
+      if (!this.disabled) setUiBaseFontScale(-UI_BASE_FONT_SCALE_STEP);
+    });
+  }
+  if (prefFontBaseIncrease) {
+    prefFontBaseIncrease.addEventListener("click", function () {
+      if (!this.disabled) setUiBaseFontScale(UI_BASE_FONT_SCALE_STEP);
+    });
+  }
+  const prefCollapseAll = document.getElementById("pref-collapse-all-messages");
+  if (prefCollapseAll) {
+    prefCollapseAll.addEventListener("click", function () {
       collapseAllMessages();
     });
   }
@@ -3739,7 +4268,7 @@
     if (!selectEl) return;
     const selected = selectEl.value;
     const list = Array.isArray(items) ? items : [];
-    selectEl.innerHTML = "<option value=\"\">-- Elegir regla --</option>" +
+    selectEl.innerHTML = "<option value=\"\">Elegir regla</option>" +
       list.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml((r.title || "").trim() || "Sin título")}</option>`).join("");
     if (selected && list.some((r) => r.id === selected)) {
       selectEl.value = selected;
@@ -4176,13 +4705,31 @@
 
   const ACCORDION_STORAGE_KEY = "chatbot_sidebar_accordion";
   const SIDEBAR_TAB_STORAGE_KEY = "chatbot_sidebar_tab";
-  const SIDEBAR_MAIN_SECTION_IDS = ["reglas", "parametros", "imagenes"];
+  const SIDEBAR_MAIN_SECTION_IDS = ["reglas", "parametros", "imagenes", "preferencias"];
   const LAST_CONVERSATION_STORAGE_KEY = "chatbot_last_conversation_id";
   const FONT_SIZE_STORAGE_KEY = "chatbot_conversation_font_size_rem";
   const FONT_SIZE_DEFAULT = 0.8;
   const FONT_SIZE_MIN = 0.65;
-  const FONT_SIZE_MAX = 1.3;
+  const FONT_SIZE_MAX = 5;
   const FONT_SIZE_STEP = 0.05;
+  const UI_BASE_FONT_SCALE_STORAGE_KEY = "uiBaseFontScale";
+  const UI_BASE_FONT_SCALE_DEFAULT = 1;
+  const UI_BASE_FONT_SCALE_MIN = 0.8;
+  const UI_BASE_FONT_SCALE_MAX = 5;
+  const UI_BASE_FONT_SCALE_STEP = 0.05;
+  const UI_BASE_FONT_SCALE_CSS = "--ui-base-font-scale";
+  const SIDEBAR_FONT_SCALE_DEFAULT = 1;
+  const SIDEBAR_FONT_SCALE_MIN = 0.8;
+  const SIDEBAR_FONT_SCALE_MAX = 5;
+  const SIDEBAR_FONT_SCALE_STEP = 0.05;
+  const SIDEBAR_FONT_SCALE_STORAGE = {
+    left: "sidebarLeftFontScale",
+    right: "sidebarRightFontScale",
+  };
+  const SIDEBAR_FONT_SCALE_CSS = {
+    left: "--sidebar-left-font-scale",
+    right: "--sidebar-right-font-scale",
+  };
   const IMAGE_SIZE_STORAGE_KEY = "chatbot_conversation_image_size";
   const IMAGE_SIZE_DEFAULT = 1;
   const IMAGE_SIZE_MIN = 0.4;
@@ -4217,25 +4764,130 @@
     if (readingBody) readingBody.style.setProperty("--chat-font-size", rem + "rem");
   }
 
+  function formatFontSizeLabel(rem) {
+    return Math.round(rem * 100) + "%";
+  }
+
   function syncFontSizeButtons(rem) {
     const ids = [
       "btn-font-size-decrease",
       "btn-font-size-increase",
+      "pref-font-decrease",
+      "pref-font-increase",
       "reading-font-decrease",
       "reading-font-increase",
     ];
-    const decreaseIds = new Set(["btn-font-size-decrease", "reading-font-decrease"]);
+    const decreaseIds = new Set(["btn-font-size-decrease", "pref-font-decrease", "reading-font-decrease"]);
     ids.forEach(function (id) {
       const btn = document.getElementById(id);
       if (!btn) return;
       btn.disabled = decreaseIds.has(id) ? rem <= FONT_SIZE_MIN : rem >= FONT_SIZE_MAX;
     });
+    const valueEl = document.getElementById("pref-font-value");
+    if (valueEl) valueEl.textContent = formatFontSizeLabel(rem);
   }
 
   function initConversationFontSize() {
     const rem = getStoredFontSize();
     applyConversationFontSize(rem);
     syncFontSizeButtons(rem);
+  }
+
+  function getStoredUiBaseFontScale() {
+    try {
+      const raw = localStorage.getItem(UI_BASE_FONT_SCALE_STORAGE_KEY);
+      if (raw == null) return UI_BASE_FONT_SCALE_DEFAULT;
+      const n = parseFloat(raw, 10);
+      if (Number.isFinite(n)) {
+        return Math.max(UI_BASE_FONT_SCALE_MIN, Math.min(UI_BASE_FONT_SCALE_MAX, n));
+      }
+    } catch (_) {}
+    return UI_BASE_FONT_SCALE_DEFAULT;
+  }
+
+  function setStoredUiBaseFontScale(scale) {
+    try {
+      localStorage.setItem(UI_BASE_FONT_SCALE_STORAGE_KEY, String(scale));
+    } catch (_) {}
+  }
+
+  function applyUiBaseFontScale(scale) {
+    document.documentElement.style.setProperty(UI_BASE_FONT_SCALE_CSS, String(scale));
+  }
+
+  function syncUiBaseFontScaleControl(scale) {
+    const decreaseBtn = document.getElementById("pref-font-base-decrease");
+    const increaseBtn = document.getElementById("pref-font-base-increase");
+    const valueEl = document.getElementById("pref-font-base-value");
+    if (decreaseBtn) decreaseBtn.disabled = scale <= UI_BASE_FONT_SCALE_MIN;
+    if (increaseBtn) increaseBtn.disabled = scale >= UI_BASE_FONT_SCALE_MAX;
+    if (valueEl) valueEl.textContent = formatFontSizeLabel(scale);
+  }
+
+  function setUiBaseFontScale(delta) {
+    const current = getStoredUiBaseFontScale();
+    let next = Math.round((current + delta) / UI_BASE_FONT_SCALE_STEP) * UI_BASE_FONT_SCALE_STEP;
+    next = Math.max(UI_BASE_FONT_SCALE_MIN, Math.min(UI_BASE_FONT_SCALE_MAX, next));
+    next = Math.round(next * 100) / 100;
+    setStoredUiBaseFontScale(next);
+    applyUiBaseFontScale(next);
+    syncUiBaseFontScaleControl(next);
+  }
+
+  function initUiBaseFontScale() {
+    const scale = getStoredUiBaseFontScale();
+    applyUiBaseFontScale(scale);
+    syncUiBaseFontScaleControl(scale);
+  }
+
+  function getStoredSidebarFontScale(side) {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_FONT_SCALE_STORAGE[side]);
+      if (raw == null) return SIDEBAR_FONT_SCALE_DEFAULT;
+      const n = parseFloat(raw, 10);
+      if (Number.isFinite(n)) {
+        return Math.max(SIDEBAR_FONT_SCALE_MIN, Math.min(SIDEBAR_FONT_SCALE_MAX, n));
+      }
+    } catch (_) {}
+    return SIDEBAR_FONT_SCALE_DEFAULT;
+  }
+
+  function setStoredSidebarFontScale(side, scale) {
+    try {
+      localStorage.setItem(SIDEBAR_FONT_SCALE_STORAGE[side], String(scale));
+    } catch (_) {}
+  }
+
+  function applySidebarFontScale(side, scale) {
+    document.documentElement.style.setProperty(SIDEBAR_FONT_SCALE_CSS[side], String(scale));
+  }
+
+  function syncSidebarFontScaleControl(side, scale) {
+    const prefix = side === "left" ? "pref-font-left" : "pref-font-right";
+    const decreaseBtn = document.getElementById(prefix + "-decrease");
+    const increaseBtn = document.getElementById(prefix + "-increase");
+    const valueEl = document.getElementById(prefix + "-value");
+    if (decreaseBtn) decreaseBtn.disabled = scale <= SIDEBAR_FONT_SCALE_MIN;
+    if (increaseBtn) increaseBtn.disabled = scale >= SIDEBAR_FONT_SCALE_MAX;
+    if (valueEl) valueEl.textContent = formatFontSizeLabel(scale);
+  }
+
+  function setSidebarFontScale(side, delta) {
+    const current = getStoredSidebarFontScale(side);
+    let next = Math.round((current + delta) / SIDEBAR_FONT_SCALE_STEP) * SIDEBAR_FONT_SCALE_STEP;
+    next = Math.max(SIDEBAR_FONT_SCALE_MIN, Math.min(SIDEBAR_FONT_SCALE_MAX, next));
+    next = Math.round(next * 100) / 100;
+    setStoredSidebarFontScale(side, next);
+    applySidebarFontScale(side, next);
+    syncSidebarFontScaleControl(side, next);
+  }
+
+  function initSidebarFontScales() {
+    ["left", "right"].forEach(function (side) {
+      const scale = getStoredSidebarFontScale(side);
+      applySidebarFontScale(side, scale);
+      syncSidebarFontScaleControl(side, scale);
+    });
   }
 
   /**
@@ -4459,16 +5111,38 @@
   }
 
   function syncImageSizeButtons(factor) {
-    const dec = document.getElementById("reading-image-decrease");
-    const inc = document.getElementById("reading-image-increase");
-    if (dec) dec.disabled = factor <= IMAGE_SIZE_MIN;
-    if (inc) inc.disabled = factor >= IMAGE_SIZE_MAX;
+    const ids = [
+      "reading-image-decrease",
+      "reading-image-increase",
+      "pref-image-decrease",
+      "pref-image-increase",
+    ];
+    const decreaseIds = new Set(["reading-image-decrease", "pref-image-decrease"]);
+    ids.forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = decreaseIds.has(id) ? factor <= IMAGE_SIZE_MIN : factor >= IMAGE_SIZE_MAX;
+    });
+    const valueEl = document.getElementById("pref-image-value");
+    if (valueEl) valueEl.textContent = Math.round(factor * 100) + "%";
   }
 
   function initConversationImageSize() {
     const factor = getStoredImageSize();
     applyConversationImageSize(factor);
     syncImageSizeButtons(factor);
+    const prefDec = document.getElementById("pref-image-decrease");
+    const prefInc = document.getElementById("pref-image-increase");
+    if (prefDec) {
+      prefDec.addEventListener("click", function () {
+        if (!this.disabled) setConversationImageSize(-IMAGE_SIZE_STEP);
+      });
+    }
+    if (prefInc) {
+      prefInc.addEventListener("click", function () {
+        if (!this.disabled) setConversationImageSize(IMAGE_SIZE_STEP);
+      });
+    }
   }
 
   function setConversationImageSize(delta) {
@@ -4588,6 +5262,24 @@
     });
   }
 
+  function scrollReadingBodyToStart() {
+    const body = document.getElementById("reading-mode-body");
+    if (!body) return;
+    const pin = function () {
+      body.scrollTop = 0;
+    };
+    const followLayout = function () {
+      if (body.scrollTop <= 96) pin();
+    };
+    pin();
+    requestAnimationFrame(function () {
+      pin();
+      requestAnimationFrame(pin);
+    });
+    window.setTimeout(followLayout, 120);
+    window.setTimeout(followLayout, 400);
+  }
+
   function openReadingMode(msgIndex) {
     const msg = messages[msgIndex];
     if (!msg || msg.role !== "assistant" || !(msg.content && msg.content.trim())) return;
@@ -4604,9 +5296,9 @@
     applyReadingPanelWidth(getStoredReadingPanelWidthPx());
     overlay.hidden = false;
     document.body.classList.add("reading-mode-open");
-    body.scrollTop = 0;
     const closeBtn = document.getElementById("reading-mode-close");
     if (closeBtn) closeBtn.focus();
+    scrollReadingBodyToStart();
   }
 
   function closeReadingMode() {
@@ -4767,6 +5459,13 @@
       const isOpen = state && typeof state[id] === "boolean" ? state[id] : section.classList.contains("is-open");
       setAccordionSectionOpen(section, !!isOpen);
     });
+    document.querySelectorAll(".accordion-list").forEach((list) => {
+      const first = list.querySelector(":scope > .accordion-section.is-open");
+      if (!first) return;
+      getSiblingAccordionSections(first).forEach((s) => {
+        if (s !== first) setAccordionSectionOpen(s, false);
+      });
+    });
     saveAccordionState();
   }
 
@@ -4793,6 +5492,8 @@
   initSidebarTabs();
   initSidebarAccordion();
   initConversationFontSize();
+  initUiBaseFontScale();
+  initSidebarFontScales();
   initConversationScrollNav();
   initIllustrationMetaModal();
   bindMessageTextContextMenu();
@@ -4824,41 +5525,6 @@
   function isImagesEnabled() {
     const elEnabled = document.getElementById("images-enabled");
     return !!(elEnabled && elEnabled.checked);
-  }
-
-  function isImagesDebugMode() {
-    const elDbg = document.getElementById("images-debug-mode");
-    return !!(elDbg && elDbg.checked);
-  }
-
-  /** Buffer del log de imágenes: se acumula aunque la ventana esté cerrada. */
-  const imagesDebugLogLines = [];
-
-  function appendImagesDebugLog(line) {
-    const ts = new Date().toISOString().slice(11, 19);
-    imagesDebugLogLines.push(`[${ts}] ${line}`);
-    if (!isImagesDebugMode()) return;
-    const pre = document.getElementById("images-debug-log");
-    const win = document.getElementById("images-debug-window");
-    if (!pre || !win) return;
-    win.hidden = false;
-    pre.textContent += imagesDebugLogLines[imagesDebugLogLines.length - 1] + "\n";
-    pre.scrollTop = pre.scrollHeight;
-  }
-
-  function syncImagesDebugWindow() {
-    const pre = document.getElementById("images-debug-log");
-    const win = document.getElementById("images-debug-window");
-    if (!pre || !win) return;
-    if (isImagesDebugMode()) {
-      win.hidden = false;
-      pre.textContent = imagesDebugLogLines.length
-        ? imagesDebugLogLines.join("\n") + "\n"
-        : "";
-      pre.scrollTop = pre.scrollHeight;
-    } else {
-      win.hidden = true;
-    }
   }
 
   async function ensureImagesPromptSelects() {
@@ -5325,7 +5991,6 @@
     const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
     const promptEl = document.getElementById("images-prompt");
-    const dbg = document.getElementById("images-debug-mode");
     if (enabled) enabled.checked = !!prefs.enabled;
     if (useChatConfig) useChatConfig.checked = !!prefs.use_chat_config;
     if (per && prefs.images_per_response != null) per.value = prefs.images_per_response;
@@ -5334,7 +5999,6 @@
     if (promptEl && prefs.prompt != null) promptEl.value = prefs.prompt;
     plannerRules = normalizePlannerRulesFromPrefs(prefs.prompt_system_instructions);
     renderPlannerRules();
-    if (dbg && prefs.debug != null) dbg.checked = !!prefs.debug;
     applyReactorPanelSettings(prefs.reactor || (prefs.reactor_enabled ? { enabled: true } : {}));
     if (
       prefs.steps != null ||
@@ -5383,12 +6047,10 @@
 
   function persistImagesPanel() {
     const snap = collectImagesSnapshot();
-    snap.debug = isImagesDebugMode();
     const prev = loadImagesPrefs();
     if (!snap.prompt_provider && prev.prompt_provider) snap.prompt_provider = prev.prompt_provider;
     if (!snap.prompt_model && prev.prompt_model) snap.prompt_model = prev.prompt_model;
     saveImagesPrefs(snap);
-    syncImagesDebugWindow();
     syncImagesChatConfigDisabled();
     debouncedPersistImagesToConversation();
   }
@@ -5656,7 +6318,7 @@
       loadImageQueuePage();
       startImageQueuePoll();
     } else if (!on) {
-      stopImageQueuePoll();
+      maybeStopImageQueuePoll();
     }
   }
 
@@ -5924,6 +6586,29 @@
     node.hidden = n <= 0;
   }
 
+  function shouldWatchImageQueue() {
+    return isQueuePanelVisible() || imageQueueKnownActive > 0;
+  }
+
+  function maybeStopImageQueuePoll() {
+    if (!shouldWatchImageQueue()) stopImageQueuePoll();
+  }
+
+  async function loadImageQueueForDebug() {
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "100");
+      const data = await fetchJson(`${API}/image-generation-queue?${params}`);
+      imageQueuePaused = Boolean(data.paused);
+      imageQueueKnownActive = data.active_count || 0;
+      syncImageQueueActiveCount(data.active_count);
+      syncImageQueuePauseUi();
+      ingestQueueItemsForDebug(data.items);
+      if (shouldWatchImageQueue()) startImageQueuePoll();
+      else maybeStopImageQueuePoll();
+    } catch (_) {}
+  }
+
   async function loadImageQueuePage() {
     const params = new URLSearchParams();
     if (imageQueueFilterStatus) params.set("status", imageQueueFilterStatus);
@@ -5935,6 +6620,7 @@
       syncImageQueueActiveCount(data.active_count);
       syncImageQueuePauseUi();
       imageQueueKnownActive = data.active_count || 0;
+      ingestQueueItemsForDebug(imageQueueItems);
       renderImageQueueList();
     } catch (e) {
       const list = document.getElementById("image-queue-list");
@@ -5955,16 +6641,19 @@
     imageQueuePollBusy = true;
     try {
       const params = new URLSearchParams();
-      if (imageQueueFilterStatus) params.set("status", imageQueueFilterStatus);
+      if (isQueuePanelVisible() && imageQueueFilterStatus) params.set("status", imageQueueFilterStatus);
       params.set("limit", "100");
       const data = await fetchJson(`${API}/image-generation-queue?${params}`);
       const prevActive = imageQueueKnownActive;
-      imageQueueItems = data.items || [];
       imageQueuePaused = Boolean(data.paused);
       imageQueueKnownActive = data.active_count || 0;
       syncImageQueueActiveCount(data.active_count);
       syncImageQueuePauseUi();
-      if (isQueuePanelVisible()) renderImageQueueList();
+      if (isQueuePanelVisible()) {
+        imageQueueItems = data.items || [];
+        renderImageQueueList();
+      }
+      ingestQueueItemsForDebug(data.items);
       const activeDropped = prevActive > 0 && (data.active_count || 0) < prevActive;
       if (activeDropped && currentConversationId) {
         const touched = (data.items || []).some(function (item) {
@@ -5974,9 +6663,7 @@
           await refreshCurrentConversationMessages();
         }
       }
-      if ((data.active_count || 0) <= 0 && !isQueuePanelVisible()) {
-        stopImageQueuePoll();
-      }
+      maybeStopImageQueuePoll();
     } catch (_) {
     } finally {
       imageQueuePollBusy = false;
@@ -6395,13 +7082,27 @@
           .join(" · ");
         const prompt = (item.prompt || "").trim() || "(sin prompt)";
         const when = formatGalleryDate(item.created_at);
+        const sizeAttrs =
+          item.width > 0 && item.height > 0
+            ? ' width="' +
+              item.width +
+              '" height="' +
+              item.height +
+              '" style="aspect-ratio: ' +
+              item.width +
+              " / " +
+              item.height +
+              '"'
+            : "";
         return (
           '<button type="button" class="image-gallery-card" data-gallery-index="' +
           index +
           '">' +
           '<img src="' +
           escapeHtml(item.url) +
-          '" alt="" loading="lazy" />' +
+          '" alt="" loading="lazy"' +
+          sizeAttrs +
+          " />" +
           '<div class="image-gallery-card-body">' +
           '<p class="image-gallery-card-prompt">' +
           escapeHtml(prompt) +
@@ -6549,6 +7250,47 @@
     if (galleryLightboxIndex < 0 || galleryItems.length < 2) return;
     const next = (galleryLightboxIndex + delta + galleryItems.length) % galleryItems.length;
     openGalleryLightbox(next);
+  }
+
+  function highlightIllustrationInConversation(filename, sceneId) {
+    const root = el.messagesContainer;
+    if (!root) return;
+    let img = null;
+    if (filename) {
+      try {
+        img = root.querySelector('img.chat-illustration[data-filename="' + CSS.escape(filename) + '"]');
+      } catch (_) {}
+    }
+    if (!img && filename) {
+      root.querySelectorAll("img.chat-illustration").forEach(function (node) {
+        if (img) return;
+        const src = node.getAttribute("src") || "";
+        const data = node.getAttribute("data-filename") || filenameFromIllustratedSrc(src);
+        if (data === filename || src.indexOf(filename) >= 0) img = node;
+      });
+    }
+    if (!img && sceneId) {
+      try {
+        img = root.querySelector('[data-scene="' + CSS.escape(sceneId) + '"]');
+      } catch (_) {}
+    }
+    const target = (img && (img.closest(".chat-illustration-frame") || img)) || img;
+    if (!target) {
+      showNotice("No se encontró la imagen en la conversación.");
+      return;
+    }
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    target.classList.add("illustration-debug-highlight");
+    window.setTimeout(function () {
+      target.classList.remove("illustration-debug-highlight");
+    }, 2200);
+  }
+
+  async function openConversationAtIllustration(conversationId, messageId, filename, sceneId) {
+    if (conversationId && messageId) {
+      await openConversationAtMessage(conversationId, messageId);
+    }
+    highlightIllustrationInConversation(filename, sceneId);
   }
 
   function scrollAndHighlightMessage(messageId) {
@@ -6796,15 +7538,11 @@
     const forgeHeight = document.getElementById("images-forge-height");
     const forgeSeed = document.getElementById("images-forge-seed");
     const reloadForgeBtn = document.getElementById("btn-images-forge-reload-params");
-    const dbg = document.getElementById("images-debug-mode");
-    const closeBtn = document.getElementById("images-debug-close");
-    const stopBtn = document.getElementById("images-debug-stop");
-    const win = document.getElementById("images-debug-window");
     fillImagesPanelFromPrefs(prefs);
     await fetchForgeReactorDefaults();
 
     const forgeParamInputs = [forgeSteps, forgeWidth, forgeHeight, forgeSeed];
-    [enabled, useChatConfig, per, batchSize, retries, promptEl, providerSel, modelSel, dbg]
+    [enabled, useChatConfig, per, batchSize, retries, promptEl, providerSel, modelSel]
       .concat(forgeParamInputs)
       .concat(reactorPanelInputNodes())
       .forEach((node) => {
@@ -6837,18 +7575,6 @@
         reloadForgeParamsFromLastGen({ notify: true }).catch(function () {});
       });
     }
-    if (stopBtn) {
-      stopBtn.addEventListener("click", function () {
-        abortAllIllustrations();
-      });
-    }
-    if (closeBtn && win) {
-      closeBtn.addEventListener("click", function () {
-        win.hidden = true;
-        if (dbg) dbg.checked = false;
-        persistImagesPanel();
-      });
-    }
     const plannerThink = document.getElementById("planner-think");
     if (plannerThink) {
       plannerThink.addEventListener("change", function () {
@@ -6860,7 +7586,6 @@
       });
     }
     syncImagesChatConfigDisabled();
-    syncImagesDebugWindow();
     await ensureImagesPromptSelects();
     await loadPlannerContract();
     loadPlannerLibraryRules();
@@ -6868,6 +7593,7 @@
     persistImagesPanel();
   }
 
+  initDebugDock();
   initImagesPanel();
   initImageGallery();
 
@@ -7217,7 +7943,7 @@
         prompt_system_instructions: getPlannerRulesTextForSystem(),
         use_chat_config: useChat,
         prompt_model_params: useChat ? {} : collectPlannerModelParams(),
-        include_prompt_debug: isShowDebugMode(),
+        include_prompt_debug: true,
         debug: true,
         reactor: readReactorPanelSettings(),
         ...readForgePanelParams(),
@@ -7280,7 +8006,7 @@
         prompt_system_instructions: getPlannerRulesTextForSystem(),
         use_chat_config: useChat,
         prompt_model_params: useChat ? {} : collectPlannerModelParams(),
-        include_prompt_debug: isShowDebugMode(),
+        include_prompt_debug: true,
         debug: true,
         reactor: readReactorPanelSettings(),
         paragraph_index: idx,
@@ -7339,24 +8065,30 @@
           }
           if (data.type === "queued") {
             queuedAny = true;
+            const jobId = data.data && data.data.job_id;
+            if (jobId && imageQueueDebugSeen[jobId]) {
+              // ya registrado por la cola
+            } else {
+              if (jobId) imageQueueDebugSeen[jobId] = "pending";
+              pushImagesDebugEntry({
+                kind: "queue",
+                title: "Encolada · " + (data.scene_id || jobId || "job"),
+                status: "pending",
+                details: data.data || data,
+              });
+            }
           }
-          if (data.type === "llm_debug" && isShowDebugMode()) {
+          if (data.type === "llm_debug") {
             const label =
               (data.data && data.data.label) ||
-              (data.scene_id ? `Prompt escena ${data.scene_id}` : "Planificador de prompts");
-            const promptText = data.message || "";
-            messages.push({
-              role: "assistant",
-              content: promptText
-                ? `${label}\n\n${promptText}`
-                : label,
-              id: null,
-              ephemeral_debug: true,
-              debug_request: (data.data && data.data.debug_request) || null,
-              debug_response: (data.data && data.data.debug_response) || null,
+              (data.scene_id ? "Planificador escena " + data.scene_id : "Planificador de prompts");
+            pushImagesDebugEntry({
+              kind: "llm",
+              title: label,
+              status: "done",
+              request: (data.data && data.data.debug_request) || null,
+              response: (data.data && data.data.debug_response) || data.message || null,
             });
-            renderMessages();
-            scrollToBottomIfEnabled();
           }
             if (data.content != null) {
             const idx = messages.findIndex((m) => m.id === messageId);
@@ -7430,6 +8162,172 @@
     });
     expandBtn.addEventListener("click", function () {
       apply(false);
+    });
+  })();
+
+  (function initSidePanelResize() {
+    var LEFT_KEY = "sidebarLeftWidthPx";
+    var RIGHT_KEY = "sidebarRightWidthPx";
+    var LEFT_DEFAULT = 188;
+    var RIGHT_DEFAULT = 284;
+    var LEFT_MIN = 180;
+    var LEFT_MAX = 420;
+    var RIGHT_MIN = 260;
+    var RIGHT_MAX = 480;
+    var CENTER_MIN = 360;
+    var STEP = 16;
+    var leftAside = document.getElementById("column-left");
+    var rightAside = document.getElementById("column-right");
+    var leftHandle = document.getElementById("sidebar-left-splitter");
+    var rightHandle = document.getElementById("sidebar-right-splitter");
+    if (!leftAside || !rightAside || !leftHandle || !rightHandle) return;
+    var leftWidth = LEFT_DEFAULT;
+    var rightWidth = RIGHT_DEFAULT;
+
+    function isLeftCollapsed() {
+      return document.documentElement.getAttribute("data-sidebar-left") === "collapsed";
+    }
+
+    function isChatFullscreen() {
+      return document.documentElement.getAttribute("data-chat-fullscreen") === "on";
+    }
+
+    function readStored(key, fallback, min, max) {
+      try {
+        var raw = parseInt(localStorage.getItem(key), 10);
+        if (Number.isFinite(raw)) return Math.max(min, Math.min(max, raw));
+      } catch (_) {}
+      return fallback;
+    }
+
+    function save(key, px) {
+      try {
+        localStorage.setItem(key, String(px));
+      } catch (_) {}
+    }
+
+    function shellWidth() {
+      var shell = document.getElementById("app");
+      return shell ? shell.getBoundingClientRect().width : window.innerWidth;
+    }
+
+    function visibleLeftWidth() {
+      if (isLeftCollapsed() || isChatFullscreen()) return 0;
+      return leftWidth;
+    }
+
+    function visibleRightWidth() {
+      if (isChatFullscreen() || rightAside.offsetParent === null) return 0;
+      return rightWidth;
+    }
+
+    function clampLeft(px) {
+      var n = Math.round(Number(px));
+      if (!Number.isFinite(n)) n = LEFT_DEFAULT;
+      n = Math.max(LEFT_MIN, Math.min(LEFT_MAX, n));
+      var maxAvail = shellWidth() - CENTER_MIN - visibleRightWidth();
+      if (maxAvail >= LEFT_MIN) n = Math.min(n, maxAvail);
+      return n;
+    }
+
+    function clampRight(px) {
+      var n = Math.round(Number(px));
+      if (!Number.isFinite(n)) n = RIGHT_DEFAULT;
+      n = Math.max(RIGHT_MIN, Math.min(RIGHT_MAX, n));
+      var maxAvail = shellWidth() - CENTER_MIN - visibleLeftWidth();
+      if (maxAvail >= RIGHT_MIN) n = Math.min(n, maxAvail);
+      return n;
+    }
+
+    function applyLeft(px, persist) {
+      leftWidth = clampLeft(px);
+      document.documentElement.style.setProperty("--sidebar-left-width", leftWidth + "px");
+      leftHandle.setAttribute("aria-valuenow", String(leftWidth));
+      if (persist) save(LEFT_KEY, leftWidth);
+      return leftWidth;
+    }
+
+    function applyRight(px, persist) {
+      rightWidth = clampRight(px);
+      document.documentElement.style.setProperty("--sidebar-right-width", rightWidth + "px");
+      rightHandle.setAttribute("aria-valuenow", String(rightWidth));
+      if (persist) save(RIGHT_KEY, rightWidth);
+      return rightWidth;
+    }
+
+    function applyStored() {
+      applyLeft(readStored(LEFT_KEY, LEFT_DEFAULT, LEFT_MIN, LEFT_MAX), false);
+      applyRight(readStored(RIGHT_KEY, RIGHT_DEFAULT, RIGHT_MIN, RIGHT_MAX), false);
+      applyLeft(readStored(LEFT_KEY, LEFT_DEFAULT, LEFT_MIN, LEFT_MAX), false);
+    }
+
+    applyStored();
+
+    function bindHandle(handle, opts) {
+      var drag = null;
+
+      function endDrag() {
+        if (!drag) return;
+        opts.apply(opts.currentWidth(), true);
+        drag = null;
+        document.body.classList.remove("side-panels-resizing");
+      }
+
+      handle.addEventListener("pointerdown", function (e) {
+        if (e.button != null && e.button !== 0) return;
+        if (opts.disabled()) return;
+        e.preventDefault();
+        try {
+          handle.setPointerCapture(e.pointerId);
+        } catch (_) {}
+        drag = { startX: e.clientX, startWidth: opts.currentWidth() };
+        document.body.classList.add("side-panels-resizing");
+      });
+      handle.addEventListener("pointermove", function (e) {
+        if (!drag) return;
+        opts.apply(drag.startWidth + (e.clientX - drag.startX) * opts.sign, false);
+      });
+      handle.addEventListener("pointerup", endDrag);
+      handle.addEventListener("pointercancel", endDrag);
+      handle.addEventListener("dblclick", function (e) {
+        e.preventDefault();
+        opts.apply(opts.defaultWidth, true);
+      });
+      handle.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        if (opts.disabled()) return;
+        e.preventDefault();
+        var dir = e.key === "ArrowRight" ? 1 : -1;
+        opts.apply(opts.currentWidth() + dir * opts.sign * STEP, true);
+      });
+    }
+
+    bindHandle(leftHandle, {
+      sign: 1,
+      defaultWidth: LEFT_DEFAULT,
+      currentWidth: function () {
+        return leftWidth;
+      },
+      apply: applyLeft,
+      disabled: function () {
+        return isLeftCollapsed() || isChatFullscreen();
+      },
+    });
+    bindHandle(rightHandle, {
+      sign: -1,
+      defaultWidth: RIGHT_DEFAULT,
+      currentWidth: function () {
+        return rightWidth;
+      },
+      apply: applyRight,
+      disabled: function () {
+        return isChatFullscreen();
+      },
+    });
+
+    window.addEventListener("resize", function () {
+      if (isChatFullscreen()) return;
+      applyStored();
     });
   })();
 

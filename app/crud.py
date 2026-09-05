@@ -120,13 +120,33 @@ def get_conversation(
     return q.first()
 
 
-def list_conversations(db: Session) -> list[Conversation]:
-    return (
-        db.query(Conversation)
-        .filter(Conversation.deleted_at.is_(None))
-        .order_by(func.coalesce(Conversation.last_message_at, Conversation.updated_at).desc())
-        .all()
-    )
+CONVERSATION_SORT_ACTIVITY = "activity"
+CONVERSATION_SORT_CREATED_AT = "created_at"
+CONVERSATION_SORT_VALUES = (CONVERSATION_SORT_ACTIVITY, CONVERSATION_SORT_CREATED_AT)
+MESSAGE_HISTORY_SORT_MESSAGE = "message"
+MESSAGE_HISTORY_SORT_IMAGE = "image"
+MESSAGE_HISTORY_SORT_VALUES = (MESSAGE_HISTORY_SORT_MESSAGE, MESSAGE_HISTORY_SORT_IMAGE)
+
+
+def normalize_conversation_sort(sort: str | None) -> str:
+    if sort == CONVERSATION_SORT_CREATED_AT:
+        return CONVERSATION_SORT_CREATED_AT
+    return CONVERSATION_SORT_ACTIVITY
+
+
+def normalize_message_history_sort(sort: str | None) -> str:
+    if sort == MESSAGE_HISTORY_SORT_IMAGE:
+        return MESSAGE_HISTORY_SORT_IMAGE
+    return MESSAGE_HISTORY_SORT_MESSAGE
+
+
+def list_conversations(db: Session, sort: str | None = None) -> list[Conversation]:
+    q = db.query(Conversation).filter(Conversation.deleted_at.is_(None))
+    if normalize_conversation_sort(sort) == CONVERSATION_SORT_CREATED_AT:
+        return q.order_by(Conversation.created_at.desc()).all()
+    return q.order_by(
+        func.coalesce(Conversation.last_message_at, Conversation.updated_at).desc()
+    ).all()
 
 
 def list_deleted_conversations(db: Session) -> list[Conversation]:
@@ -159,10 +179,38 @@ def message_content_preview(content: str, max_len: int = MESSAGE_HISTORY_PREVIEW
     return first_line[:max_len].rstrip()
 
 
-def list_assistant_messages(db: Session, limit: int | None = None) -> list[tuple[Message, str]]:
+def list_assistant_messages(
+    db: Session,
+    limit: int | None = None,
+    sort: str | None = None,
+) -> list[tuple[Message, str, datetime | None]]:
     """Respuestas assistant de conversaciones activas, más recientes primero."""
     capped = clamp_message_history_limit(limit)
-    return (
+    if normalize_message_history_sort(sort) == MESSAGE_HISTORY_SORT_IMAGE:
+        latest_image = (
+            db.query(
+                IllustratedImage.message_id.label("message_id"),
+                func.max(IllustratedImage.created_at).label("latest_image_at"),
+            )
+            .group_by(IllustratedImage.message_id)
+            .subquery()
+        )
+        rows = (
+            db.query(Message, Conversation.title, latest_image.c.latest_image_at)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .outerjoin(latest_image, latest_image.c.message_id == Message.id)
+            .filter(Message.role == "assistant")
+            .filter(Conversation.deleted_at.is_(None))
+            .order_by(
+                latest_image.c.latest_image_at.is_(None),
+                latest_image.c.latest_image_at.desc(),
+                Message.created_at.desc(),
+            )
+            .limit(capped)
+            .all()
+        )
+        return [(msg, title, img_at) for msg, title, img_at in rows]
+    rows = (
         db.query(Message, Conversation.title)
         .join(Conversation, Conversation.id == Message.conversation_id)
         .filter(Message.role == "assistant")
@@ -171,6 +219,7 @@ def list_assistant_messages(db: Session, limit: int | None = None) -> list[tuple
         .limit(capped)
         .all()
     )
+    return [(msg, title, None) for msg, title in rows]
 
 
 def update_conversation(

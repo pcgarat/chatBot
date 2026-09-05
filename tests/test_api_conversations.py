@@ -176,6 +176,43 @@ def test_list_conversations_after_create(client):
     assert len(data) == 2
     titles = [c["title"] for c in data]
     assert "A" in titles and "B" in titles
+    assert all("created_at" in c for c in data)
+
+
+def test_list_conversations_sort_created_at_ignores_later_activity(client, db_session):
+    from datetime import datetime, timedelta
+
+    from app.models import Conversation
+
+    now = datetime.utcnow()
+    older = Conversation(
+        title="Antigua",
+        model_id="m",
+        created_at=now - timedelta(days=5),
+        updated_at=now,
+        last_message_at=now,
+    )
+    newer = Conversation(
+        title="Nueva",
+        model_id="m",
+        created_at=now - timedelta(hours=1),
+        updated_at=now - timedelta(days=2),
+        last_message_at=now - timedelta(days=2),
+    )
+    db_session.add_all([older, newer])
+    db_session.commit()
+
+    by_activity = client.get("/api/conversations").json()
+    assert [c["title"] for c in by_activity] == ["Antigua", "Nueva"]
+
+    by_created = client.get("/api/conversations", params={"sort": "created_at"}).json()
+    assert [c["title"] for c in by_created] == ["Nueva", "Antigua"]
+    assert by_created[0]["created_at"] > by_created[1]["created_at"]
+
+
+def test_list_conversations_invalid_sort_is_422(client):
+    r = client.get("/api/conversations", params={"sort": "image"})
+    assert r.status_code == 422
 
 
 def test_get_conversation_404(client):

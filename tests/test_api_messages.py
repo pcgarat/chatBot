@@ -109,3 +109,130 @@ def test_list_messages_respects_limit_and_clamps_above_200(mock_get_provider, cl
     clamped = client.get("/api/messages", params={"limit": 999})
     assert clamped.status_code == 200
     assert len(clamped.json()) == 3
+
+
+def test_list_messages_sort_image_promotes_old_message_with_new_image(client, db_session):
+    from datetime import datetime, timedelta
+
+    from app.models import IllustratedImage
+
+    now = datetime.utcnow()
+    conv = Conversation(title="Sort imagen", model_id="llama3.2", created_at=now - timedelta(days=3))
+    db_session.add(conv)
+    db_session.commit()
+    old_msg = Message(
+        conversation_id=conv.id,
+        role="assistant",
+        content="mensaje-antiguo",
+        created_at=now - timedelta(days=2),
+    )
+    new_msg = Message(
+        conversation_id=conv.id,
+        role="assistant",
+        content="mensaje-reciente",
+        created_at=now - timedelta(hours=2),
+    )
+    no_img = Message(
+        conversation_id=conv.id,
+        role="assistant",
+        content="sin-imagen",
+        created_at=now - timedelta(minutes=10),
+    )
+    db_session.add_all([old_msg, new_msg, no_img])
+    db_session.commit()
+    db_session.add(
+        IllustratedImage(
+            message_id=old_msg.id,
+            filename="old_msg_new_image.jpg",
+            mode="txt2img",
+            params_json="{}",
+            created_at=now,
+        )
+    )
+    db_session.add(
+        IllustratedImage(
+            message_id=new_msg.id,
+            filename="new_msg_older_image.jpg",
+            mode="txt2img",
+            params_json="{}",
+            created_at=now - timedelta(hours=6),
+        )
+    )
+    db_session.commit()
+
+    by_message = client.get("/api/messages", params={"sort": "message"}).json()
+    assert [it["content_preview"] for it in by_message] == [
+        "sin-imagen",
+        "mensaje-reciente",
+        "mensaje-antiguo",
+    ]
+    assert by_message[2]["latest_image_at"] is None
+
+    by_image = client.get("/api/messages", params={"sort": "image"}).json()
+    assert [it["content_preview"] for it in by_image] == [
+        "mensaje-antiguo",
+        "mensaje-reciente",
+        "sin-imagen",
+    ]
+    assert by_image[0]["latest_image_at"]
+    assert by_image[1]["latest_image_at"]
+    assert by_image[2]["latest_image_at"] is None
+
+
+def test_list_messages_sort_image_uses_newest_image_per_message(client, db_session):
+    from datetime import datetime, timedelta
+
+    from app.models import IllustratedImage
+
+    now = datetime.utcnow()
+    conv = Conversation(title="Max imagen", model_id="llama3.2")
+    db_session.add(conv)
+    db_session.commit()
+    older = Message(
+        conversation_id=conv.id,
+        role="assistant",
+        content="con-varias-fotos",
+        created_at=now - timedelta(days=1),
+    )
+    newer = Message(
+        conversation_id=conv.id,
+        role="assistant",
+        content="con-foto-media",
+        created_at=now - timedelta(hours=1),
+    )
+    db_session.add_all([older, newer])
+    db_session.commit()
+    db_session.add_all(
+        [
+            IllustratedImage(
+                message_id=older.id,
+                filename="older_first.jpg",
+                mode="txt2img",
+                params_json="{}",
+                created_at=now - timedelta(hours=8),
+            ),
+            IllustratedImage(
+                message_id=older.id,
+                filename="older_latest.jpg",
+                mode="txt2img",
+                params_json="{}",
+                created_at=now,
+            ),
+            IllustratedImage(
+                message_id=newer.id,
+                filename="newer_only.jpg",
+                mode="txt2img",
+                params_json="{}",
+                created_at=now - timedelta(hours=3),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    items = client.get("/api/messages", params={"sort": "image"}).json()
+    assert [it["content_preview"] for it in items] == ["con-varias-fotos", "con-foto-media"]
+
+
+def test_list_messages_invalid_sort_is_422(client):
+    r = client.get("/api/messages", params={"sort": "created_at"})
+    assert r.status_code == 422
