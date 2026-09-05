@@ -414,6 +414,7 @@ def illustrate_message(
             body,
             prompt_system_instructions=body.prompt_system_instructions,
             use_chat_config=body.use_chat_config,
+            visual_consistency=body.visual_consistency,
         ),
     )
 
@@ -433,6 +434,7 @@ def illustrate_message(
                 existing_prompts=meta_prompts or None,
                 forge_overrides=_forge_overrides_from_body(body),
                 run_context=run_context,
+                visual_consistency=body.visual_consistency,
             ),
             debug=body.debug,
             include_prompt_debug=body.include_prompt_debug,
@@ -489,6 +491,7 @@ def illustrate_at_paragraph(
             body,
             prompt_system_instructions=body.prompt_system_instructions,
             use_chat_config=body.use_chat_config,
+            visual_consistency=body.visual_consistency,
             paragraph_index=body.paragraph_index,
             selected_excerpt=body.selected_excerpt,
         ),
@@ -509,6 +512,7 @@ def illustrate_at_paragraph(
                 existing_prompts=meta_prompts or None,
                 forge_overrides=_forge_overrides_from_body(body),
                 run_context=run_context,
+                visual_consistency=body.visual_consistency,
             ),
             debug=body.debug,
             include_prompt_debug=body.include_prompt_debug,

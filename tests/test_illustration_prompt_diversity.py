@@ -26,7 +26,24 @@ def test_already_planned_block_includes_prompts_and_diversity_rule():
             SceneSpec(id="existing-p2", prompt="", paragraph_index=2, anchor_excerpt="Final."),
         ],
         existing_prompts=["cinematic lighthouse at dusk"],
+        visual_consistency=False,
     )
     assert "red dress in kitchen" in block
     assert "cinematic lighthouse at dusk" in block
     assert "similares" in block.lower() or "similar" in block.lower()
+    assert "Consistencia visual: ON" not in block
+
+
+def test_already_planned_block_consistency_reuses_identity_tokens():
+    long_prompt = (
+        "25 year old woman, shoulder-length auburn hair, green eyes, "
+        "olive skin, cream linen dress with brass buttons, "
+        "standing in a sunlit kitchen with terracotta tiles"
+    )
+    block = _already_planned_block(
+        [SceneSpec(id="s1", prompt=long_prompt, paragraph_index=0)],
+        visual_consistency=True,
+    )
+    assert "canon de identidad" in block
+    assert long_prompt in block
+    assert "similares" not in block.lower()

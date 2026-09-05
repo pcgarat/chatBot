@@ -87,3 +87,28 @@ def test_index_html_has_reactor_controls():
     assert 'id="images-reactor-female-face-model"' in html
     assert 'id="images-reactor-male-face-model"' in html
     assert 'id="images-reactor-codeformer-weight"' in html
+
+
+def test_images_panel_has_visual_consistency_toggle():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    images = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
+    planner = images.split('data-accordion-section="images-planner"')[1].split(
+        'data-accordion-section="images-planner-rules"'
+    )[0]
+    assert 'id="images-visual-consistency"' in planner
+    chunk_start = planner.index('id="images-visual-consistency"')
+    chunk = planner[max(0, chunk_start - 400) : chunk_start + 160]
+    assert "fluent-switch-input" in chunk
+    assert "pref-row" in chunk
+    js = _js()
+    collect = js.split("function collectImagesSnapshot")[1].split("function fillImagesPanelFromPrefs")[0]
+    assert "isVisualConsistencyEnabled()" in collect
+    assert "visual_consistency" in collect
+    fill = js.split("function fillImagesPanelFromPrefs")[1].split("function syncImagesChatConfigDisabled")[0]
+    assert "prefs.visual_consistency !== false" in fill
+    illustrate = js.split("async function maybeIllustrateAssistantMessage")[1].split(
+        "async function generateRemainingImages"
+    )[0]
+    assert "visual_consistency: isVisualConsistencyEnabled()" in illustrate
+    at = js.split("async function illustrateAtParagraph")[1].split("async function runIllustrationStream")[0]
+    assert "visual_consistency: isVisualConsistencyEnabled()" in at

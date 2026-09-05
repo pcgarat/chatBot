@@ -66,6 +66,7 @@ def test_images_booleans_use_fluent_switch_rows():
     for control_id in (
         "images-enabled",
         "images-use-chat-config",
+        "images-visual-consistency",
         "images-reactor-enabled",
         "images-reactor-female-enabled",
         "images-reactor-male-enabled",

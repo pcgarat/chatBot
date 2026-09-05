@@ -5527,6 +5527,11 @@
     return !!(elEnabled && elEnabled.checked);
   }
 
+  function isVisualConsistencyEnabled() {
+    const el = document.getElementById("images-visual-consistency");
+    return !el || !!el.checked;
+  }
+
   async function ensureImagesPromptSelects() {
     const providerSel = document.getElementById("images-prompt-provider");
     const modelSel = document.getElementById("images-prompt-model");
@@ -5968,6 +5973,7 @@
     return {
       enabled: !!(enabled && enabled.checked),
       use_chat_config: !!(useChatConfig && useChatConfig.checked),
+      visual_consistency: isVisualConsistencyEnabled(),
       images_per_response: per ? parseInt(per.value, 10) || 2 : 2,
       batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : 10,
       retries: retries ? parseInt(retries.value, 10) || 0 : 0,
@@ -5987,12 +5993,14 @@
   function fillImagesPanelFromPrefs(prefs) {
     const enabled = document.getElementById("images-enabled");
     const useChatConfig = document.getElementById("images-use-chat-config");
+    const visualConsistency = document.getElementById("images-visual-consistency");
     const per = document.getElementById("images-per-response");
     const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
     const promptEl = document.getElementById("images-prompt");
     if (enabled) enabled.checked = !!prefs.enabled;
     if (useChatConfig) useChatConfig.checked = !!prefs.use_chat_config;
+    if (visualConsistency) visualConsistency.checked = prefs.visual_consistency !== false;
     if (per && prefs.images_per_response != null) per.value = prefs.images_per_response;
     if (batchSize && prefs.batch_size != null) batchSize.value = prefs.batch_size;
     if (retries && prefs.retries != null) retries.value = prefs.retries;
@@ -6362,6 +6370,9 @@
     });
     if (rules.use_chat_config != null) {
       rows.push(["Usar config del chat", rules.use_chat_config ? "sí" : "no"]);
+    }
+    if (rules.visual_consistency != null) {
+      rows.push(["Consistencia visual", rules.visual_consistency ? "sí" : "no"]);
     }
     if (rules.pass_name) rows.push(["Pase", rules.pass_name]);
     let html = '<dl class="illustration-meta-grid image-queue-details-grid">';
@@ -7573,6 +7584,7 @@
     const prefs = loadImagesPrefs();
     const enabled = document.getElementById("images-enabled");
     const useChatConfig = document.getElementById("images-use-chat-config");
+    const visualConsistency = document.getElementById("images-visual-consistency");
     const per = document.getElementById("images-per-response");
     const batchSize = document.getElementById("images-batch-size");
     const retries = document.getElementById("images-retries");
@@ -7588,7 +7600,7 @@
     await fetchForgeReactorDefaults();
 
     const forgeParamInputs = [forgeSteps, forgeWidth, forgeHeight, forgeSeed];
-    [enabled, useChatConfig, per, batchSize, retries, promptEl, providerSel, modelSel]
+    [enabled, useChatConfig, visualConsistency, per, batchSize, retries, promptEl, providerSel, modelSel]
       .concat(forgeParamInputs)
       .concat(reactorPanelInputNodes())
       .forEach((node) => {
@@ -7988,6 +8000,7 @@
         prompt: promptEl ? String(promptEl.value || "").trim() : "",
         prompt_system_instructions: getPlannerRulesTextForSystem(),
         use_chat_config: useChat,
+        visual_consistency: isVisualConsistencyEnabled(),
         prompt_model_params: useChat ? {} : collectPlannerModelParams(),
         include_prompt_debug: true,
         debug: true,
@@ -8051,6 +8064,7 @@
         prompt: promptEl ? String(promptEl.value || "").trim() : "",
         prompt_system_instructions: getPlannerRulesTextForSystem(),
         use_chat_config: useChat,
+        visual_consistency: isVisualConsistencyEnabled(),
         prompt_model_params: useChat ? {} : collectPlannerModelParams(),
         include_prompt_debug: true,
         debug: true,

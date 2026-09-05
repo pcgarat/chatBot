@@ -76,6 +76,7 @@ def test_illustrate_at_stream_forwards_paragraph_and_excerpt(client, db_session)
             existing_prompts=None,
             forge_overrides=None,
             run_context=None,
+            visual_consistency=True,
         ):
             captured["paragraph_index"] = paragraph_index
             captured["selected_excerpt"] = selected_excerpt
@@ -304,7 +305,7 @@ def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None, visual_consistency=True):
             captured["prompt"] = prompt
             captured["max_images"] = max_images
             captured["batch_size"] = batch_size
@@ -338,7 +339,7 @@ def test_illustrate_forwards_forge_param_overrides_to_orchestrator(client, db_se
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None, visual_consistency=True):
             captured["forge_overrides"] = forge_overrides
             yield IllustrationEvent(type="done", message="ok", content=text)
 
@@ -586,6 +587,59 @@ def test_illustrate_request_allows_more_than_20_images_per_response():
 
     req = IllustrateRequest(prompt_model="m", images_per_response=50)
     assert req.images_per_response == 50
+
+
+def test_illustrate_request_visual_consistency_defaults_true():
+    from app.schemas import IllustrateRequest
+
+    assert IllustrateRequest(prompt_model="m").visual_consistency is True
+    off = IllustrateRequest(prompt_model="m", visual_consistency=False)
+    assert off.visual_consistency is False
+
+
+def test_illustrate_forwards_visual_consistency_to_orchestrator(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Había un faro.")
+    captured: dict = {}
+
+    class FakeOrch:
+        def run(
+            self,
+            text,
+            *,
+            max_images,
+            retries,
+            prompt="",
+            include_prompt_debug=False,
+            batch_size=10,
+            existing_prompts=None,
+            forge_overrides=None,
+            run_context=None,
+            visual_consistency=True,
+        ):
+            captured["visual_consistency"] = visual_consistency
+            yield IllustrationEvent(type="done", message="ok", content=text)
+
+    with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
+        omitted = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
+            json={"prompt_model": "llama3.2", "images_per_response": 1, "retries": 0},
+        )
+        assert omitted.status_code == 200
+        assert captured["visual_consistency"] is True
+        off = client.post(
+            f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
+            json={
+                "prompt_model": "llama3.2",
+                "images_per_response": 1,
+                "retries": 0,
+                "visual_consistency": False,
+            },
+        )
+    assert off.status_code == 200
+    assert captured["visual_consistency"] is False
 
 
 def test_illustrate_request_batch_size_defaults_to_10():

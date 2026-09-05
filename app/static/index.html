@@ -545,6 +545,14 @@
                     <input type="checkbox" id="images-use-chat-config" class="fluent-switch-input" aria-label="Usar configuración del chat" />
                     <span class="fluent-switch-track" aria-hidden="true"><span class="fluent-switch-thumb"></span></span>
                   </label>
+                  <label class="pref-row fluent-toggle-row" title="Los prompts del lote y de las imágenes ya generadas comparten identidad: edad, vestuario y aspecto. Varía pose e instante. El relato manda si cambia ropa o lugar.">
+                    <span class="pref-row-copy">
+                      <span class="pref-row-label">Consistencia</span>
+                      <span class="pref-row-hint">Misma identidad entre imágenes del mensaje</span>
+                    </span>
+                    <input type="checkbox" id="images-visual-consistency" class="fluent-switch-input" aria-label="Consistencia visual entre imágenes" checked />
+                    <span class="fluent-switch-track" aria-hidden="true"><span class="fluent-switch-thumb"></span></span>
+                  </label>
                   <div class="sidebar-option param-option" data-images-chat-config-control>
                     <label class="param-label" for="images-prompt-provider">Proveedor de prompts</label>
                     <select id="images-prompt-provider" class="param-control" aria-label="Proveedor para prompts de imagen"></select>

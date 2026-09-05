@@ -292,6 +292,7 @@ def test_conversation_images_persist_across_get(client):
     assert images["prompt_model_params"]["temperature"] == 0.5
     assert images["prompt_model_params"]["think"] is False
     assert images["prompt_system_instructions"][0]["content"] == "luz dura"
+    assert images["visual_consistency"] is True
     assert "debug" not in images
     get_r = client.get(f"/api/conversations/{cid}")
     assert get_r.status_code == 200

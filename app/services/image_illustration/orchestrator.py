@@ -272,6 +272,7 @@ class ImageIllustrationOrchestrator:
         existing_prompts: list[str] | None = None,
         forge_overrides: ForgeParamOverrides | None = None,
         run_context: IllustrationRunContext | None = None,
+        visual_consistency: bool = True,
     ) -> Iterator[IllustrationEvent]:
         yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración")
         batch_n = max(1, int(batch_size))
@@ -352,6 +353,7 @@ class ImageIllustrationOrchestrator:
                 coverage_block=coverage_block,
                 assigned_paragraphs=assigned,
                 existing_prompts=known_prompts or None,
+                visual_consistency=visual_consistency,
             )
             if plan.illustrate and plan.scenes:
                 bound = bind_scenes_to_paragraphs(plan.scenes, assigned)
@@ -534,6 +536,7 @@ class ImageIllustrationOrchestrator:
         existing_prompts: list[str] | None = None,
         forge_overrides: ForgeParamOverrides | None = None,
         run_context: IllustrationRunContext | None = None,
+        visual_consistency: bool = True,
     ) -> Iterator[IllustrationEvent]:
         """Una imagen en el párrafo elegido; si ya hay fotos, se inserta al lado."""
         yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración en párrafo")
@@ -590,6 +593,7 @@ class ImageIllustrationOrchestrator:
             existing_prompts=known_prompts or None,
             pinned=True,
             focus_excerpt=(selected_excerpt or "").strip() or None,
+            visual_consistency=visual_consistency,
         )
         if plan.illustrate and plan.scenes:
             bound = bind_scenes_to_paragraphs(plan.scenes, assigned)

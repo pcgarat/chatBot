@@ -31,6 +31,7 @@ class FakePlanner:
         existing_prompts=None,
         pinned=False,
         focus_excerpt=None,
+        visual_consistency=True,
     ):
         self.last_text = text
         self.last_already_planned = already_planned
@@ -39,6 +40,7 @@ class FakePlanner:
         self.last_existing_prompts = existing_prompts
         self.last_pinned = pinned
         self.last_focus_excerpt = focus_excerpt
+        self.last_visual_consistency = visual_consistency
         return self._scene_plan
 
 
@@ -59,6 +61,7 @@ class SequencingPlanner:
         existing_prompts=None,
         pinned=False,
         focus_excerpt=None,
+        visual_consistency=True,
     ):
         self.calls.append(
             {
@@ -70,6 +73,7 @@ class SequencingPlanner:
                 "existing_prompts": list(existing_prompts or []),
                 "pinned": pinned,
                 "focus_excerpt": focus_excerpt,
+                "visual_consistency": visual_consistency,
             }
         )
         if not self._plans:
@@ -619,6 +623,7 @@ def test_run_at_inserts_beside_existing_image_on_same_paragraph():
     assert planner.last_assigned_paragraphs
     assert planner.last_assigned_paragraphs[0].index == 0
     assert "lighthouse at dusk" in (planner.last_existing_prompts or [])
+    assert planner.last_visual_consistency is True
     done = events[-1]
     assert done.type == "done"
     content = done.content or ""
@@ -643,3 +648,28 @@ def test_run_at_skips_out_of_range_paragraph():
     assert not any(e.type == "image" for e in events)
     codes = [e.data.get("code") for e in events if e.type == "status"]
     assert "images.skipped" in codes
+
+
+def test_run_forwards_visual_consistency_to_planner():
+    planner = FakePlanner(
+        ScenePlan(
+            illustrate=True,
+            reason="r",
+            scenes=[SceneSpec(id="s1", prompt="faro", paragraph_index=0)],
+        )
+    )
+    orch = ImageIllustrationOrchestrator(
+        planner=planner,
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"faro": b"img"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    list(
+        orch.run(
+            "Había un faro.",
+            max_images=1,
+            retries=0,
+            visual_consistency=False,
+        )
+    )
+    assert planner.last_visual_consistency is False
