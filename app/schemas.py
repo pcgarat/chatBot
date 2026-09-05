@@ -624,6 +624,40 @@ class WorkspaceProfileOut(BaseModel):
     updated_at: datetime
 
 
+class PlannerRulePresetSnapshot(BaseModel):
+    """Selección de reglas del planificador (sin cromo de UI)."""
+
+    rules: list[RuleItem] = Field(default_factory=list)
+
+    @field_validator("rules", mode="before")
+    @classmethod
+    def _coerce_rules(cls, value):
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            text = value.strip()
+            return [{"title": "Instrucciones", "content": text}] if text else []
+        return value
+
+
+class PlannerRulePresetCreate(BaseModel):
+    name: str
+    snapshot: PlannerRulePresetSnapshot = Field(default_factory=PlannerRulePresetSnapshot)
+
+
+class PlannerRulePresetUpdate(BaseModel):
+    name: Optional[str] = None
+    snapshot: Optional[PlannerRulePresetSnapshot] = None
+
+
+class PlannerRulePresetOut(BaseModel):
+    id: str
+    name: str
+    snapshot: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
 ConversationCreate.model_rebuild()
 ConversationUpdate.model_rebuild()
 ConversationOut.model_rebuild()

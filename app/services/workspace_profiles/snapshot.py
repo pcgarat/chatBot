@@ -119,6 +119,18 @@ def _normalize_planner_instructions(value: object) -> list[dict]:
     return items
 
 
+def normalize_planner_instructions(value: object) -> list[dict]:
+    """Lista canónica de reglas del planificador (rule_id, title, content)."""
+    return _normalize_planner_instructions(value)
+
+
+def conversation_images_snapshot(value: object) -> dict:
+    """Snapshot de imágenes en conversación: sin reglas del planificador (son globales)."""
+    data = _normalize_images(value).to_dict()
+    data["prompt_system_instructions"] = []
+    return data
+
+
 def normalize_images_snapshot(value: object) -> dict:
     """Snapshot canónico del panel Imágenes, sin cromo de UI."""
     return _normalize_images(value).to_dict()

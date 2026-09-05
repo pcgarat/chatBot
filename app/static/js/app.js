@@ -3275,7 +3275,7 @@
           model_id: model,
           provider: provider,
           system_instructions: rules.length ? rules : null,
-          images: collectImagesSnapshot(),
+          images: imagesSnapshotForConversation(),
         }),
       });
       await setCurrentConversation(conv);
@@ -5990,6 +5990,15 @@
     };
   }
 
+  function imagesSnapshotForConversation() {
+    const snap = collectImagesSnapshot();
+    const prev = loadImagesPrefs();
+    if (!snap.prompt_provider && prev.prompt_provider) snap.prompt_provider = prev.prompt_provider;
+    if (!snap.prompt_model && prev.prompt_model) snap.prompt_model = prev.prompt_model;
+    delete snap.prompt_system_instructions;
+    return snap;
+  }
+
   function fillImagesPanelFromPrefs(prefs) {
     const enabled = document.getElementById("images-enabled");
     const useChatConfig = document.getElementById("images-use-chat-config");
@@ -6032,10 +6041,7 @@
 
   function persistImagesToConversation() {
     if (!currentConversationId) return;
-    const snap = collectImagesSnapshot();
-    const prev = loadImagesPrefs();
-    if (!snap.prompt_provider && prev.prompt_provider) snap.prompt_provider = prev.prompt_provider;
-    if (!snap.prompt_model && prev.prompt_model) snap.prompt_model = prev.prompt_model;
+    const snap = imagesSnapshotForConversation();
     fetchJson(`${API}/conversations/${currentConversationId}`, {
       method: "PUT",
       body: JSON.stringify({ images: snap }),
@@ -6135,8 +6141,11 @@
     } catch (_) {}
   }
 
-  async function applyImagesSnapshot(images) {
-    const incoming = images && typeof images === "object" ? images : {};
+  async function applyImagesSnapshot(images, options) {
+    const incoming = images && typeof images === "object" ? Object.assign({}, images) : {};
+    if (!(options && options.includePlannerRules)) {
+      delete incoming.prompt_system_instructions;
+    }
     const next = Object.assign({}, loadImagesPrefs(), incoming);
     delete next.debug;
     saveImagesPrefs(next);
@@ -7682,6 +7691,7 @@
   async function persistWorkspaceToConversation() {
     if (!currentConversationId) return;
     const snap = collectWorkspaceSnapshot();
+    const images = imagesSnapshotForConversation();
     await fetchJson(`${API}/conversations/${currentConversationId}`, {
       method: "PUT",
       body: JSON.stringify({
@@ -7690,7 +7700,7 @@
         model_params: buildModelParams(),
         history_turns: snap.history_turns,
         system_instructions: snap.system_instructions,
-        images: snap.images,
+        images: images,
       }),
     });
   }
@@ -7727,7 +7737,7 @@
       const turns = snap.history_turns != null ? Number(snap.history_turns) : 5;
       el.historyTurnsInput.value = String(Number.isFinite(turns) ? Math.min(100, Math.max(0, turns)) : 5);
     }
-    await applyImagesSnapshot(snap.images || {});
+    await applyImagesSnapshot(snap.images || {}, { includePlannerRules: true });
     renderParamsSourceLabel();
     renderParamsToSend();
     syncHeaderProviderModel();
@@ -7784,14 +7794,19 @@
     renderWorkspaceProfileSelect();
   }
 
-  function promptWorkspaceProfileName(defaultName) {
+  function promptWorkspaceProfileName(defaultName, meta) {
     const modal = document.getElementById("workspace-profile-name-modal");
     const input = document.getElementById("workspace-profile-name-input");
     const confirmBtn = document.getElementById("workspace-profile-name-confirm");
     const cancelBtn = document.getElementById("workspace-profile-name-cancel");
+    const titleEl = document.getElementById("workspace-profile-name-title");
+    const labelEl = document.getElementById("workspace-profile-name-label");
     if (!modal || !input || !confirmBtn || !cancelBtn) {
       return Promise.resolve(null);
     }
+    if (titleEl) titleEl.textContent = (meta && meta.title) || "Nombre del perfil";
+    if (labelEl) labelEl.textContent = (meta && meta.label) || "Cómo se llama este rig";
+    if (input) input.placeholder = (meta && meta.placeholder) || "Relato · faro";
     return new Promise(function (resolve) {
       let settled = false;
       function finish(value) {
@@ -7946,6 +7961,187 @@
   }
 
   initWorkspaceProfiles();
+
+  let plannerRulePresets = [];
+  let currentPlannerRulePresetId = "";
+  const PLANNER_RULE_PRESET_NAME_META = {
+    title: "Nombre del preset",
+    label: "Cómo se llama este conjunto de reglas",
+    placeholder: "Flux · nocturno",
+  };
+
+  function collectPlannerRulePresetSnapshot() {
+    return { rules: serializeRuleItems(plannerRules) };
+  }
+
+  function applyPlannerRulePresetSnapshot(snapshot) {
+    const rules = snapshot && typeof snapshot === "object" ? snapshot.rules : snapshot;
+    plannerRules = normalizePlannerRulesFromPrefs(rules);
+    hydratePlannerRulesFromLibrary();
+    renderPlannerRules();
+    persistImagesPanel();
+  }
+
+  function getSelectedPlannerRulePresetId() {
+    const select = document.getElementById("planner-rule-preset-select");
+    return select && select.value ? select.value : "";
+  }
+
+  function syncPlannerRulePresetActions() {
+    const has = !!getSelectedPlannerRulePresetId();
+    ["btn-planner-rule-preset-apply", "btn-planner-rule-preset-save", "btn-planner-rule-preset-delete"].forEach(
+      function (id) {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = !has;
+      }
+    );
+  }
+
+  function renderPlannerRulePresetSelect() {
+    const select = document.getElementById("planner-rule-preset-select");
+    if (!select) return;
+    const previous = currentPlannerRulePresetId || select.value;
+    if (currentPlannerRulePresetId && !plannerRulePresets.some((p) => p.id === currentPlannerRulePresetId)) {
+      currentPlannerRulePresetId = "";
+    }
+    const placeholder = plannerRulePresets.length ? "Elegir preset" : "No hay presets";
+    select.innerHTML =
+      `<option value="">${placeholder}</option>` +
+      plannerRulePresets
+        .map(function (p) {
+          return `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`;
+        })
+        .join("");
+    const keep = previous && plannerRulePresets.some((p) => p.id === previous) ? previous : currentPlannerRulePresetId;
+    if (keep) select.value = keep;
+    syncPlannerRulePresetActions();
+  }
+
+  async function refreshPlannerRulePresets() {
+    try {
+      const list = await fetchJson(`${API}/planner-rule-presets`);
+      plannerRulePresets = Array.isArray(list) ? list : [];
+      renderPlannerRulePresetSelect();
+    } catch (e) {
+      showError("No se pudieron cargar los presets de reglas: " + (e.message || e));
+      renderPlannerRulePresetSelect();
+    }
+  }
+
+  async function savePlannerRulePreset(asNew) {
+    const snapshot = collectPlannerRulePresetSnapshot();
+    let name = "";
+    let presetId = asNew ? "" : getSelectedPlannerRulePresetId();
+    if (presetId) {
+      const current = plannerRulePresets.find((p) => p.id === presetId);
+      name = current ? current.name : "";
+    }
+    if (!name) {
+      name = await promptWorkspaceProfileName("", PLANNER_RULE_PRESET_NAME_META);
+      if (!name) return;
+      presetId = "";
+    }
+    try {
+      const saved = presetId
+        ? await fetchJson(`${API}/planner-rule-presets/${encodeURIComponent(presetId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ snapshot }),
+          })
+        : await fetchJson(`${API}/planner-rule-presets`, {
+            method: "POST",
+            body: JSON.stringify({ name, snapshot }),
+          });
+      currentPlannerRulePresetId = saved.id;
+      await refreshPlannerRulePresets();
+      const select = document.getElementById("planner-rule-preset-select");
+      if (select && saved && saved.id) select.value = saved.id;
+      if (saved && saved.id && !plannerRulePresets.some((p) => p.id === saved.id)) {
+        plannerRulePresets = plannerRulePresets.concat([saved]);
+        renderPlannerRulePresetSelect();
+        if (select) select.value = saved.id;
+      }
+      syncPlannerRulePresetActions();
+      showNotice(presetId ? "Preset de reglas actualizado." : "Preset de reglas guardado.");
+    } catch (e) {
+      showError("No se pudo guardar el preset: " + (e.message || e));
+    }
+  }
+
+  async function applySelectedPlannerRulePreset() {
+    const presetId = getSelectedPlannerRulePresetId();
+    if (!presetId) return;
+    let preset = plannerRulePresets.find((p) => p.id === presetId);
+    if (!preset) {
+      try {
+        preset = await fetchJson(`${API}/planner-rule-presets/${encodeURIComponent(presetId)}`);
+      } catch (e) {
+        showError("No se pudo cargar el preset: " + (e.message || e));
+        return;
+      }
+    }
+    try {
+      applyPlannerRulePresetSnapshot(preset.snapshot || {});
+      currentPlannerRulePresetId = preset.id;
+      const select = document.getElementById("planner-rule-preset-select");
+      if (select) select.value = preset.id;
+      syncPlannerRulePresetActions();
+      showNotice("Preset «" + preset.name + "» cargado.");
+    } catch (e) {
+      showError("No se pudo aplicar el preset: " + (e.message || e));
+    }
+  }
+
+  async function deletePlannerRulePreset(presetId) {
+    if (!presetId) return;
+    const current = plannerRulePresets.find((p) => p.id === presetId);
+    const label = current ? current.name : "este preset";
+    if (!window.confirm("¿Eliminar el preset «" + label + "»?")) return;
+    try {
+      await fetchJson(`${API}/planner-rule-presets/${encodeURIComponent(presetId)}`, {
+        method: "DELETE",
+      });
+      if (currentPlannerRulePresetId === presetId) currentPlannerRulePresetId = "";
+      await refreshPlannerRulePresets();
+      showNotice("Preset de reglas eliminado.");
+    } catch (e) {
+      showError("No se pudo eliminar el preset: " + (e.message || e));
+    }
+  }
+
+  function initPlannerRulePresets() {
+    const select = document.getElementById("planner-rule-preset-select");
+    const applyBtn = document.getElementById("btn-planner-rule-preset-apply");
+    const saveBtn = document.getElementById("btn-planner-rule-preset-save");
+    const saveAsBtn = document.getElementById("btn-planner-rule-preset-save-as");
+    const deleteBtn = document.getElementById("btn-planner-rule-preset-delete");
+    if (select) {
+      select.addEventListener("change", syncPlannerRulePresetActions);
+    }
+    if (applyBtn) {
+      applyBtn.addEventListener("click", function () {
+        applySelectedPlannerRulePreset();
+      });
+    }
+    if (saveBtn) {
+      saveBtn.addEventListener("click", function () {
+        savePlannerRulePreset(false);
+      });
+    }
+    if (saveAsBtn) {
+      saveAsBtn.addEventListener("click", function () {
+        savePlannerRulePreset(true);
+      });
+    }
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", function () {
+        deletePlannerRulePreset(getSelectedPlannerRulePresetId());
+      });
+    }
+    syncPlannerRulePresetActions();
+    refreshPlannerRulePresets();
+  }
+
+  initPlannerRulePresets();
 
 
   function abortAllIllustrations() {

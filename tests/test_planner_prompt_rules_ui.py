@@ -60,8 +60,78 @@ def test_js_hydrates_planner_chips_from_library():
     assert "loadPlannerLibraryRules" in init
 
 
+def test_js_conversation_switch_does_not_apply_planner_rules():
+    js = APP_JS.read_text(encoding="utf-8")
+    setter = js.split("async function setCurrentConversation")[1].split(
+        "let saveRulesDebounceTimer"
+    )[0]
+    assert "applyImagesSnapshot(conv.images)" in setter
+    conv_apply = setter.split("applyImagesSnapshot(conv.images)")[0][-80:]
+    assert "includePlannerRules: true" not in conv_apply + "applyImagesSnapshot(conv.images)"
+
+    apply_fn = js.split("async function applyImagesSnapshot")[1].split(
+        "const GALLERY_PAGE_SIZE"
+    )[0]
+    assert "includePlannerRules" in apply_fn
+    assert "prompt_system_instructions" in apply_fn
+
+    workspace = js.split("async function applyWorkspaceSnapshot")[1].split(
+        "function getSelectedWorkspaceProfileId"
+    )[0]
+    assert "includePlannerRules: true" in workspace
+
+
+def test_js_does_not_persist_planner_rules_on_conversation():
+    js = APP_JS.read_text(encoding="utf-8")
+    persist = js.split("function persistImagesToConversation")[1].split(
+        "let saveImagesToConvTimer"
+    )[0]
+    assert "imagesSnapshotForConversation()" in persist
+    helper = js.split("function imagesSnapshotForConversation")[1].split(
+        "function fillImagesPanelFromPrefs"
+    )[0]
+    assert "delete snap.prompt_system_instructions" in helper
+
+
 def test_js_concatenates_planner_rules_on_illustrate():
     js = APP_JS.read_text(encoding="utf-8")
     illustrate = js.split("async function maybeIllustrateAssistantMessage")[1].split("async function generateRemainingImages")[0]
     assert "getPlannerRulesTextForSystem" in illustrate or "plannerRules" in illustrate
     assert "images-prompt-system" not in illustrate
+
+
+def test_planner_rules_panel_has_preset_bar():
+    images = _imagenes_html()
+    rules = images.split('data-accordion-section="images-planner-rules"')[1].split(
+        'data-accordion-section="images-limits"'
+    )[0]
+    assert 'id="planner-rule-preset-select"' in rules
+    assert 'id="btn-planner-rule-preset-apply"' in rules
+    assert 'id="btn-planner-rule-preset-save"' in rules
+    assert 'id="btn-planner-rule-preset-save-as"' in rules
+    assert 'id="btn-planner-rule-preset-delete"' in rules
+    select_idx = rules.find('id="planner-rule-preset-select"')
+    list_idx = rules.find('id="planner-rules-list"')
+    assert select_idx >= 0
+    assert list_idx > select_idx
+
+
+def test_js_planner_rule_presets_crud_and_apply():
+    js = APP_JS.read_text(encoding="utf-8")
+    assert "function collectPlannerRulePresetSnapshot" in js
+    assert "function applyPlannerRulePresetSnapshot" in js
+    assert "/planner-rule-presets" in js
+    collect = js.split("function collectPlannerRulePresetSnapshot")[1].split(
+        "function applyPlannerRulePresetSnapshot"
+    )[0]
+    assert "serializeRuleItems(plannerRules)" in collect
+    apply_fn = js.split("function applyPlannerRulePresetSnapshot")[1].split(
+        "function getSelectedPlannerRulePresetId"
+    )[0]
+    assert "normalizePlannerRulesFromPrefs" in apply_fn
+    assert "persistImagesPanel()" in apply_fn
+    refresh = js.split("async function refreshPlannerRulePresets")[1].split(
+        "async function savePlannerRulePreset"
+    )[0]
+    assert "No se pudieron cargar los presets de reglas" in refresh
+

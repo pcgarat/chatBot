@@ -1342,6 +1342,37 @@ def test_e2e_workspace_profiles_crud(client, ollama_available):
     assert deleted.status_code == 204
 
 
+def test_e2e_planner_rule_presets_crud(client, ollama_available):
+    """CRUD de presets de reglas del planificador."""
+    payload = {
+        "name": "E2E flux nocturno",
+        "snapshot": {
+            "rules": [
+                {"title": "Luz", "content": "Nocturna"},
+                {"title": "Estilo", "content": "cinematic still"},
+            ]
+        },
+    }
+    created = client.post("/api/planner-rule-presets", json=payload)
+    assert created.status_code == 201
+    preset = created.json()
+    assert preset["name"] == "E2E flux nocturno"
+    assert preset["snapshot"]["rules"][0]["content"] == "Nocturna"
+    listed = client.get("/api/planner-rule-presets")
+    assert listed.status_code == 200
+    assert any(item["id"] == preset["id"] for item in listed.json())
+    got = client.get(f"/api/planner-rule-presets/{preset['id']}")
+    assert got.status_code == 200
+    updated = client.put(
+        f"/api/planner-rule-presets/{preset['id']}",
+        json={"snapshot": {"rules": [{"title": "POV", "content": "cámara al hombro"}]}},
+    )
+    assert updated.status_code == 200
+    assert len(updated.json()["snapshot"]["rules"]) == 1
+    deleted = client.delete(f"/api/planner-rule-presets/{preset['id']}")
+    assert deleted.status_code == 204
+
+
 def test_e2e_forge_last_generation_params_shape(client, ollama_available):
     """GET /api/forge/last-generation-params siempre responde 200 con available bool."""
     r = client.get("/api/forge/last-generation-params")

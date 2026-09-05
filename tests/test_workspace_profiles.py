@@ -109,6 +109,21 @@ def test_normalize_snapshot_keeps_planner_rule_list():
     assert out["images"]["prompt_system_instructions"][0]["content"] == "Nocturna"
 
 
+def test_conversation_images_snapshot_strips_planner_rules():
+    from app.services.workspace_profiles.snapshot import conversation_images_snapshot
+
+    out = conversation_images_snapshot(
+        {
+            "enabled": True,
+            "prompt": "film still",
+            "prompt_system_instructions": [{"title": "A", "content": "B", "rule_id": "pr1"}],
+        }
+    )
+    assert out["prompt"] == "film still"
+    assert out["enabled"] is True
+    assert out["prompt_system_instructions"] == []
+
+
 def test_normalize_snapshot_requires_model():
     try:
         normalize_snapshot({"provider": "ollama", "model_id": "  "})

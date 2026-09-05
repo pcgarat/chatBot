@@ -17,7 +17,7 @@ from app.slash_commands import parse_slash_command
 from app.db import get_db
 from app.crud import create_rule as crud_create_rule
 from app.crud import get_rule as crud_get_rule
-from app.services.workspace_profiles.snapshot import normalize_images_snapshot
+from app.services.workspace_profiles.snapshot import conversation_images_snapshot
 from app.schemas import (
     ConversationCreate,
     ConversationFork,
@@ -54,7 +54,7 @@ def _parse_images(raw: str | None) -> dict | None:
         return None
     if not isinstance(data, dict):
         return None
-    return normalize_images_snapshot(data)
+    return conversation_images_snapshot(data)
 
 
 def _parse_system_instructions(raw: str | None) -> list[dict] | None:
