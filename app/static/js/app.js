@@ -6156,6 +6156,8 @@
   let galleryTotal = 0;
   let galleryOffset = 0;
   let galleryLightboxIndex = -1;
+  let galleryLightboxBusy = false;
+  let galleryLoadSeq = 0;
   let galleryPromptTimer = null;
   let galleryScopeAll = true;
   let galleryUserChoseAll = false;
@@ -7159,25 +7161,43 @@
     }
   }
 
-  async function loadGalleryPage() {
+  function galleryPageOffsetForAbsolute(absoluteIndex) {
+    if (!Number.isFinite(absoluteIndex) || absoluteIndex < 0) return 0;
+    return Math.floor(absoluteIndex / GALLERY_PAGE_SIZE) * GALLERY_PAGE_SIZE;
+  }
+
+  async function loadGalleryPage(options) {
+    const silent = !!(options && options.silent);
+    const requestedOffset =
+      options && Number.isFinite(options.offset) ? options.offset : galleryOffset;
+    const seq = ++galleryLoadSeq;
+    if (!silent) closeGalleryLightbox();
     const grid = document.getElementById("image-gallery-grid");
-    if (grid) {
+    if (grid && !silent) {
       grid.innerHTML = '<p class="image-gallery-empty">Cargando…</p>';
     }
     try {
-      const data = await fetchJson(`${API}/illustrated-images?${buildGalleryQuery(galleryOffset)}`);
+      const data = await fetchJson(
+        `${API}/illustrated-images?${buildGalleryQuery(requestedOffset)}`
+      );
+      if (seq !== galleryLoadSeq) return false;
       galleryItems = data.items || [];
       galleryTotal = data.total || 0;
-      galleryOffset = data.offset || 0;
+      galleryOffset = typeof data.offset === "number" ? data.offset : requestedOffset;
       renderGalleryGrid();
+      return true;
     } catch (err) {
-      galleryItems = [];
-      galleryTotal = 0;
-      if (grid) {
-        grid.innerHTML =
-          '<p class="image-gallery-empty">No se pudo cargar la galería.</p>';
+      if (seq !== galleryLoadSeq) return false;
+      if (!silent) {
+        galleryItems = [];
+        galleryTotal = 0;
+        if (grid) {
+          grid.innerHTML =
+            '<p class="image-gallery-empty">No se pudo cargar la galería.</p>';
+        }
       }
       showError("Error al cargar la galería: " + err.message);
+      return false;
     }
   }
 
@@ -7196,8 +7216,16 @@
     if (!item || !img || !meta) return;
     img.src = item.url;
     img.alt = (item.prompt || "").slice(0, 180);
-    if (prev) prev.hidden = galleryItems.length < 2;
-    if (next) next.hidden = galleryItems.length < 2;
+    const abs = galleryOffset + galleryLightboxIndex;
+    const showNav = galleryTotal > 1;
+    if (prev) {
+      prev.hidden = !showNav;
+      prev.disabled = abs <= 0;
+    }
+    if (next) {
+      next.hidden = !showNav;
+      next.disabled = abs >= galleryTotal - 1;
+    }
     const convLabel = item.conversation_title || "Conversación";
     const goBtn =
       '<p class="image-gallery-lightbox-link">' +
@@ -7246,10 +7274,28 @@
     renderGalleryLightbox();
   }
 
-  function stepGalleryLightbox(delta) {
-    if (galleryLightboxIndex < 0 || galleryItems.length < 2) return;
-    const next = (galleryLightboxIndex + delta + galleryItems.length) % galleryItems.length;
-    openGalleryLightbox(next);
+  async function stepGalleryLightbox(delta) {
+    if (galleryLightboxIndex < 0 || galleryTotal < 2 || galleryLightboxBusy) return;
+    const target = galleryOffset + galleryLightboxIndex + delta;
+    if (target < 0 || target >= galleryTotal) return;
+    const pageOffset = galleryPageOffsetForAbsolute(target);
+    if (pageOffset === galleryOffset) {
+      openGalleryLightbox(target - galleryOffset);
+      return;
+    }
+    galleryLightboxBusy = true;
+    try {
+      const ok = await loadGalleryPage({ silent: true, offset: pageOffset });
+      if (!ok || galleryLightboxIndex < 0) return;
+      const idx = target - galleryOffset;
+      if (idx < 0 || idx >= galleryItems.length) {
+        closeGalleryLightbox();
+        return;
+      }
+      openGalleryLightbox(idx);
+    } finally {
+      galleryLightboxBusy = false;
+    }
   }
 
   function highlightIllustrationInConversation(filename, sceneId) {

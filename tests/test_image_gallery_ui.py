@@ -181,6 +181,37 @@ def test_gallery_cards_do_not_overflow_grid_rows():
     assert "item.height" in render
 
 
+def test_gallery_lightbox_navigates_across_pages():
+    """El visor recorre toda la colección, no solo la página visible."""
+    js = APP_JS.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    step = js[
+        js.index("function stepGalleryLightbox") : js.index(
+            "function highlightIllustrationInConversation"
+        )
+    ]
+    assert "galleryTotal" in step
+    assert "galleryPageOffsetForAbsolute" in step
+    assert "loadGalleryPage" in step
+    assert "silent: true" in step or "silent:!0" in step.replace(" ", "")
+    assert "% galleryItems.length" not in step
+    assert "galleryItems.length < 2" not in step
+    load = js[js.index("async function loadGalleryPage") : js.index("function closeGalleryLightbox")]
+    assert "silent" in load
+    assert "!silent" in load
+    assert "Cargando…" in load
+    render = js[
+        js.index("function renderGalleryLightbox") : js.index("function openGalleryLightbox")
+    ]
+    assert "galleryTotal > 1" in render
+    assert "galleryItems.length < 2" not in render
+    assert "prev.disabled" in render
+    assert "next.disabled" in render
+    assert "function galleryPageOffsetForAbsolute" in js
+    assert "GALLERY_PAGE_SIZE" in js[js.index("function galleryPageOffsetForAbsolute") :]
+    assert ".image-gallery-lightbox-nav:disabled" in css
+
+
 def test_index_serves_gallery_button(client):
     r = client.get("/")
     assert r.status_code == 200
