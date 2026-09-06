@@ -14,6 +14,11 @@
   let activeLeafId = null;
   let leftHistoryMode = "conversations";
   let consultaAssistantId = null;
+  let messageHistoryItems = [];
+  let messageHistoryTotal = 0;
+  let messageHistoryLoadSeq = 0;
+  let messageHistorySearchTimer = null;
+  let messageHistorySearchIn = null;
   let providers = [];
   let models = [];
   let currentProvider = "ollama";
@@ -41,6 +46,9 @@
   const el = {
     conversationsList: document.getElementById("conversations-list"),
     leftHistorySortSelect: document.getElementById("left-history-sort-select"),
+    messageHistorySearchWrap: document.getElementById("message-history-search-wrap"),
+    messageHistorySearch: document.getElementById("message-history-search"),
+    messageHistoryPager: document.getElementById("message-history-pager"),
     conversationsTrash: document.getElementById("conversations-trash"),
     conversationsTrashList: document.getElementById("conversations-trash-list"),
     conversationTitle: document.getElementById("conversation-title"),
@@ -1859,6 +1867,32 @@
     { value: "message", label: "Mensaje" },
     { value: "image", label: "Imagen" },
   ];
+  const MESSAGE_HISTORY_PAGE_SIZE = 50;
+  const MESSAGE_HISTORY_SEARCH_DEBOUNCE_MS = 280;
+
+  function currentMessageHistoryQuery() {
+    return ((el.messageHistorySearch && el.messageHistorySearch.value) || "").trim();
+  }
+
+  function mergeMessageHistoryItems(existing, incoming) {
+    const seen = {};
+    const out = [];
+    (existing || []).concat(incoming || []).forEach(function (item) {
+      if (!item || !item.id || seen[item.id]) return;
+      seen[item.id] = true;
+      out.push(item);
+    });
+    return out;
+  }
+
+  function onMessageHistorySearchInput() {
+    if (messageHistorySearchTimer) clearTimeout(messageHistorySearchTimer);
+    messageHistorySearchTimer = setTimeout(function () {
+      messageHistorySearchTimer = null;
+      if (!isMessagesHistoryMode()) return;
+      loadMessageHistory();
+    }, MESSAGE_HISTORY_SEARCH_DEBOUNCE_MS);
+  }
 
   function isMessagesHistoryMode() {
     return leftHistoryMode === "messages";
@@ -1954,6 +1988,16 @@
     if (el.btnHistoryMessages) {
       el.btnHistoryMessages.setAttribute("aria-pressed", isMessagesHistoryMode() ? "true" : "false");
     }
+    syncMessageHistoryChrome();
+  }
+
+  function syncMessageHistoryChrome() {
+    const show = isMessagesHistoryMode();
+    if (el.messageHistorySearchWrap) el.messageHistorySearchWrap.hidden = !show;
+    if (!show && el.messageHistoryPager) {
+      el.messageHistoryPager.hidden = true;
+      el.messageHistoryPager.innerHTML = "";
+    }
   }
 
   function messagesForDisplay() {
@@ -1972,13 +2016,35 @@
     return loadConversations();
   }
 
-  async function loadMessageHistory() {
+  async function loadMessageHistory(options) {
+    const append = !!(options && options.append);
     if (el.conversationsTrash) el.conversationsTrash.hidden = true;
+    syncMessageHistoryChrome();
+    if (!append) {
+      messageHistoryItems = [];
+      messageHistoryTotal = 0;
+      messageHistorySearchIn = null;
+    }
+    const seq = ++messageHistoryLoadSeq;
+    const sort = readStoredMessageSort();
+    const params = new URLSearchParams();
+    params.set("sort", sort);
+    params.set("limit", String(MESSAGE_HISTORY_PAGE_SIZE));
+    params.set("offset", String(append ? messageHistoryItems.length : 0));
+    const q = currentMessageHistoryQuery();
+    if (q) params.set("q", q);
     try {
-      const sort = readStoredMessageSort();
-      const list = await fetchJson(`${API}/messages?sort=${encodeURIComponent(sort)}`);
-      renderMessageHistoryList(list || []);
+      const data = await fetchJson(`${API}/messages?${params.toString()}`);
+      if (seq !== messageHistoryLoadSeq) return;
+      const incoming = (data && data.items) || [];
+      messageHistoryTotal = data && typeof data.total === "number" ? data.total : incoming.length;
+      messageHistorySearchIn = data && data.search_in ? data.search_in : null;
+      messageHistoryItems = append
+        ? mergeMessageHistoryItems(messageHistoryItems, incoming)
+        : incoming;
+      renderMessageHistoryList(messageHistoryItems);
     } catch (e) {
+      if (seq !== messageHistoryLoadSeq) return;
       showError("Error al cargar mensajes: " + e.message);
     }
   }
@@ -2157,8 +2223,12 @@
   function renderMessageHistoryList(list) {
     if (!el.conversationsList) return;
     const items = list || [];
+    const q = currentMessageHistoryQuery();
     if (items.length === 0) {
-      el.conversationsList.innerHTML = '<p class="conv-group-label">No hay respuestas todavía.</p>';
+      el.conversationsList.innerHTML = q
+        ? '<p class="conv-group-label">Sin resultados.</p>'
+        : '<p class="conv-group-label">No hay respuestas todavía.</p>';
+      renderMessageHistoryPager();
       return;
     }
     const sort = readStoredMessageSort();
@@ -2194,6 +2264,39 @@
         openConsultaTurn(node.dataset.conversationId, node.dataset.id);
       });
     });
+    renderMessageHistoryPager();
+  }
+
+  function renderMessageHistoryPager() {
+    const pager = el.messageHistoryPager;
+    if (!pager) return;
+    if (!isMessagesHistoryMode()) {
+      pager.hidden = true;
+      pager.innerHTML = "";
+      return;
+    }
+    const loaded = messageHistoryItems.length;
+    const total = messageHistoryTotal;
+    const q = currentMessageHistoryQuery();
+    let html = "";
+    if (q && messageHistorySearchIn === "content" && loaded > 0) {
+      html += '<p class="message-history-search-hint">Sin coincidencias en el título; resultados en el texto.</p>';
+    }
+    if (loaded > 0) {
+      html += '<span class="message-history-page-meta">' + loaded + " / " + total + "</span>";
+    }
+    if (loaded < total) {
+      html +=
+        '<button type="button" class="btn btn-secondary btn-small message-history-load-more" id="message-history-load-more">Cargar más</button>';
+    }
+    pager.innerHTML = html;
+    pager.hidden = html === "";
+    const more = document.getElementById("message-history-load-more");
+    if (more) {
+      more.addEventListener("click", function () {
+        loadMessageHistory({ append: true });
+      });
+    }
   }
 
   async function deleteConversation(id) {
@@ -4158,6 +4261,18 @@
   }
   if (el.leftHistorySortSelect) {
     el.leftHistorySortSelect.addEventListener("change", onLeftHistorySortChange);
+  }
+  if (el.messageHistorySearch) {
+    el.messageHistorySearch.addEventListener("input", onMessageHistorySearchInput);
+    el.messageHistorySearch.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (messageHistorySearchTimer) {
+        clearTimeout(messageHistorySearchTimer);
+        messageHistorySearchTimer = null;
+      }
+      if (isMessagesHistoryMode()) loadMessageHistory();
+    });
   }
   if (el.btnSave) el.btnSave.addEventListener("click", saveConversation);
   if (el.conversationTitle) {

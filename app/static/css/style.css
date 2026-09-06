@@ -6434,6 +6434,53 @@ body {
   color: var(--text-primary, inherit);
 }
 
+.column-left .message-history-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px 4px;
+}
+
+.column-left .message-history-search-wrap[hidden] {
+  display: none;
+}
+
+.column-left .message-history-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  font-size: calc(0.625rem * var(--sidebar-left-font-scale, 1));
+  line-height: 1.2;
+  border: 1px solid var(--stroke-control, var(--separator));
+  border-radius: var(--radius-sm);
+  background: var(--layer-alt, var(--input-bg, transparent));
+  color: var(--text-primary, inherit);
+}
+
+.column-left .message-history-pager {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 6px 2px;
+}
+
+.column-left .message-history-pager[hidden] {
+  display: none;
+}
+
+.column-left .message-history-page-meta,
+.column-left .message-history-search-hint {
+  font-size: calc(0.5625rem * var(--sidebar-left-font-scale, 1));
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+.column-left .message-history-load-more {
+  width: 100%;
+}
+
 .column-left .conv-group-label {
   font-size: calc(0.5625rem * var(--sidebar-left-font-scale, 1));
   font-weight: 600;

@@ -25,6 +25,7 @@ from app.schemas import (
     ConversationOut,
     ConversationUpdate,
     MessageHistoryItem,
+    MessageHistoryListResponse,
     MessageInChat,
     MessageResponse,
     MessageSend,
@@ -266,25 +267,37 @@ def list_conversations(
     return crud.list_conversations(db, sort=sort)
 
 
-@router.get("/messages", response_model=list[MessageHistoryItem])
+@router.get("/messages", response_model=MessageHistoryListResponse)
 def list_messages(
-    limit: int | None = Query(default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT, ge=1),
+    limit: int = Query(
+        default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT,
+        ge=1,
+        le=crud.MESSAGE_HISTORY_LIMIT_MAX,
+    ),
+    offset: int = Query(default=0, ge=0),
     sort: Literal["message", "image"] = Query(default="message"),
+    q: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    rows = crud.list_assistant_messages(db, limit=limit, sort=sort)
-    return [
-        MessageHistoryItem(
-            id=msg.id,
-            conversation_id=msg.conversation_id,
-            conversation_title=title or "",
-            parent_id=msg.parent_id,
-            content_preview=crud.message_content_preview(msg.content),
-            created_at=msg.created_at,
-            latest_image_at=latest_image_at,
-        )
-        for msg, title, latest_image_at in rows
-    ]
+    page = crud.list_assistant_messages(db, limit=limit, offset=offset, sort=sort, q=q)
+    return MessageHistoryListResponse(
+        items=[
+            MessageHistoryItem(
+                id=msg.id,
+                conversation_id=msg.conversation_id,
+                conversation_title=title or "",
+                parent_id=msg.parent_id,
+                content_preview=crud.message_content_preview(msg.content),
+                created_at=msg.created_at,
+                latest_image_at=latest_image_at,
+            )
+            for msg, title, latest_image_at in page.rows
+        ],
+        total=page.total,
+        limit=page.limit,
+        offset=page.offset,
+        search_in=page.search_in,
+    )
 
 
 @router.get("/conversations/deleted", response_model=list[ConversationListItem])

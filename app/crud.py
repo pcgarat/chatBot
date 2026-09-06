@@ -1,5 +1,6 @@
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import false, func, or_
@@ -160,34 +161,54 @@ def list_deleted_conversations(db: Session) -> list[Conversation]:
 
 
 MESSAGE_HISTORY_PREVIEW_LEN = 80
-MESSAGE_HISTORY_LIMIT_DEFAULT = None
+MESSAGE_HISTORY_LIMIT_DEFAULT = 50
+MESSAGE_HISTORY_LIMIT_MAX = 100
 
 
-def clamp_message_history_limit(limit: int | None) -> int | None:
+def clamp_message_history_limit(limit: int | None) -> int:
     if limit is None or limit < 1:
-        return None
-    return int(limit)
+        return MESSAGE_HISTORY_LIMIT_DEFAULT
+    return min(int(limit), MESSAGE_HISTORY_LIMIT_MAX)
+
+
+def clamp_message_history_offset(offset: int | None) -> int:
+    if offset is None or offset < 0:
+        return 0
+    return int(offset)
+
+
+def message_title_text(content: str) -> str:
+    cleaned = strip_illustration_artifacts(content or "")
+    first_line = cleaned.splitlines()[0] if cleaned else ""
+    return " ".join(first_line.split())
 
 
 def message_content_preview(content: str, max_len: int = MESSAGE_HISTORY_PREVIEW_LEN) -> str:
-    cleaned = strip_illustration_artifacts(content or "")
-    first_line = cleaned.splitlines()[0] if cleaned else ""
-    first_line = " ".join(first_line.split())
+    first_line = message_title_text(content)
     if len(first_line) <= max_len:
         return first_line
     return first_line[:max_len].rstrip()
 
 
+def _normalize_message_history_query(q: str | None) -> str:
+    return " ".join((q or "").split()).strip()
+
+
 def _unique_assistant_history_rows(
     rows: list[tuple],
 ) -> list[tuple[Message, str, datetime | None]]:
-    seen: set[str] = set()
+    seen_ids: set[str] = set()
+    seen_keys: set[str] = set()
     unique: list[tuple[Message, str, datetime | None]] = []
     for row in rows:
         msg = row[0]
-        if not msg or msg.id in seen:
+        if not msg or msg.id in seen_ids:
             continue
-        seen.add(msg.id)
+        key = strip_illustration_artifacts(msg.content or "")
+        if key in seen_keys:
+            continue
+        seen_ids.add(msg.id)
+        seen_keys.add(key)
         if len(row) == 3:
             unique.append((msg, row[1], row[2]))
         else:
@@ -195,13 +216,28 @@ def _unique_assistant_history_rows(
     return unique
 
 
-def list_assistant_messages(
+def _filter_assistant_history_search(
+    rows: list[tuple[Message, str, datetime | None]],
+    q: str,
+) -> tuple[list[tuple[Message, str, datetime | None]], str]:
+    needle = q.casefold()
+    title_hits = [
+        row for row in rows if needle in message_title_text(row[0].content).casefold()
+    ]
+    if title_hits:
+        return title_hits, "title"
+    body_hits = [
+        row
+        for row in rows
+        if needle in strip_illustration_artifacts(row[0].content or "").casefold()
+    ]
+    return body_hits, "content"
+
+
+def _query_assistant_history_rows(
     db: Session,
-    limit: int | None = None,
     sort: str | None = None,
-) -> list[tuple[Message, str, datetime | None]]:
-    """Respuestas assistant de conversaciones activas, cada id una vez."""
-    capped = clamp_message_history_limit(limit)
+) -> list[tuple]:
     if normalize_message_history_sort(sort) == MESSAGE_HISTORY_SORT_IMAGE:
         latest_image = (
             db.query(
@@ -211,7 +247,7 @@ def list_assistant_messages(
             .group_by(IllustratedImage.message_id)
             .subquery()
         )
-        query = (
+        return (
             db.query(Message, Conversation.title, latest_image.c.latest_image_at)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .outerjoin(latest_image, latest_image.c.message_id == Message.id)
@@ -222,20 +258,50 @@ def list_assistant_messages(
                 latest_image.c.latest_image_at.desc(),
                 Message.created_at.desc(),
             )
+            .all()
         )
-        if capped is not None:
-            query = query.limit(capped)
-        return _unique_assistant_history_rows(query.all())
-    query = (
+    return (
         db.query(Message, Conversation.title)
         .join(Conversation, Conversation.id == Message.conversation_id)
         .filter(Message.role == "assistant")
         .filter(Conversation.deleted_at.is_(None))
         .order_by(Message.created_at.desc())
+        .all()
     )
-    if capped is not None:
-        query = query.limit(capped)
-    return _unique_assistant_history_rows(query.all())
+
+
+@dataclass(frozen=True)
+class MessageHistoryPage:
+    rows: list[tuple[Message, str, datetime | None]]
+    total: int
+    limit: int
+    offset: int
+    search_in: str | None
+
+
+def list_assistant_messages(
+    db: Session,
+    limit: int | None = None,
+    offset: int | None = None,
+    sort: str | None = None,
+    q: str | None = None,
+) -> MessageHistoryPage:
+    """Respuestas assistant únicas (texto sin artefactos de ilustración), paginadas."""
+    capped = clamp_message_history_limit(limit)
+    off = clamp_message_history_offset(offset)
+    rows = _unique_assistant_history_rows(_query_assistant_history_rows(db, sort=sort))
+    search_in = None
+    needle = _normalize_message_history_query(q)
+    if needle:
+        rows, search_in = _filter_assistant_history_search(rows, needle)
+    total = len(rows)
+    return MessageHistoryPage(
+        rows=rows[off : off + capped],
+        total=total,
+        limit=capped,
+        offset=off,
+        search_in=search_in,
+    )
 
 
 def update_conversation(
