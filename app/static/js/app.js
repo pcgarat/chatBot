@@ -2010,6 +2010,13 @@
     return parent ? [parent, assistant] : [assistant];
   }
 
+  function syncMessageHistoryActiveItem() {
+    if (!el.conversationsList) return;
+    el.conversationsList.querySelectorAll(".message-history-item").forEach(function (node) {
+      node.classList.toggle("active", node.dataset.id === consultaAssistantId);
+    });
+  }
+
   async function refreshLeftHistory() {
     syncLeftHistorySortControl();
     if (isMessagesHistoryMode()) return loadMessageHistory();
@@ -3064,12 +3071,13 @@
     renderParamsSourceLabel();
     renderParamsToSend();
     renderMessages();
-    if (conv && options && options.keepConsulta) {
-      scheduleScrollMessagesToTop();
-    } else if (conv && !preserveView) {
-      scheduleScrollMessagesToBottom();
+    if (options && options.keepConsulta) {
+      if (conv) scheduleScrollMessagesToTop();
+      syncMessageHistoryActiveItem();
+    } else {
+      if (conv && !preserveView) scheduleScrollMessagesToBottom();
+      refreshLeftHistory();
     }
-    refreshLeftHistory();
     lastUsage = null;
     await loadContextLength();
     // Si el panel Reglas está abierto, refrescar el selector para mostrar todas las reglas de la biblioteca (incl. creadas en otras conversaciones).
