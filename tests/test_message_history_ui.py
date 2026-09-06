@@ -81,3 +81,22 @@ def test_message_history_load_more_uses_offset():
     assert "message-history-load-more" in pager_fn
     assert "loadMessageHistory({ append: true })" in pager_fn
     assert "Cargar más" in pager_fn
+
+
+def test_opening_consulta_does_not_reload_message_history_pagination():
+    """Clic en un mensaje no debe recargar el historial desde offset 0 (colapsa páginas ya cargadas)."""
+    js = _js()
+    assert "function syncMessageHistoryActiveItem" in js
+    sync_fn = _fn(js, "function syncMessageHistoryActiveItem", "async function refreshLeftHistory")
+    assert "message-history-item" in sync_fn
+    assert "consultaAssistantId" in sync_fn
+    set_fn = _fn(js, "async function setCurrentConversation", "let saveRulesDebounceTimer")
+    open_fn = _fn(js, "async function openConsultaTurn", "async function newConversation")
+    assert "keepConsulta: true" in open_fn
+    assert "syncMessageHistoryActiveItem()" in set_fn
+    tail = set_fn[set_fn.index("scheduleScrollMessagesToTop") :]
+    first_block, else_block = tail.split("} else {", 1)
+    assert "syncMessageHistoryActiveItem()" in first_block
+    assert "refreshLeftHistory()" not in first_block
+    assert "refreshLeftHistory()" in else_block
+    assert "scheduleScrollMessagesToBottom" in else_block
