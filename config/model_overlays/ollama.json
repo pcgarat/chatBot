@@ -224,5 +224,55 @@
       { "id": "creative", "label": "Creativo", "params": { "temperature": 0.8, "num_ctx": 16384 } }
     ],
     "quirks": []
+  },
+  "qwen2.5-coder:7b-instruct-q4_0": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {},
+    "recipes": [],
+    "quirks": []
+  },
+  "srchmnmichael/qwen3.5-9B-uncensored:latest": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "thinking": {
+        "kind": "boolean",
+        "can_disable": true,
+        "default": true
+      }
+    },
+    "params": {},
+    "recipes": [],
+    "quirks": []
+  },
+  "warp-coder:latest": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {},
+    "recipes": [],
+    "quirks": []
+  },
+  "warp-fast:latest": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {},
+    "recipes": [],
+    "quirks": []
   }
 }
