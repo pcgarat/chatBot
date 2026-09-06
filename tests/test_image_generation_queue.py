@@ -74,6 +74,8 @@ def test_claim_and_complete_job(db_session):
     )
     items, _ = crud.list_image_generation_jobs(db_session, statuses=["completed"])
     assert items[0]["result_filename"] == "abc_s1.png"
+    assert items[0]["created_at"]
+    assert items[0]["completed_at"]
 
 
 def test_fail_job_retries_then_marks_failed(db_session):
@@ -191,6 +193,9 @@ def test_list_image_generation_queue_api(client, db_session):
     assert data["total"] == 1
     assert data["items"][0]["conversation_title"] == "API Cola"
     assert "faro" in data["items"][0]["message_excerpt"].lower()
+    assert data["items"][0]["created_at"]
+    assert data["items"][0]["completed_at"] is None
+    assert data["items"][0]["result_filename"] is None
 
     res_filtered = client.get("/api/image-generation-queue?status=pending")
     assert res_filtered.status_code == 200
