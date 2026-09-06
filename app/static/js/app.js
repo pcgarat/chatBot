@@ -6332,6 +6332,7 @@
   const imageQueueSelectedIds = new Set();
   let imageQueueSelectionAnchor = -1;
   const imageQueueLastStatusById = {};
+  let imageQueueLastRenderKey = "";
   const IMAGE_QUEUE_POLL_MS = 2500;
   const GALLERY_TOOLBAR_FILTER_IDS = [
     "gallery-filter-prompt-model",
@@ -6537,10 +6538,74 @@
     return html;
   }
 
+  function imageQueueListRenderKey() {
+    const selected = Array.from(imageQueueSelectedIds).sort().join(",");
+    const itemsKey = imageQueueItems
+      .map(function (item) {
+        return [
+          item.id,
+          item.status,
+          item.result_filename || "",
+          item.created_at || "",
+          item.completed_at || "",
+          item.conversation_title || "",
+          item.message_excerpt || "",
+          item.prompt_model || "",
+          item.prompt_provider || "",
+          item.error_message || "",
+        ].join("\t");
+      })
+      .join("\n");
+    return itemsKey + "\n#" + (imageQueueExpandedId || "") + "\n@" + selected;
+  }
+
+  function renderImageQueueThumb(item) {
+    const filename = item && item.result_filename;
+    if (item && item.status === "completed" && filename) {
+      return (
+        '<div class="image-queue-thumb">' +
+        '<img class="image-queue-thumb-img" src="' +
+        escapeHtml(API + "/illustrated-images/" + encodeURIComponent(filename)) +
+        '" alt="' +
+        escapeHtml(item.conversation_title || "Ilustración") +
+        '" loading="lazy" decoding="async" />' +
+        "</div>"
+      );
+    }
+    return '<div class="image-queue-thumb image-queue-thumb--empty" aria-hidden="true"></div>';
+  }
+
+  function renderImageQueueDates(item) {
+    const parts = [];
+    if (item && item.created_at) {
+      parts.push(
+        '<time class="image-queue-date" datetime="' +
+          escapeHtml(item.created_at) +
+          '">En cola: ' +
+          escapeHtml(formatDateTime(item.created_at)) +
+          "</time>"
+      );
+    }
+    if (item && item.status === "completed" && item.completed_at) {
+      parts.push(
+        '<time class="image-queue-date" datetime="' +
+          escapeHtml(item.completed_at) +
+          '">Generada: ' +
+          escapeHtml(formatDateTime(item.completed_at)) +
+          "</time>"
+      );
+    }
+    if (!parts.length) return "";
+    return '<div class="image-queue-row-dates">' + parts.join("") + "</div>";
+  }
+
   function renderImageQueueList() {
     const list = document.getElementById("image-queue-list");
     if (!list) return;
     pruneImageQueueSelection();
+    const renderKey = imageQueueListRenderKey();
+    if (renderKey === imageQueueLastRenderKey) return;
+    imageQueueLastRenderKey = renderKey;
     if (!imageQueueItems.length) {
       list.innerHTML = '<p class="image-queue-empty">No hay trabajos en la cola.</p>';
       return;
@@ -6567,6 +6632,7 @@
           '">' +
           escapeHtml(statusLabel) +
           "</span>" +
+          renderImageQueueThumb(item) +
           '<div class="image-queue-row-body">' +
           '<div class="image-queue-row-title">' +
           escapeHtml(item.conversation_title || "Conversación") +
@@ -6577,6 +6643,7 @@
           '<div class="image-queue-row-meta">LLM: ' +
           escapeHtml(llm) +
           "</div>" +
+          renderImageQueueDates(item) +
           "</div>" +
           '<div class="image-queue-row-actions">' +
           '<button type="button" class="btn btn-secondary btn-small image-queue-go-message" data-conversation-id="' +
