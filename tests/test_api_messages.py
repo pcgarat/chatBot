@@ -111,6 +111,31 @@ def test_list_messages_preview_strips_illustration_html(client, db_session):
     assert "<img" not in items[0]["content_preview"]
 
 
+def test_list_messages_omits_prompt_generator_conversations(client, db_session):
+    chat = Conversation(title="Relato", model_id="llama3.2", kind=Conversation.KIND_CHAT)
+    generator = Conversation(
+        title="txt2img",
+        model_id="llama3.2",
+        kind=Conversation.KIND_PROMPT_GENERATOR,
+    )
+    db_session.add_all([chat, generator])
+    db_session.commit()
+    story = Message(conversation_id=chat.id, role="assistant", content="Había un faro.")
+    prompt = Message(
+        conversation_id=generator.id,
+        role="assistant",
+        content="Prompt final generado con enfoque en la coreografía.",
+    )
+    db_session.add_all([story, prompt])
+    db_session.commit()
+
+    body = _page(client)
+    previews = [it["content_preview"] for it in body["items"]]
+    assert "Había un faro." in previews
+    assert "Prompt final generado con enfoque en la coreografía." not in previews
+    assert body["total"] == 1
+
+
 def test_list_messages_collapses_identical_text_with_different_images(client, db_session):
     now = datetime.utcnow()
     conv = Conversation(title="Dup", model_id="llama3.2")

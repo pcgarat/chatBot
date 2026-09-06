@@ -234,6 +234,14 @@ def _filter_assistant_history_search(
     return body_hits, "content"
 
 
+def _assistant_history_owner_filters():
+    return (
+        Message.role == "assistant",
+        Conversation.deleted_at.is_(None),
+        Conversation.kind != Conversation.KIND_PROMPT_GENERATOR,
+    )
+
+
 def _query_assistant_history_rows(
     db: Session,
     sort: str | None = None,
@@ -251,8 +259,7 @@ def _query_assistant_history_rows(
             db.query(Message, Conversation.title, latest_image.c.latest_image_at)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .outerjoin(latest_image, latest_image.c.message_id == Message.id)
-            .filter(Message.role == "assistant")
-            .filter(Conversation.deleted_at.is_(None))
+            .filter(*_assistant_history_owner_filters())
             .order_by(
                 latest_image.c.latest_image_at.is_(None),
                 latest_image.c.latest_image_at.desc(),
@@ -263,8 +270,7 @@ def _query_assistant_history_rows(
     return (
         db.query(Message, Conversation.title)
         .join(Conversation, Conversation.id == Message.conversation_id)
-        .filter(Message.role == "assistant")
-        .filter(Conversation.deleted_at.is_(None))
+        .filter(*_assistant_history_owner_filters())
         .order_by(Message.created_at.desc())
         .all()
     )
