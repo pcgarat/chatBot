@@ -17,6 +17,7 @@ from app.routers import (
     api_models,
     api_ollama,
     api_planner_rule_presets,
+    api_prompt_generator,
     api_rules,
     api_workspace_profiles,
 )
@@ -25,6 +26,7 @@ app = FastAPI(title="Chat IA con Ollama", version="1.0.0")
 
 app.include_router(api_models.router)
 app.include_router(api_conversations.router)
+app.include_router(api_prompt_generator.router)
 app.include_router(api_rules.router)
 app.include_router(api_ollama.router)
 app.include_router(api_images.router)

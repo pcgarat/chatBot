@@ -8207,3 +8207,77 @@ html[data-center-queue="on"] #btn-image-queue {
 .column-right .debug-label {
   font-size: var(--rp-label);
 }
+
+/* Prompt generator (txt2img) */
+.sidebar-create-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.conv-kind-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  padding: 0 4px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.composer-generate-prompt-btn {
+  white-space: nowrap;
+  font-size: 0.75rem;
+  padding: 0 10px;
+  min-width: auto;
+}
+
+.txt2img-prompt-block {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-input, var(--card));
+  overflow: hidden;
+}
+
+.txt2img-prompt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.txt2img-prompt-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.txt2img-prompt-copy {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.txt2img-prompt-copy:hover {
+  background: var(--bg-input);
+}
+
+.txt2img-prompt-text {
+  margin: 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}

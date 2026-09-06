@@ -134,11 +134,15 @@ class RuleItem(BaseModel):
     content: str = ""
 
 
+ConversationKind = Literal["chat", "prompt_generator"]
+
+
 class ConversationCreate(BaseModel):
     title: str = "Nueva conversación"
     auto_title: bool = False
     model_id: str = "llama3.2"
     provider: str = "ollama"  # ollama | mancer | openai
+    kind: ConversationKind = "chat"
     system_instruction_global: Optional[str] = None
     system_instructions: Optional[list[RuleItem]] = None  # Lista de reglas (título + contenido)
     inject_instruction_every: Optional[int] = None  # Deprecado: se ignora. Las instrucciones se envían siempre.
@@ -180,6 +184,8 @@ class ConversationOut(BaseModel):
     auto_title: bool = False
     model_id: str
     provider: str = "ollama"  # ollama | mancer | openai
+    kind: ConversationKind = "chat"
+    prompt_brief: Optional[dict[str, Any]] = None
     system_instruction_global: Optional[str] = None
     system_instructions: Optional[list[RuleItem]] = None
     inject_instruction_every: Optional[int] = None
@@ -205,6 +211,7 @@ class ConversationListItem(BaseModel):
     auto_title: bool = False
     model_id: str
     provider: str = "ollama"  # ollama | mancer | openai
+    kind: ConversationKind = "chat"
     created_at: datetime
     updated_at: datetime
     last_message_at: datetime | None = None

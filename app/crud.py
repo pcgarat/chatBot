@@ -92,9 +92,22 @@ def create_conversation(
     forked_from_message_id: str | None = None,
     auto_title: bool = False,
     images: dict | None = None,
+    kind: str = "chat",
+    prompt_brief: dict | None = None,
+    seed_prompt_generator_template: bool = True,
 ) -> Conversation:
+    resolved_kind = kind if kind in ("chat", "prompt_generator") else "chat"
+    resolved_title = title
+    resolved_brief = prompt_brief
+    if resolved_kind == "prompt_generator":
+        from app.services.prompt_generator.brief import empty_brief
+
+        if seed_prompt_generator_template:
+            resolved_title = "txt2img"
+        if resolved_brief is None:
+            resolved_brief = empty_brief().to_dict()
     conv = Conversation(
-        title=title,
+        title=resolved_title,
         auto_title=bool(auto_title),
         model_id=model_id,
         provider=provider,
@@ -105,10 +118,17 @@ def create_conversation(
         forked_from_conversation_id=forked_from_conversation_id,
         forked_from_message_id=forked_from_message_id,
         images=json.dumps(conversation_images_snapshot(images)) if images is not None else None,
+        kind=resolved_kind,
+        prompt_brief=json.dumps(resolved_brief, ensure_ascii=False) if resolved_brief is not None else None,
     )
     db.add(conv)
     db.commit()
     db.refresh(conv)
+    if resolved_kind == "prompt_generator" and seed_prompt_generator_template:
+        from app.services.prompt_generator.system import INITIAL_ASSISTANT_TEMPLATE
+
+        add_message(db, conv.id, "assistant", INITIAL_ASSISTANT_TEMPLATE)
+        db.refresh(conv)
     return conv
 
 
@@ -490,6 +510,15 @@ def fork_conversation(db: Session, view_conversation_id: str, message_id: str) -
                 instruction_ids = [str(x) for x in parsed if x]
         except (TypeError, ValueError):
             instruction_ids = None
+    fork_brief = None
+    raw_brief = getattr(view, "prompt_brief", None)
+    if raw_brief:
+        try:
+            parsed_brief = json.loads(raw_brief) if isinstance(raw_brief, str) else raw_brief
+            if isinstance(parsed_brief, dict):
+                fork_brief = parsed_brief
+        except (TypeError, ValueError, json.JSONDecodeError):
+            fork_brief = None
     child = create_conversation(
         db,
         title=view.title or "Nueva conversación",
@@ -501,6 +530,9 @@ def fork_conversation(db: Session, view_conversation_id: str, message_id: str) -
         forked_from_conversation_id=owner_id,
         forked_from_message_id=anchor_id,
         auto_title=bool(getattr(view, "auto_title", False)),
+        kind=getattr(view, "kind", None) or "chat",
+        prompt_brief=fork_brief,
+        seed_prompt_generator_template=False,
     )
     child.model_params = view.model_params
     child.images = view.images

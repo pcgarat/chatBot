@@ -8,6 +8,7 @@
     return;
   }
   let currentConversationId = null;
+  let currentConversationKind = "chat";
   let currentAutoTitle = false;
   let messages = [];
   let allMessages = [];
@@ -84,6 +85,8 @@
     instructionOverride: document.getElementById("instruction-override"),
     messageInput: document.getElementById("message-input"),
     btnNewChat: document.getElementById("btn-new-chat"),
+    btnPromptGenerator: document.getElementById("btn-prompt-generator"),
+    btnGeneratePrompt: document.getElementById("btn-generate-prompt"),
     btnHistoryMessages: document.getElementById("btn-history-messages"),
     btnSave: document.getElementById("btn-save"),
     btnSend: document.getElementById("btn-send"),
@@ -2191,7 +2194,7 @@
       const kids = childrenByParent.get(c.id) || [];
       const item = `<div class="conversation-item ${c.id === currentConversationId ? "active" : ""} ${depth ? "conversation-item-fork" : ""}" data-id="${escapeHtml(c.id)}" data-depth="${depth}" title="${escapeHtml(meta)}" style="padding-left: ${8 + depth * 14}px">
                 <div class="conv-row">
-                  <span class="conv-title">${escapeHtml(c.title)}</span>
+                  <span class="conv-title">${c.kind === "prompt_generator" ? '<span class="conv-kind-badge" title="Prompt generator">txt2img</span> ' : ""}${escapeHtml(c.title)}</span>
                   <span class="conv-when">${escapeHtml(when)}</span>
                   ${c.id === currentConversationId ? `<button type="button" class="conv-clear-btn" data-id="${escapeHtml(c.id)}" title="Limpiar historial de mensajes" aria-label="Limpiar historial">${clearHistoryIconSvg}</button>` : ""}
                 </div>
@@ -2997,6 +3000,8 @@
       }
     }
     currentConversationId = conv ? conv.id : null;
+    currentConversationKind = (conv && conv.kind) ? conv.kind : "chat";
+    updatePromptGeneratorComposerUi();
     saveLastConversationId(currentConversationId);
     if (el.instructionOverride) {
       el.instructionOverride.value = (conv && conv.instruction_override != null) ? conv.instruction_override : "";
@@ -3361,7 +3366,7 @@
     }
     try {
       const conv = await fetchJson(`${API}/conversations/${id}`);
-      await setCurrentConversation(conv);
+      await setCurrentConversation(conv, options);
       if (isGalleryPanelVisible()) {
         galleryOffset = 0;
         await refreshGalleryAfterScopeChange();
@@ -3381,6 +3386,104 @@
       await setCurrentConversation(conv, { preserveView: true, keepConsulta: true });
     } catch (e) {
       showError("Error al abrir el mensaje: " + e.message);
+    }
+  }
+
+  function updatePromptGeneratorComposerUi() {
+    const isPg = currentConversationKind === "prompt_generator";
+    if (el.btnGeneratePrompt) el.btnGeneratePrompt.hidden = !isPg;
+  }
+
+  function splitTxt2imgPrompt(content) {
+    const re = /```txt2img-prompt\n([\s\S]*?)\n```/;
+    const raw = content || "";
+    const m = raw.match(re);
+    if (!m) return { text: raw, prompt: null };
+    return { text: raw.replace(re, "").trim(), prompt: m[1].trim() };
+  }
+
+  function bindTxt2imgPromptCopyButtons(root) {
+    (root || document).querySelectorAll(".txt2img-prompt-copy").forEach((btn) => {
+      if (btn.dataset.bound === "1") return;
+      btn.dataset.bound = "1";
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        const block = btn.closest(".txt2img-prompt-block");
+        const pre = block && block.querySelector("pre");
+        const value = pre ? pre.textContent : "";
+        try {
+          await navigator.clipboard.writeText(value);
+          const prev = btn.textContent;
+          btn.textContent = "Copiado";
+          setTimeout(() => { btn.textContent = prev; }, 1200);
+        } catch (err) {
+          showError("No se pudo copiar: " + (err && err.message ? err.message : err));
+        }
+      });
+    });
+  }
+
+  async function newPromptGeneratorConversation() {
+    if (isMessagesHistoryMode()) await setLeftHistoryMode("conversations");
+    consultaAssistantId = null;
+    applyConsultaChrome();
+    setChatPanelVisible(true);
+    try {
+      const provider = (el.providerSelect && el.providerSelect.value) || currentProvider || "ollama";
+      const model = (el.modelSelect && el.modelSelect.value) || (models[0] || "");
+      const conv = await fetchJson(`${API}/conversations`, {
+        method: "POST",
+        body: JSON.stringify({
+          kind: "prompt_generator",
+          model_id: model,
+          provider: provider,
+          images: imagesSnapshotForConversation(),
+        }),
+      });
+      await setCurrentConversation(conv);
+    } catch (e) {
+      showError("Error al crear prompt generator: " + e.message);
+    }
+  }
+
+  async function sendPromptGeneratorTurn(options) {
+    if (isConsultaChromeActive()) return;
+    if (currentAbortController) return;
+    const force = !!(options && options.force);
+    const content = force ? ((el.messageInput && el.messageInput.value.trim()) || "") : ((el.messageInput && el.messageInput.value.trim()) || "");
+    if (!force && !content) return;
+
+    if (!currentConversationId || currentConversationKind !== "prompt_generator") {
+      await newPromptGeneratorConversation();
+      if (!currentConversationId) return;
+    }
+
+    if (el.messageInput) el.messageInput.value = "";
+    const chatStatusId = appStatus.push("chat", "chat.preparing");
+    currentAbortController = new AbortController();
+    setComposerPrimaryActionState();
+    try {
+      appStatus.update(chatStatusId, "chat.sending");
+      const body = { force: force };
+      if (content) body.message = content;
+      await fetchJson(`${API}/conversations/${currentConversationId}/prompt-generator/turn`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        signal: currentAbortController.signal,
+      });
+      await openConversation(currentConversationId, { preserveView: true });
+      appStatus.update(chatStatusId, "chat.finalizing");
+    } catch (e) {
+      if (e && e.name === "AbortError") {
+        appStatus.update(chatStatusId, "chat.cancelled");
+      } else {
+        appStatus.update(chatStatusId, "chat.error");
+        showError("Error en prompt generator: " + (e && e.message ? e.message : e));
+      }
+    } finally {
+      appStatus.pop(chatStatusId);
+      currentAbortController = null;
+      setComposerPrimaryActionState();
     }
   }
 
@@ -3656,7 +3759,13 @@
           const bubbleClass = isUser ? "message-bubble user" : "message-bubble assistant";
           const collapseKey = messageCollapseKey(m, idx);
           let bodyHtml;
-          if (!isUser && !isEphemeralDebug && hasContent) {
+          const splitPg = (!isUser && hasContent) ? splitTxt2imgPrompt(m.content || "") : null;
+          if (splitPg && splitPg.prompt) {
+            const prose = splitPg.text
+              ? `<div class="message-content">${formatMessageHtml(splitPg.text, 0)}</div>`
+              : "";
+            bodyHtml = `${prose}<div class="txt2img-prompt-block"><div class="txt2img-prompt-toolbar"><span class="txt2img-prompt-label">Prompt</span><button type="button" class="txt2img-prompt-copy">Copiar</button></div><pre class="txt2img-prompt-text">${escapeHtml(splitPg.prompt)}</pre></div>`;
+          } else if (!isUser && !isEphemeralDebug && hasContent) {
             bodyHtml = buildCollapsibleMessageHtml(
               m.content || "",
               collapseKey,
@@ -3674,6 +3783,7 @@
         }
       )
       .join("");
+    bindTxt2imgPromptCopyButtons(el.messagesContainer);
     el.messagesContainer.querySelectorAll(".msg-collapse-toggle").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -3946,6 +4056,10 @@
   async function sendMessage() {
     if (isConsultaChromeActive()) return;
     if (currentAbortController) return;
+    if (currentConversationKind === "prompt_generator") {
+      await sendPromptGeneratorTurn({ force: false });
+      return;
+    }
     const content = (el.messageInput && el.messageInput.value.trim()) || "";
     if (!content) return;
     const instructionOverride = (el.instructionOverride && el.instructionOverride.value.trim()) || null;
@@ -4262,6 +4376,9 @@
   setComposerPrimaryActionState();
 
   if (el.btnNewChat) el.btnNewChat.addEventListener("click", newConversation);
+  if (el.btnPromptGenerator) el.btnPromptGenerator.addEventListener("click", newPromptGeneratorConversation);
+  if (el.btnGeneratePrompt) el.btnGeneratePrompt.addEventListener("click", function () { sendPromptGeneratorTurn({ force: true }); });
+  updatePromptGeneratorComposerUi();
   if (el.btnHistoryMessages) {
     el.btnHistoryMessages.addEventListener("click", function () {
       setLeftHistoryMode(isMessagesHistoryMode() ? "conversations" : "messages");

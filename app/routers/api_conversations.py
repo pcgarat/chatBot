@@ -225,16 +225,36 @@ def _message_in_chat(m) -> MessageInChat:
     )
 
 
+def _parse_prompt_brief(raw) -> dict | None:
+    if not raw:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else None
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
 def _conversation_out(conv, db, messages=None) -> ConversationOut:
     if messages is None:
         messages = list(conv.messages)
     resolved = _get_resolved_instructions(conv, db)
+    kind = getattr(conv, "kind", None) or "chat"
+    brief = _parse_prompt_brief(getattr(conv, "prompt_brief", None))
+    if kind == "prompt_generator" and brief is None:
+        from app.services.prompt_generator.brief import empty_brief
+
+        brief = empty_brief().to_dict()
     return ConversationOut(
         id=conv.id,
         title=conv.title,
         auto_title=bool(getattr(conv, "auto_title", False)),
         model_id=conv.model_id,
         provider=conv.provider,
+        kind=kind,
+        prompt_brief=brief,
         system_instruction_global=conv.system_instruction_global,
         system_instructions=resolved,
         inject_instruction_every=conv.inject_instruction_every,
@@ -330,7 +350,10 @@ def create_conversation(body: ConversationCreate, db: Session = Depends(get_db))
         instruction_ids=instruction_ids,
         inject_instruction_every=body.inject_instruction_every,
         images=body.images.model_dump() if body.images is not None else None,
+        kind=body.kind,
     )
+    if body.kind == "prompt_generator":
+        conv = crud.get_conversation(db, conv.id)
     return _conversation_out(conv, db)
 
 
