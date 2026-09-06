@@ -253,6 +253,14 @@ class MessageHistoryItem(BaseModel):
         from_attributes = True
 
 
+class MessageHistoryListResponse(BaseModel):
+    items: list[MessageHistoryItem]
+    total: int
+    limit: int
+    offset: int
+    search_in: Optional[Literal["title", "content"]] = None
+
+
 class ForgePanelParamFields(BaseModel):
     """steps/width/height/seed opcionales del panel Imágenes (None = replay del último gen)."""
 

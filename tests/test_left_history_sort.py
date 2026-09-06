@@ -60,8 +60,12 @@ def test_load_conversations_sends_conversation_sort_never_image():
 def test_load_message_history_sends_message_or_image_sort():
     js = APP_JS.read_text(encoding="utf-8")
     load_msg = js.split("async function loadMessageHistory")[1].split("async function")[0]
-    assert "/messages?sort=" in load_msg
+    assert "/messages?" in load_msg
+    assert 'params.set("sort"' in load_msg
     assert "readStoredMessageSort" in load_msg
+    assert 'params.set("limit"' in load_msg
+    assert 'params.set("offset"' in load_msg
+    assert 'params.set("q"' in load_msg
 
 
 def test_image_sort_only_applies_in_messages_mode():

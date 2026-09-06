@@ -132,7 +132,9 @@ def test_e2e_list_messages_includes_assistant_reply(client, ollama_available):
     assistant_id = r_msg.json().get("id")
     r_list = client.get("/api/messages")
     assert r_list.status_code == 200
-    items = r_list.json()
+    payload = r_list.json()
+    assert isinstance(payload, dict)
+    items = payload["items"]
     assert isinstance(items, list)
     match = next((it for it in items if it.get("conversation_id") == conversation_id), None)
     assert match is not None
@@ -144,6 +146,7 @@ def test_e2e_list_messages_includes_assistant_reply(client, ollama_available):
         assert match["id"] == assistant_id
     r_sorted = client.get("/api/messages", params={"sort": "message"})
     assert r_sorted.status_code == 200
+    assert isinstance(r_sorted.json()["items"], list)
 
 
 def test_e2e_conversation_history_turns(client, ollama_available):
@@ -259,7 +262,7 @@ def test_e2e_conversation_fork(client, ollama_available):
     origin2 = client.get(f"/api/conversations/{origin_id}").json()
     assert len(origin2["messages"]) >= 4
     assert child2["messages"][0]["id"] not in {m["id"] for m in origin2["messages"]}
-    listed = client.get("/api/messages").json()
+    listed = client.get("/api/messages", params={"limit": 100}).json()["items"]
     listed_ids = [it["id"] for it in listed]
     assert len(listed_ids) == len(set(listed_ids))
     origin_assistants = [m["id"] for m in origin2["messages"] if m["role"] == "assistant"]

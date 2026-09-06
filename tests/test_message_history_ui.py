@@ -3,6 +3,7 @@ from pathlib import Path
 
 APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
 STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
 
 
 def _js() -> str:
@@ -25,6 +26,12 @@ def _rule_body(css: str, selector: str) -> str:
     return css.split(marker, 1)[1].split("}", 1)[0]
 
 
+def _column_left_html(html: str) -> str:
+    start = html.index('id="column-left"')
+    end = html.index('id="column-center"', start) if 'id="column-center"' in html[start:] else html.index("</aside>", start)
+    return html[start:end]
+
+
 def test_message_history_row_shows_created_datetime_under_title():
     js = _js()
     render_fn = _fn(js, "function renderMessageHistoryList", "async function deleteConversation")
@@ -43,3 +50,34 @@ def test_message_history_created_line_is_visible_and_small():
     assert "display: block" in meta
     assert "font-variant-numeric: tabular-nums" in meta
     assert "font-size" in meta
+
+
+def test_message_history_search_and_pager_live_in_column_left():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    left = _column_left_html(html)
+    assert 'id="message-history-search-wrap"' in left
+    assert 'id="message-history-search"' in left
+    assert 'id="message-history-pager"' in left
+    wrap = left[left.index('id="message-history-search-wrap"') : left.index('id="conversations-list"')]
+    assert "hidden" in wrap
+
+
+def test_message_history_search_only_visible_in_messages_mode():
+    js = _js()
+    assert "function syncMessageHistoryChrome" in js
+    sync_fn = _fn(js, "function syncMessageHistoryChrome", "function messagesForDisplay")
+    assert "isMessagesHistoryMode()" in sync_fn
+    assert "messageHistorySearchWrap" in sync_fn
+    apply_fn = _fn(js, "function applyConsultaChrome", "function syncMessageHistoryChrome")
+    assert "syncMessageHistoryChrome()" in apply_fn
+
+
+def test_message_history_load_more_uses_offset():
+    js = _js()
+    load_fn = _fn(js, "async function loadMessageHistory", "async function setLeftHistoryMode")
+    assert "append" in load_fn
+    assert 'params.set("offset"' in load_fn
+    pager_fn = _fn(js, "function renderMessageHistoryPager", "async function deleteConversation")
+    assert "message-history-load-more" in pager_fn
+    assert "loadMessageHistory({ append: true })" in pager_fn
+    assert "Cargar más" in pager_fn

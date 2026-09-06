@@ -104,7 +104,12 @@
             <option value="created_at">Creación</option>
           </select>
         </div>
+        <div class="message-history-search-wrap" id="message-history-search-wrap" hidden>
+          <label class="left-history-sort-label" for="message-history-search">Buscar</label>
+          <input type="search" id="message-history-search" class="message-history-search" placeholder="Título o texto" aria-label="Buscar mensajes" />
+        </div>
         <div class="conversations-list" id="conversations-list"></div>
+        <div class="message-history-pager" id="message-history-pager" hidden></div>
         <div class="conversations-trash" id="conversations-trash" hidden>
           <div class="conv-group-label" id="conversations-trash-label">Papelera</div>
           <div class="conversations-trash-list" id="conversations-trash-list"></div>
