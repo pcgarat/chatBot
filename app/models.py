@@ -13,9 +13,13 @@ def generate_uuid():
 class Conversation(Base):
     __tablename__ = "conversations"
 
+    KIND_CHAT = "chat"
+    KIND_PROMPT_GENERATOR = "prompt_generator"
+
     id = Column(String(36), primary_key=True, default=generate_uuid)
     title = Column(String(512), nullable=False, default="Nueva conversación")
     auto_title = Column(Boolean, nullable=False, default=False)
+    kind = Column(String(32), nullable=False, default=KIND_CHAT)
     model_id = Column(String(128), nullable=False, default="llama3.2")
     provider = Column(String(64), nullable=False, default="ollama")  # ollama | mancer
     system_instruction_global = Column(Text, nullable=True)  # Legado: una sola instrucción

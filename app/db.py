@@ -224,3 +224,13 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    with engine.connect() as conn:
+        try:
+            conn.execute(
+                text(
+                    "ALTER TABLE conversations ADD COLUMN kind VARCHAR(32) DEFAULT 'chat' NOT NULL"
+                )
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
