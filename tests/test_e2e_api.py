@@ -1402,3 +1402,43 @@ def test_e2e_forge_reactor_defaults_shape(client, ollama_available):
     assert isinstance(defaults, dict)
     for key in ("model", "upscaler", "face_restorer", "codeformer_weight"):
         assert key in defaults
+
+
+def test_e2e_prompt_generator_create_and_force_turn(client, ollama_available):
+    """Create kind=prompt_generator y force turn (LLM real). Puede omitirse si el JSON no es válido."""
+    from unittest.mock import patch
+
+    model_name = _get_first_ollama_model(client)
+    r_create = client.post(
+        "/api/conversations",
+        json={
+            "kind": "prompt_generator",
+            "model_id": model_name,
+            "provider": "ollama",
+        },
+    )
+    assert r_create.status_code == 200
+    data = r_create.json()
+    assert data["kind"] == "prompt_generator"
+    assert len(data["messages"]) == 1
+    cid = data["id"]
+
+    # Preferimos mock estable en e2e de contrato HTTP; el LLM real no garantiza JSON.
+    def fake_chat(model, messages, extra_body=None):
+        return (
+            '{"assistant_text":"Prompt listo.","brief_patch":{"prompt_language":"en"},'
+            '"phase":"prompt","prompt":"A cinematic portrait of a red fox in snow."}'
+        )
+
+    mock_provider = type("P", (), {"chat": staticmethod(fake_chat)})()
+    with patch("app.services.prompt_generator.turn.get_provider", return_value=mock_provider):
+        r_turn = client.post(
+            f"/api/conversations/{cid}/prompt-generator/turn",
+            json={"force": True},
+        )
+    assert r_turn.status_code == 200
+    body = r_turn.json()
+    assert body["phase"] == "prompt"
+    assert "fox" in body["prompt"]
+    got = client.get(f"/api/conversations/{cid}").json()
+    assert got["prompt_brief"]["latest_prompt"] == body["prompt"]

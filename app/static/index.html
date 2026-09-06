@@ -73,10 +73,16 @@
         </button>
       </div>
       <div class="sidebar-new-conversation-wrap">
-        <button type="button" id="btn-new-chat" class="sidebar-add-btn" title="Nueva conversación" aria-label="Nueva conversación">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span class="sidebar-add-btn-text">Nueva</span>
-        </button>
+        <div class="sidebar-create-stack">
+          <button type="button" id="btn-new-chat" class="sidebar-add-btn" title="Nueva conversación" aria-label="Nueva conversación">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span class="sidebar-add-btn-text">Nueva</span>
+          </button>
+          <button type="button" id="btn-prompt-generator" class="sidebar-add-btn" title="Prompt generator (txt2img)" aria-label="txt2img">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <span class="sidebar-add-btn-text">txt2img</span>
+          </button>
+        </div>
         <div class="center-panel-toggles" role="group" aria-label="Paneles centrales">
           <button type="button" id="btn-center-chat" class="sidebar-add-btn" title="Mostrar u ocultar la conversación" aria-label="Conversación" aria-pressed="true" aria-controls="chat-column">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -186,6 +192,7 @@
           <div class="composer-main-row send-row">
             <textarea id="message-input" class="composer-textarea" rows="2" placeholder="Escribe un comando o envía un mensaje al modelo..." aria-label="Mensaje"></textarea>
             <div class="composer-actions send-row-buttons">
+              <button type="button" id="btn-generate-prompt" class="send-button composer-generate-prompt-btn" title="Generar prompt" aria-label="Generar prompt" hidden>Generar prompt</button>
               <button type="button" id="btn-send" class="send-button composer-send-btn" title="Enviar" aria-label="Enviar mensaje" data-composer-action="send"><span class="composer-send-icon" aria-hidden="true"></span></button>
             </div>
           </div>

@@ -28,6 +28,7 @@ class Conversation(Base):
     inject_instruction_every = Column(Integer, nullable=True)  # Deprecado: se ignora. Las instrucciones se envían siempre.
     model_params = Column(Text, nullable=True)  # JSON: param_id -> value (parámetros guardados por el usuario en esta conversación)
     images = Column(Text, nullable=True)  # JSON: snapshot del panel Imágenes (igual que el resto de ajustes)
+    prompt_brief = Column(Text, nullable=True)  # JSON: PromptBrief (solo prompt_generator)
     history_turns = Column(Integer, nullable=True)  # Número de pares user+assistant a enviar en el prompt; null/0 = usar default 5
     instruction_override = Column(Text, nullable=True)  # Instrucción solo para el siguiente mensaje; último valor por conversación
     active_leaf_message_id = Column(String(36), nullable=True)  # Hoja del camino de intento que se está viendo
