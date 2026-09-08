@@ -1190,6 +1190,52 @@ def count_active_image_generation_jobs(db: Session) -> int:
     )
 
 
+def list_active_image_generation_job_ids(db: Session) -> list[str]:
+    rows = (
+        db.query(ImageGenerationJob.id)
+        .filter(ImageGenerationJob.status.in_(("pending", "generating")))
+        .all()
+    )
+    return [row[0] for row in rows]
+
+
+def list_all_message_contents(db: Session) -> list[str]:
+    return [row[0] or "" for row in db.query(Message.content).all()]
+
+
+def image_generation_job_exists(db: Session, job_id: str) -> bool:
+    db.commit()
+    db.expire_all()
+    return (
+        db.query(ImageGenerationJob.id)
+        .filter(ImageGenerationJob.id == job_id)
+        .first()
+        is not None
+    )
+
+
+def complete_image_generation_job_if_generating(
+    db: Session,
+    job_id: str,
+    *,
+    result_filename: str,
+) -> ImageGenerationJob | None:
+    """Completa solo si el job sigue generating (otra sesión puede haberlo cancelado)."""
+    db.commit()
+    db.expire_all()
+    job = (
+        db.query(ImageGenerationJob)
+        .filter(
+            ImageGenerationJob.id == job_id,
+            ImageGenerationJob.status == "generating",
+        )
+        .first()
+    )
+    if not job:
+        return None
+    return complete_image_generation_job(db, job_id, result_filename=result_filename)
+
+
 def list_image_generation_jobs(
     db: Session,
     *,

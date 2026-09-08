@@ -1295,6 +1295,8 @@ def test_e2e_image_generation_queue_list(client, ollama_available):
     assert isinstance(r2.json()["items"], list)
     assert b'id="btn-image-queue"' in client.get("/").content
     assert b'id="image-queue-panel"' in client.get("/").content
+    assert b'id="image-queue-cancel-all"' in client.get("/").content
+    assert b'id="gallery-purge-orphans"' in client.get("/").content
 
 
 def test_e2e_image_generation_queue_delete(client, ollama_available, db_session):
@@ -1315,6 +1317,40 @@ def test_e2e_image_generation_queue_delete(client, ollama_available, db_session)
     res = client.post("/api/image-generation-queue/delete", json={"ids": [job.id]})
     assert res.status_code == 200
     assert res.json()["deleted"] == 1
+
+
+def test_e2e_image_generation_queue_cancel_active(client, ollama_available, db_session):
+    """POST /api/image-generation-queue/cancel-active cancela pending y generating."""
+    from app import crud
+
+    empty = client.post("/api/image-generation-queue/cancel-active")
+    assert empty.status_code == 200
+    assert empty.json()["deleted"] == 0
+
+    conv = crud.create_conversation(db_session, title="e2e-cancel", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Texto.")
+    job = crud.create_image_generation_job(
+        db_session,
+        conversation_id=conv.id,
+        message_id=msg.id,
+        scene_id="s1",
+        forge_prompt="test",
+        forge_mode="txt2img",
+        forge_body={"prompt": "test"},
+    )
+    job_id = job.id
+    res = client.post("/api/image-generation-queue/cancel-active")
+    assert res.status_code == 200
+    assert res.json()["deleted"] == 1
+    assert job_id in res.json()["ids"]
+
+
+def test_e2e_illustrated_orphans_count(client, ollama_available):
+    """GET /api/illustrated-images/orphans responde el recuento; no purga disco real."""
+    r = client.get("/api/illustrated-images/orphans")
+    assert r.status_code == 200
+    assert "count" in r.json()
+    assert isinstance(r.json()["count"], int)
 
 
 def test_e2e_workspace_profiles_crud(client, ollama_available):

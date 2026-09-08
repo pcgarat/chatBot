@@ -582,6 +582,15 @@ class ImageGenerationJobDeleteResponse(BaseModel):
     ids: list[str] = Field(default_factory=list)
 
 
+class IllustratedImageOrphansResponse(BaseModel):
+    count: int = 0
+
+
+class IllustratedImageOrphansPurgeResponse(BaseModel):
+    deleted_files: int = 0
+    deleted_meta: int = 0
+
+
 class WorkspaceImagesSnapshot(ForgePanelParamFields):
     """Prefs del panel Imágenes (sin debug ni cromo de UI)."""
 

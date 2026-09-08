@@ -300,3 +300,79 @@ def test_delete_image_generation_jobs_keeps_completed_message(client, db_session
     assert ids == [job_id]
     refreshed = crud.get_message(db_session, conv.id, msg.id)
     assert "x.png" in (refreshed.content or "")
+
+
+def _placeholder(scene: str) -> str:
+    return (
+        f'<span class="chat-illustration-placeholder" data-scene="{scene}" '
+        f'data-prompt="{scene}">Generando…</span>'
+    )
+
+
+def test_cancel_active_image_generation_queue_api(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
+    msg = crud.add_message(
+        db_session,
+        conv.id,
+        "assistant",
+        f"Hola.\n{_placeholder('s1')}\n{_placeholder('s2')}\n{_placeholder('s3')}\nFin.",
+    )
+    pending = crud.create_image_generation_job(
+        db_session,
+        conversation_id=conv.id,
+        message_id=msg.id,
+        scene_id="s1",
+        forge_prompt="p",
+        forge_mode="txt2img",
+        forge_body={"prompt": "p"},
+    )
+    generating = crud.create_image_generation_job(
+        db_session,
+        conversation_id=conv.id,
+        message_id=msg.id,
+        scene_id="s2",
+        forge_prompt="g",
+        forge_mode="txt2img",
+        forge_body={"prompt": "g"},
+    )
+    generating.status = "generating"
+    db_session.commit()
+    completed = crud.create_image_generation_job(
+        db_session,
+        conversation_id=conv.id,
+        message_id=msg.id,
+        scene_id="s3",
+        forge_prompt="c",
+        forge_mode="txt2img",
+        forge_body={"prompt": "c"},
+    )
+    crud.complete_image_generation_job(db_session, completed.id, result_filename="c.png")
+    pending_id = pending.id
+    generating_id = generating.id
+    completed_id = completed.id
+
+    res = client.post("/api/image-generation-queue/cancel-active")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["deleted"] == 2
+    assert set(body["ids"]) == {pending_id, generating_id}
+
+    listing = client.get("/api/image-generation-queue")
+    items = listing.json()["items"]
+    assert len(items) == 1
+    assert items[0]["id"] == completed_id
+    assert items[0]["status"] == "completed"
+
+    refreshed = crud.get_message(db_session, conv.id, msg.id)
+    assert 'data-scene="s1"' not in (refreshed.content or "")
+    assert 'data-scene="s2"' not in (refreshed.content or "")
+    assert 'data-scene="s3"' in (refreshed.content or "")
+
+
+def test_cancel_active_image_generation_queue_empty(client):
+    res = client.post("/api/image-generation-queue/cancel-active")
+    assert res.status_code == 200
+    assert res.json()["deleted"] == 0
+    assert res.json()["ids"] == []
