@@ -55,3 +55,11 @@ def delete_image_generation_jobs(db: Session, job_ids: list[str]) -> tuple[int, 
     )
     db.commit()
     return len(deleted_ids), deleted_ids
+
+
+def cancel_active_image_generation_jobs(db: Session) -> tuple[int, list[str]]:
+    """Cancela todos los trabajos pending y generating (placeholders incluidos)."""
+    ids = crud.list_active_image_generation_job_ids(db)
+    if not ids:
+        return 0, []
+    return delete_image_generation_jobs(db, ids)

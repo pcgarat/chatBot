@@ -34,6 +34,8 @@ from app.schemas import (
     ImageGenerationJobListItem,
     ImageGenerationJobListResponse,
     ImageGenerationQueueRunStateResponse,
+    IllustratedImageOrphansPurgeResponse,
+    IllustratedImageOrphansResponse,
     IllustrateAtRequest,
     IllustrateRequest,
     MessageContentUpdateResponse,
@@ -52,7 +54,14 @@ from app.services.image_illustration.last_payload import (
 )
 from app.services.image_illustration.reactor_settings import reactor_env_defaults
 from app.services.image_illustration.orchestrator import ImageIllustrationOrchestrator
-from app.services.image_illustration.queue_ops import delete_image_generation_jobs
+from app.services.image_illustration.orphan_files import (
+    collect_orphan_filenames,
+    purge_orphan_files,
+)
+from app.services.image_illustration.queue_ops import (
+    cancel_active_image_generation_jobs,
+    delete_image_generation_jobs,
+)
 from app.services.image_illustration.run_context import IllustrationRunContext
 from app.services.image_illustration.scene_planner import LlmScenePlanner
 from app.services.image_illustration.worker import (
@@ -805,6 +814,28 @@ def list_illustrated_image_messages(
 
 
 @router.get(
+    "/illustrated-images/orphans",
+    response_model=IllustratedImageOrphansResponse,
+)
+def list_orphan_illustrated_files(db: Session = Depends(get_db)):
+    """Cuenta ficheros en disco no incrustados en ningún mensaje."""
+    return IllustratedImageOrphansResponse(count=len(collect_orphan_filenames(db)))
+
+
+@router.post(
+    "/illustrated-images/orphans/purge",
+    response_model=IllustratedImageOrphansPurgeResponse,
+)
+def purge_orphan_illustrated_files(db: Session = Depends(get_db)):
+    """Borra del disco las ilustraciones que no están incrustadas en ningún mensaje."""
+    deleted_files, deleted_meta = purge_orphan_files(db)
+    return IllustratedImageOrphansPurgeResponse(
+        deleted_files=deleted_files,
+        deleted_meta=deleted_meta,
+    )
+
+
+@router.get(
     "/illustrated-images/{filename}/meta",
     response_model=IllustratedImageMetaResponse,
 )
@@ -924,6 +955,16 @@ def resume_image_generation_queue_endpoint():
     """Reanuda el worker de la cola de imágenes."""
     resume_image_generation_queue()
     return ImageGenerationQueueRunStateResponse(paused=False)
+
+
+@router.post(
+    "/image-generation-queue/cancel-active",
+    response_model=ImageGenerationJobDeleteResponse,
+)
+def cancel_active_image_generation_queue_jobs(db: Session = Depends(get_db)):
+    """Cancela todos los trabajos pending y generating, sin tocar completed/failed."""
+    deleted, ids = cancel_active_image_generation_jobs(db)
+    return ImageGenerationJobDeleteResponse(deleted=deleted, ids=ids)
 
 
 @router.post(

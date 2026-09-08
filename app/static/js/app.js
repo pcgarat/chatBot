@@ -6897,6 +6897,22 @@
     await deleteImageQueueJobs(Array.from(imageQueueSelectedIds));
   }
 
+  async function cancelAllActiveImageQueueJobs() {
+    if (!window.confirm("¿Cancelar todas las generaciones pendientes y en curso?")) return;
+    try {
+      await fetchJson(`${API}/image-generation-queue/cancel-active`, {
+        method: "POST",
+      });
+      imageQueueSelectedIds.clear();
+      imageQueueExpandedId = null;
+      closeImageQueueContextMenu();
+      await loadImageQueuePage();
+      if (currentConversationId) await refreshCurrentConversationMessages();
+    } catch (e) {
+      showError("No se pudo cancelar la cola: " + (e.message || e));
+    }
+  }
+
   function syncImageQueuePauseUi() {
     const btn = document.getElementById("image-queue-pause-toggle");
     const label = document.getElementById("image-queue-paused-label");
@@ -7097,6 +7113,12 @@
     if (pauseBtn) {
       pauseBtn.addEventListener("click", function () {
         toggleImageQueuePaused();
+      });
+    }
+    const cancelAllBtn = document.getElementById("image-queue-cancel-all");
+    if (cancelAllBtn) {
+      cancelAllBtn.addEventListener("click", function () {
+        cancelAllActiveImageQueueJobs();
       });
     }
     const list = document.getElementById("image-queue-list");
@@ -7382,6 +7404,40 @@
       renderGalleryMessageChips(data.items || []);
     } catch (err) {
       renderGalleryMessageChips([]);
+    }
+  }
+
+  async function purgeOrphanIllustratedFiles() {
+    const btn = document.getElementById("gallery-purge-orphans");
+    try {
+      if (btn) btn.disabled = true;
+      const preview = await fetchJson(`${API}/illustrated-images/orphans`);
+      const count = preview.count || 0;
+      if (!count) {
+        showNotice("No hay archivos huérfanos.");
+        return;
+      }
+      const noun = count === 1 ? "archivo" : "archivos";
+      if (
+        !window.confirm(
+          "Se eliminarán " +
+            count +
+            " " +
+            noun +
+            " no incrustados en ningún mensaje. ¿Continuar?"
+        )
+      ) {
+        return;
+      }
+      const result = await fetchJson(`${API}/illustrated-images/orphans/purge`, {
+        method: "POST",
+      });
+      showNotice("Eliminados " + (result.deleted_files || 0) + " archivos huérfanos.");
+      await refreshGalleryAfterScopeChange();
+    } catch (e) {
+      showError("No se pudieron eliminar archivos huérfanos: " + (e.message || e));
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -7882,6 +7938,12 @@
         galleryMessageId = null;
         galleryOffset = 0;
         refreshGalleryAfterScopeChange();
+      });
+    }
+    const purgeOrphansBtn = document.getElementById("gallery-purge-orphans");
+    if (purgeOrphansBtn) {
+      purgeOrphansBtn.addEventListener("click", function () {
+        purgeOrphanIllustratedFiles();
       });
     }
     const msgWrap = document.getElementById("image-gallery-messages");

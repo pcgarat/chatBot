@@ -37,6 +37,9 @@ def test_job_processor_applies_reactor_before_save(db_session, monkeypatch, tmp_
         },
     )
 
+    claimed = crud.claim_next_image_generation_job(db_session)
+    assert claimed is not None
+
     forge = MagicMock()
     forge.generate.return_value = b"raw-generated"
     forge.reactor_swap.return_value = b"final-with-face"
@@ -52,7 +55,7 @@ def test_job_processor_applies_reactor_before_save(db_session, monkeypatch, tmp_
         capture_save,
     )
 
-    process_image_generation_job(db_session, job, forge=forge)
+    process_image_generation_job(db_session, claimed, forge=forge)
 
     assert saved == [("s1", b"final-with-face")]
     forge.generate.assert_called_once()
@@ -72,3 +75,47 @@ def test_job_processor_applies_reactor_before_save(db_session, monkeypatch, tmp_
     assert meta is not None
     params = json.loads(meta.params_json or "{}")
     assert params.get("reactor_applied") is True
+
+
+def test_job_processor_discards_file_when_job_cancelled(db_session, monkeypatch, tmp_path):
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    conv = crud.create_conversation(db_session, title="Cancel", model_id="m", provider="ollama")
+    msg = crud.add_message(
+        db_session,
+        conv.id,
+        "assistant",
+        '<span class="chat-illustration-placeholder" data-scene="s1">Generando…</span>',
+    )
+    job = crud.create_image_generation_job(
+        db_session,
+        conversation_id=conv.id,
+        message_id=msg.id,
+        scene_id="s1",
+        forge_prompt="scene",
+        forge_mode=ForgeMode.TXT2IMG.value,
+        forge_body={"prompt": "scene"},
+    )
+    claimed = crud.claim_next_image_generation_job(db_session)
+    assert claimed is not None
+    job_id = claimed.id
+
+    def generate_then_cancel(mode, body):
+        row = crud.get_image_generation_job(db_session, job_id)
+        db_session.delete(row)
+        db_session.commit()
+        return b"\x89PNG\r\n\x1a\n"
+
+    forge = MagicMock()
+    forge.generate.side_effect = generate_then_cancel
+
+    process_image_generation_job(db_session, claimed, forge=forge)
+
+    illustrated = tmp_path / "illustrated"
+    leftover = [p for p in illustrated.iterdir() if p.is_file()] if illustrated.is_dir() else []
+    assert leftover == []
+    assert crud.get_image_generation_job(db_session, job_id) is None
+    updated = crud.get_message(db_session, conv.id, msg.id)
+    assert "chat-illustration-placeholder" in (updated.content or "")
+    assert "/api/illustrated-images/" not in (updated.content or "")

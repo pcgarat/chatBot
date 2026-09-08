@@ -43,6 +43,8 @@ def test_gallery_entry_and_panel_exist_in_html():
     assert 'id="image-queue-list"' in html
     assert 'id="image-queue-pause-toggle"' in html
     assert 'id="image-queue-paused-label"' in html
+    assert 'id="image-queue-cancel-all"' in html
+    assert 'id="gallery-purge-orphans"' in html
     assert 'scroll-y-reveal' in html
     assert 'id="messages-container"' in html
     assert 'data-queue-status="pending"' in html
@@ -73,6 +75,11 @@ def test_gallery_js_loads_list_and_opens_lightbox():
     assert "image-queue-context-menu" in js
     assert "toggleImageQueuePaused" in js
     assert "image-queue-pause-toggle" in js
+    assert "cancelAllActiveImageQueueJobs" in js
+    assert "image-generation-queue/cancel-active" in js
+    assert "purgeOrphanIllustratedFiles" in js
+    assert "illustrated-images/orphans/purge" in js
+    assert "gallery-purge-orphans" in js
     assert "gallery-open-message" in js
     assert "stayHere" in js
     assert "initCenterPanelSplit" in js

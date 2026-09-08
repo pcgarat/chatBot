@@ -7398,6 +7398,10 @@ html[data-center-queue="on"] #btn-image-queue {
   white-space: nowrap;
 }
 
+.image-gallery-purge-orphans {
+  margin-left: auto;
+}
+
 #gallery-scope-all[aria-pressed="true"] {
   background: var(--sidebar-item-active);
   border-color: var(--accent);
