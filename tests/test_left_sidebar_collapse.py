@@ -38,10 +38,15 @@ def test_index_serves_sidebar_collapse_markup(client):
     assert 'id="btn-expand-left"' in r.text
 
 
-def test_mensajes_button_sits_between_conversacion_and_galeria():
+def test_mensajes_stays_in_left_sidebar_apart_from_center_toggles():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    chat = html.index('id="btn-center-chat"')
-    messages = html.index('id="btn-history-messages"')
-    gallery = html.index('id="btn-image-gallery"')
-    assert chat < messages < gallery
-    assert 'aria-label="Mensajes"' in html
+    left = html[html.index('id="column-left"') : html.index("</aside>")]
+    actions = html[html.index('class="chat-session-actions"') : html.index('id="center-panels-empty"')]
+    assert 'id="btn-history-messages"' in left
+    assert 'aria-label="Mensajes"' in left
+    assert 'id="btn-center-chat"' not in left
+    assert 'id="btn-image-gallery"' not in left
+    assert 'id="btn-history-messages"' not in actions
+    assert 'id="btn-center-chat"' in actions
+    assert 'id="btn-image-gallery"' in actions
+    assert 'id="btn-image-queue"' in actions

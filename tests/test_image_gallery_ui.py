@@ -30,11 +30,24 @@ def test_gallery_entry_and_panel_exist_in_html():
     assert 'id="gallery-scope-conv-label"' in html
     assert 'id="center-panels-empty"' in html
     assert 'id="center-panels-splitter"' in html
-    gallery_btn = html.index('id="btn-image-gallery"')
-    queue_btn = html.index('id="btn-image-queue"')
-    chat_btn = html.index('id="btn-center-chat"')
-    new_btn = html.index('id="btn-new-chat"')
-    assert new_btn < chat_btn < gallery_btn < queue_btn
+    header = html[html.index('class="chat-panel-header"') : html.index('id="center-panels-empty"')]
+    left = html[html.index('id="column-left"') : html.index("</aside>")]
+    actions = html[html.index('class="chat-session-actions"') : html.index('id="center-panels-empty"')]
+    assert 'id="btn-center-chat"' in header
+    assert 'id="btn-image-gallery"' in header
+    assert 'id="btn-image-queue"' in header
+    assert 'id="btn-history-messages"' not in header
+    assert 'id="btn-center-chat"' not in left
+    assert 'id="btn-image-gallery"' not in left
+    assert 'id="btn-image-queue"' not in left
+    assert 'id="btn-history-messages"' in left
+    chat_btn = actions.index('id="btn-center-chat"')
+    gallery_btn = actions.index('id="btn-image-gallery"')
+    queue_btn = actions.index('id="btn-image-queue"')
+    delete_btn = actions.index('id="btn-clear-memory"')
+    assert chat_btn < gallery_btn < queue_btn < delete_btn
+    assert 'class="center-view-toggle"' in actions
+    assert 'id="gallery-view-title"' not in html
     panel = html.index('id="image-gallery-panel"')
     queue_panel = html.index('id="image-queue-panel"')
     chat = html.index('id="chat-column"')
@@ -118,7 +131,13 @@ def test_gallery_css_toggles_panels_independently():
     assert ".chat-image-filter-notice-dismiss" in css
     assert ".chat-illustration-frame.is-gallery-filter-hidden" in css
     assert ".center-panel-toggles" in css
-    assert "flex-direction: column" in css[css.index(".center-panel-toggles") : css.index(".center-panel-toggles") + 120]
+    toggles = css[css.index(".center-panel-toggles") : css.index(".center-panel-toggles") + 220]
+    assert "inline-flex" in toggles
+    assert "flex-direction: column" not in toggles
+    assert ".center-view-toggle" in css
+    assert ".center-view-toggle[aria-pressed=\"true\"]" in css
+    assert ".center-view-toggle-text" in css
+    assert "@container chat-title" in css
     assert ".center-panels-empty" in css
     assert ".center-panels-splitter" in css
     assert ".scroll-y-reveal" in css

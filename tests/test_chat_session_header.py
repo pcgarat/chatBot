@@ -30,6 +30,13 @@ def test_chat_panel_header_groups_identity_and_delete_action():
     assert 'id="btn-clear-memory"' not in identity_block
     assert "context-usage" not in identity_block
     assert "Ctx" not in identity_block
+    assert 'id="btn-center-chat"' not in identity_block
+    actions = html[html.index('class="chat-session-actions"') : html.index('id="center-panels-empty"')]
+    assert 'id="btn-center-chat"' in actions
+    assert 'id="btn-image-gallery"' in actions
+    assert 'id="btn-image-queue"' in actions
+    assert 'id="btn-clear-memory"' in actions
+    assert actions.index('id="btn-center-chat"') < actions.index('id="btn-image-gallery"') < actions.index('id="btn-image-queue"') < actions.index('id="btn-clear-memory"')
 
 def test_chat_panel_header_has_distinct_surface_and_danger_icon_styles():
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -38,6 +45,9 @@ def test_chat_panel_header_has_distinct_surface_and_danger_icon_styles():
     assert "box-shadow: inset 3px 0 0 0 var(--accent)" in css
     assert ".chat-delete-btn.icon-btn-danger" in css
     assert "color: var(--icon-danger)" in css
+    assert ".center-view-toggle" in css
+    assert ".chat-session-actions" in css
+    assert "container-name: chat-title" in css
 
 
 def test_index_serves_session_header_markup(client):
@@ -47,6 +57,8 @@ def test_index_serves_session_header_markup(client):
     assert 'id="conversation-auto-title"' in r.text
     assert 'id="btn-clear-memory"' in r.text
     assert "chat-delete-btn" in r.text
+    assert 'id="btn-center-chat"' in r.text
+    assert "center-view-toggle" in r.text
 
 
 def test_js_persiste_titulo_al_cambiar_el_input():

@@ -3,6 +3,7 @@ from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
 APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
+STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
 
 
 def _column_left_html(html: str) -> str:
@@ -89,3 +90,41 @@ def test_image_sort_only_applies_in_messages_mode():
     when_iso = js.split("function messageHistoryWhenIso")[1].split("function renderMessageHistoryList")[0]
     assert "latest_image_at" in when_iso
     assert 'sort === "image"' in when_iso
+
+
+def test_left_history_filters_match_right_panel_control_chrome():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    left = _column_left_html(html)
+    sort = left[left.index('id="left-history-sort"') : left.index('id="message-history-search-wrap"')]
+    search = left[left.index('id="message-history-search-wrap"') : left.index('id="conversations-list"')]
+    assert "param-label" in sort
+    assert "param-control" in sort
+    assert "param-label" in search
+    assert "param-control" in search
+    sort_layout = css.split(".column-left .left-history-sort {", 1)[1].split("}", 1)[0]
+    assert "flex-direction: column" in sort_layout
+    search_layout = css.split(".column-left .message-history-search-wrap {", 1)[1].split("}", 1)[0]
+    assert "flex-direction: column" in search_layout
+    label = css.split(".column-left .left-history-sort-label {", 1)[1].split("}", 1)[0]
+    assert "text-transform: none" in label
+    assert "uppercase" not in label
+    assert "font-weight: 500" in label
+    controls = css.split(
+        ".column-left .left-history-sort-select,\n.column-left .message-history-search {", 1
+    )[1].split("}", 1)[0]
+    assert "min-height: 28px" in controls
+    assert "padding: 4px 8px" in controls
+    assert "border: 1px solid var(--stroke-control)" in controls
+    assert "border-radius: var(--radius-sm)" in controls
+    focus = css.split(
+        ".column-left .left-history-sort-select:focus,\n.column-left .message-history-search:focus {",
+        1,
+    )[1].split("}", 1)[0]
+    assert "border-color: var(--accent)" in focus
+    assert "box-shadow: 0 0 0 1px var(--accent)" in focus
+    right = css.split(".column-right .param-control,", 1)[1].split("}", 1)[0]
+    assert "min-height: var(--rp-control-h)" in right
+    assert "padding: 4px 8px" in right
+    assert "border-radius: var(--radius-sm)" in right
+

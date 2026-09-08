@@ -60,6 +60,8 @@ def test_message_history_search_and_pager_live_in_column_left():
     assert 'id="message-history-pager"' in left
     wrap = left[left.index('id="message-history-search-wrap"') : left.index('id="conversations-list"')]
     assert "hidden" in wrap
+    assert "param-control" in wrap
+    assert "param-label" in wrap
 
 
 def test_message_history_search_only_visible_in_messages_mode():
