@@ -1,7 +1,7 @@
 """Colapso de mensajes: solo por acción del usuario; al abrir, ir al último."""
 from pathlib import Path
 
-APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
+APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
 
 
 def _js() -> str:

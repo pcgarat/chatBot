@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 
-APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
+APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
 
 
 def _js() -> str:
@@ -98,7 +98,7 @@ def test_reading_mode_is_not_scrolled_to_start_when_an_image_arrives():
 
 def test_messages_container_disables_overflow_anchor():
     """Si una imagen carga por encima, overflow-anchor no debe empujar la lectura."""
-    css = (Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css").read_text(
+    css = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css").read_text(
         encoding="utf-8"
     )
     marker = ".messages-container {"

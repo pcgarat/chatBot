@@ -2,7 +2,7 @@
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
-STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
 
 
 def _header_block(html: str) -> str:

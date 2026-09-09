@@ -4,8 +4,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "app" / "static" / "js" / "app.js"
-STYLE_CSS = ROOT / "app" / "static" / "css" / "style.css"
+APP_JS = ROOT / "frontend" / "src" / "app.js"
+STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def _button_chunk(html: str, button_id: str) -> str:

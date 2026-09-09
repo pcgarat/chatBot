@@ -27,6 +27,8 @@ chatbot.db
 
 # ChromaDB (RAG): datos persistentes en disco
 data/
+!frontend/public/data/
+!frontend/public/data/**
 
 # Servidor (Makefile)
 .server.pid
@@ -47,6 +49,9 @@ mutants/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Frontend (Vite/React)
+node_modules/
 
 # Logs
 *.log

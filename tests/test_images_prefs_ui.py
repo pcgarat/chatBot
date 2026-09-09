@@ -2,7 +2,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "app" / "static" / "js" / "app.js"
+APP_JS = ROOT / "frontend" / "src" / "app.js"
 INDEX_HTML = ROOT / "app" / "static" / "index.html"
 
 

@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 
-STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_dark_center_column_is_white_with_light_tokens():

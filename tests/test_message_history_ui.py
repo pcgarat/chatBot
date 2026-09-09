@@ -1,8 +1,8 @@
 """Historial izquierdo en modo Mensajes: cada respuesta una vez, fecha bajo el título."""
 from pathlib import Path
 
-APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
-STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
+STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
 
 

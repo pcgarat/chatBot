@@ -1,7 +1,7 @@
 """El stream de conversación usa tipografía monospace."""
 from pathlib import Path
 
-STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
 
 
 def _rule_body(css: str, selector: str) -> str:

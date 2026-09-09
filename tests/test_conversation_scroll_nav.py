@@ -3,8 +3,8 @@ from pathlib import Path
 import re
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
-APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
-STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
+STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
 
 
 def _fn_body(js: str, name: str) -> str:

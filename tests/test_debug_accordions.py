@@ -4,8 +4,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "app" / "static" / "js" / "app.js"
-STYLE = ROOT / "app" / "static" / "css" / "style.css"
+APP_JS = ROOT / "frontend" / "src" / "app.js"
+STYLE = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def _html() -> str:

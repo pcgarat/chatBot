@@ -4,7 +4,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "app" / "static" / "index.html"
-STYLE = ROOT / "app" / "static" / "css" / "style.css"
+STYLE = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def _html() -> str:
@@ -104,7 +104,7 @@ def test_reactor_is_grouped_into_named_field_groups():
 def test_right_panel_copy_is_sentence_case_spanish():
     right = _right_html()
     assert "-- Elegir regla --" not in right
-    js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    js = (ROOT / "frontend" / "src" / "app.js").read_text(encoding="utf-8")
     assert "-- Elegir regla --" not in js
     assert 'title="Aplicar perfil"' in right
     assert 'title="Aplicar perfil"' in right
@@ -156,7 +156,7 @@ def test_right_panel_accordion_scrolls_instead_of_clipping_open_sections():
 
 
 def test_accordion_init_keeps_one_open_section_per_list():
-    js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    js = (ROOT / "frontend" / "src" / "app.js").read_text(encoding="utf-8")
     init = js.split("function initAccordionState")[1].split("function initSidebarAccordion")[0]
     assert "getSiblingAccordionSections" in init
     assert "setAccordionSectionOpen(s, false)" in init or "setAccordionSectionOpen(section, false)" in init

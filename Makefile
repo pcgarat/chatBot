@@ -18,6 +18,7 @@ endif
 PYTHON_CMD := python$(PYTHON_VERSION)
 
 .PHONY: help up down start start-verbose stop reload reload-dev restart-dev test coverage-html mutation-test status clean setup
+.PHONY: frontend-install frontend-build frontend-dev frontend-test
 .PHONY: chroma-up chroma-down chroma-logs chroma-status chroma-clean chroma-ping ingest venv312
 .PHONY: overlay overlay-batch
 
@@ -59,6 +60,12 @@ help:
 	@echo "  make overlay MODEL=<id> WRITE=1  Persiste stub en ollama.json + markdown DRAFT"
 	@echo "  make overlay-batch            Dry-run batch de modelos listados sin overlay"
 	@echo "  make overlay-batch WRITE=1    Batch missing con escritura"
+	@echo ""
+	@echo "  Frontend React (Vite; el build se publica en app/static):"
+	@echo "  make frontend-install  npm install en frontend/"
+	@echo "  make frontend-build    Compilar el SPA a app/static/"
+	@echo "  make frontend-dev      Vite dev server (proxy /api -> :8000)"
+	@echo "  make frontend-test     Tests de Vitest del frontend"
 	@echo ""
 	@echo "  make help    Mostrar esta ayuda"
 	@echo ""
@@ -123,6 +130,12 @@ setup:
 	fi
 	@echo "Instalando dependencias..."
 	@$(PIP) install -r requirements.txt
+	@if command -v npm >/dev/null; then \
+		echo "Instalando dependencias del frontend..."; \
+		$(MAKE) frontend-install; \
+	else \
+		echo "npm no encontrado: se usa el build ya publicado en app/static."; \
+	fi
 
 up: setup
 	@$(MAKE) start
@@ -187,9 +200,22 @@ stop:
 		fi; \
 	fi
 
+frontend-install:
+	cd frontend && npm install
+
+frontend-build: frontend-install
+	cd frontend && npm run build
+
+frontend-dev:
+	cd frontend && npm run dev
+
+frontend-test:
+	cd frontend && npm test
+
 # Por defecto no se incluyen e2e (ralentizan); usar make test-e2e para ejecutarlos
 test: $(VENV)/bin/pytest
 	$(PYTEST) -m "not e2e" $(COVERAGE_OPTS)
+	@if [ -x frontend/node_modules/.bin/vitest ]; then cd frontend && npm test; fi
 
 # Tests e2e: requieren Ollama accesible; solo se ejecutan con make test-e2e
 test-e2e: $(VENV)/bin/pytest
@@ -198,6 +224,7 @@ test-e2e: $(VENV)/bin/pytest
 # Alias explícito: tests sin e2e (mismo que make test)
 test-no-e2e: $(VENV)/bin/pytest
 	$(PYTEST) -m "not e2e" $(COVERAGE_OPTS)
+	@if [ -x frontend/node_modules/.bin/vitest ]; then cd frontend && npm test; fi
 
 # Tests de mutación (mutmut). Config en setup.cfg; ver INFORME_MUTACIONES.md.
 # En algunos entornos la fase "stats" puede fallar (multiprocessing); entonces ejecutar

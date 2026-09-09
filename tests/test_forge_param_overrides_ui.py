@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "app" / "static" / "js" / "app.js"
+APP_JS = ROOT / "frontend" / "src" / "app.js"
 
 
 def test_images_panel_has_forge_param_controls():

@@ -6,6 +6,7 @@ Aplicación web de chat que usa modelos Ollama en local. Incluye selector de mod
 
 - Python 3.10+
 - [Ollama](https://ollama.com) instalado y en ejecución (`ollama serve`). Al menos un modelo descargado (por ejemplo `ollama pull llama3.2`).
+- **Frontend:** Node.js 20+ y npm para desarrollar o recompilar el SPA React (`frontend/`). El servidor FastAPI sirve el build ya publicado en `app/static/`; no hace falta Node solo para ejecutar la app.
 - **RAG (opcional):** Docker para ChromaDB y cuenta OpenAI para embeddings. Sin ellos la app funciona igual; el RAG solo se activa si están configurados `OPENAI_API_KEY` y `CHROMA_HOST`.
 
 ## Instalación
@@ -41,6 +42,9 @@ pip install -r requirements.txt
 | `make chroma-up`  | Levantar ChromaDB con Docker (puerto 8001); datos en `./data/chroma` |
 | `make chroma-down`| Bajar el contenedor de ChromaDB (los datos se conservan)            |
 | `make clean`      | Parar app y Chroma y borrar datos de Chroma y PID                   |
+| `make frontend-build` | Compilar el SPA React a `app/static/` |
+| `make frontend-dev`   | Vite en :5173 con proxy `/api` → :8000 |
+| `make frontend-test`  | Tests de Vitest del frontend |
 | `make help`  | Mostrar ayuda                                                      |
 
 ## Configuración (opcional)
@@ -63,6 +67,14 @@ make start
 ```
 
 Abre en el navegador: http://localhost:8000. Para detener: `make stop`. Para reinicio completo (borrar venv y volver a subir): `make reload`.
+
+El UI es un SPA React (`frontend/`). Tras cambiar JSX, CSS o `frontend/src/app.js`, regenera el estático:
+
+```bash
+make frontend-build
+```
+
+En desarrollo del front, `make frontend-dev` (Vite) y `make start` (API) a la vez: el dev server hace proxy de `/api` al backend.
 
 **Modo verbose (-v):** para ver en la terminal todo lo que se envía a Ollama (modelo + mensajes, tal cual):
 
@@ -90,6 +102,8 @@ Los tests usan pytest con base de datos SQLite en memoria y mocks de Ollama (no 
 ```bash
 make test
 ```
+
+Ese comando ejecuta pytest (sin e2e) y, si hay `frontend/node_modules`, también Vitest.
 
 Con cobertura (con el venv activado):
 
