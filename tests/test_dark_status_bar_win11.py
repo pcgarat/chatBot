@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 
-STYLE = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+STYLE = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_dark_status_bar_uses_win11_sidebar_navy():

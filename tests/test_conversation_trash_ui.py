@@ -2,7 +2,7 @@
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
-APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
+APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
 
 
 def test_index_has_trash_markup():

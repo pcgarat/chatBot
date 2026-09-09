@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "app" / "static" / "js" / "app.js"
+APP_JS = ROOT / "frontend" / "src" / "app.js"
 
 
 def _planner_html() -> str:

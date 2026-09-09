@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 
-STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
+STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_dark_side_columns_use_win11_blue_bloom():

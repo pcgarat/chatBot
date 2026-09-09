@@ -1,0 +1,136 @@
+{
+  "model": {
+    "nombre": "Selección de modelo",
+    "definicion": "Identificador del modelo a usar; cambia calidad, latencia, precio, capacidades (herramientas, multimodalidad) y, críticamente, límites de contexto y salida.",
+    "rango": "Depende del catálogo del proveedor; no especificado como rango numérico.",
+    "efecto": "A igualdad de prompts/parámetros, distintos modelos producen distinta calidad/estilo y permiten distintos parámetros (algunos no admiten ciertas opciones).",
+    "ejemplos": "Cambiar de un modelo rápido a uno más capaz para tareas de razonamiento o extracción estructurada.",
+    "riesgos": "Escoger un modelo sin soporte de un parámetro o con ventana de contexto insuficiente puede causar errores por límite de tokens.",
+    "compatibilidad": "OpenAI: model. Anthropic: model. HF: model por endpoint. Ollama: model. Cohere: model. Mistral: model. Gemini: model en path models/{model}."
+  },
+  "truncation": {
+    "nombre": "Truncado del input (truncation / truncate)",
+    "definicion": "Controla qué pasa cuando el input excede la ventana de contexto: falla, se recorta, o se configura el tamaño (en sistemas locales). OpenAI: 'auto' recorta items antiguos, 'disabled' falla.",
+    "rango": "OpenAI: auto | disabled (default disabled). HF: entero. Ollama num_ctx: entero (default 2048).",
+    "efecto": "Si se recorta el contexto, el modelo puede olvidar instrucciones o datos anteriores; si se fuerza fallo, se detecta temprano y se obliga a resumir manualmente.",
+    "casos_recomendados": "disabled/fallo: backends críticos. auto/truncado: UIs conversacionales donde se prefiere continuidad.",
+    "riesgos": "Truncar sin estrategia de resumen puede causar respuestas incorrectas por falta de datos.",
+    "compatibilidad": "OpenAI Responses: truncation. HF: truncate. Ollama: num_ctx en options/Modelfile."
+  },
+  "num_ctx": {
+    "nombre": "Ventana de contexto (num_ctx)",
+    "definicion": "Tamaño de la ventana de contexto en tokens (sistemas locales como Ollama). Define cuánto historial puede considerar el modelo.",
+    "rango": "Ollama: entero, default 2048. Ajustable en Modelfile o options.",
+    "efecto": "Valores mayores permiten conversaciones más largas; valores menores ahorran memoria.",
+    "riesgos": "Superar la capacidad del modelo puede causar truncado o error.",
+    "compatibilidad": "Ollama: options.num_ctx. HF: truncate (truncar entrada a N tokens)."
+  },
+  "system_instruction": {
+    "nombre": "Instrucciones de sistema / developer (system prompt)",
+    "definicion": "Texto de alto nivel que fija objetivos, estilo, restricciones y formato para el modelo. No existe rol 'system' dentro de messages en Anthropic; va en el parámetro top-level 'system'.",
+    "efecto": "Suele dominar el estilo y el formato; reduce ambigüedad; ayuda a que formato JSON/Schema funcione de manera fiable.",
+    "ejemplos": "Responde en español, con lista corta, y si no estás seguro di 'no especificado'.",
+    "riesgos": "Instrucciones demasiado largas consumen contexto; instrucciones contradictorias generan incoherencia.",
+    "compatibilidad": "OpenAI Responses: instructions. Chat: rol developer/system en messages. Anthropic: system. Gemini: systemInstruction. Ollama: messages[].role=system o SYSTEM en Modelfile. Cohere: rol System. Mistral: SystemMessage."
+  },
+  "max_tokens": {
+    "nombre": "Límite de tokens de salida",
+    "definicion": "Techo duro de tokens generados (max_tokens, max_output_tokens, max_completion_tokens, max_new_tokens, num_predict). A veces incluye tokens internos de razonamiento.",
+    "rango": "Depende del modelo. Ollama num_predict: default 128; -1 infinito; -2 fill context. OpenAI: max_completion_tokens (max_tokens deprecado).",
+    "efecto": "Controla coste y evita respuestas demasiado largas; valor bajo aumenta riesgo de truncado de respuesta (incompleta).",
+    "ejemplos": "Gemini: maxOutputTokens 200 para respuesta breve. Ollama: num_predict 64 para respuestas cortas.",
+    "riesgos": "Confundir tokens con palabras; los límites dependen del modelo/contexto en cada proveedor.",
+    "compatibilidad": "OpenAI: max_output_tokens / max_completion_tokens. Anthropic/Cohere/Mistral: max_tokens. Gemini: generationConfig.maxOutputTokens. HF: max_new_tokens. Ollama: options.num_predict."
+  },
+  "stop_sequences": {
+    "nombre": "Stop sequences (stop, stop_sequences)",
+    "definicion": "Secuencias de caracteres que, si aparecen, detienen la generación y no se incluyen en el texto devuelto.",
+    "rango": "OpenAI: hasta 4 secuencias. Cohere/Gemini: hasta 5. Anthropic/HF/Ollama/Mistral: lista (límites variables).",
+    "efecto": "Útil para cortar listas, cortar en '\\n\\nUsuario:' o terminar al cerrar un JSON.",
+    "ejemplos": "Cortar al detectar '\\nUsuario:' en chat. Ollama: stop: ['\\n', 'user:'].",
+    "riesgos": "Secuencias demasiado genéricas (ej. '.') pueden truncar casi todas las frases.",
+    "compatibilidad": "OpenAI: stop (≤4; no en algunos modelos razonamiento). Anthropic: stop_sequences. Cohere: stop_sequences (≤5). Gemini: stopSequences (≤5). HF: parameters.stop[]. Ollama: options.stop[]."
+  },
+  "temperature": {
+    "nombre": "Temperatura (temperature)",
+    "definicion": "Parámetro de muestreo que controla aleatoriedad. Valores bajos → más determinista; altos → más variedad/creatividad.",
+    "rango": "0–2 (muchos proveedores) o 0–1 (Anthropic). Defaults: OpenAI 1, Anthropic 1.0, Cohere 0.3, Ollama 0.8, Mistral/Gemini varían por modelo.",
+    "efecto": "Baja (0–0.2): respuestas más consistentes. Media (0.3–0.7): balance. Alta (0.8–1.2+): más creatividad pero más dispersión.",
+    "ejemplos": "Cohere determinismo: 0.2. Ollama creatividad: 1.0.",
+    "riesgos": "Temperaturas altas pueden aumentar variabilidad y fallos en tareas factuales. Se recomienda ajustar temperature o top_p, no ambos a la vez.",
+    "compatibilidad": "Casi universal como temperature (Gemini: generationConfig.temperature)."
+  },
+  "top_p": {
+    "nombre": "Top-p / nucleus sampling (top_p, topP, p)",
+    "definicion": "Restringe candidatos a la masa acumulada de probabilidad p. Considera solo los tokens que suman esa masa.",
+    "rango": "0–1 (1 = sin recorte). Defaults: OpenAI/Mistral 1, Cohere p 0.75, Ollama 0.9.",
+    "efecto": "Bajar top_p hace el output más conservador; subirlo permite más diversidad.",
+    "ejemplos": "Ollama: 0.5 más conservador, 0.95 más diverso.",
+    "riesgos": "Top_p muy bajo puede generar respuestas rígidas o repetitivas; alto con temperatura alta aumenta deriva. Ajustar temperature o top_p, no ambos.",
+    "compatibilidad": "OpenAI: top_p. Anthropic: top_p. Cohere: p. Gemini: topP. Mistral: top_p. Ollama: options.top_p. HF: parameters.top_p."
+  },
+  "top_k": {
+    "nombre": "Top-k (top_k, topK, k)",
+    "definicion": "Limita el número de tokens candidatos a los K más probables (pool size).",
+    "rango": "Cohere k: 0–500 (0 = desactivado). Ollama top_k: default 40. Transformers: default 50.",
+    "efecto": "Top-k bajo restringe variedad; alto permite más tokens raros (y potencialmente incoherencia).",
+    "riesgos": "Valores muy altos pueden introducir tokens poco probables (nonsense).",
+    "compatibilidad": "Campo varía: Anthropic top_k, Cohere k, Gemini topK, Ollama options.top_k, HF parameters.top_k."
+  },
+  "min_p": {
+    "nombre": "Mínima probabilidad (min_p, minP)",
+    "definicion": "Filtro alternativo a top_p: probabilidad mínima relativa al token más probable. Técnica avanzada.",
+    "rango": "HF/Transformers: típico 0.01–0.2. Ollama: default 0.0.",
+    "efecto": "Control fino de diversidad; tocar solo si hay repetición o incoherencia y ya se probó temperature/top_p/top_k.",
+    "riesgos": "Parámetro avanzado; interacción menos intuitiva.",
+    "compatibilidad": "Ollama: min_p. HF/Transformers: min_p. No estándar en OpenAI/Anthropic/Cohere/Mistral/Gemini."
+  },
+  "seed": {
+    "nombre": "Semilla (seed, random_seed)",
+    "definicion": "Fija el generador pseudoaleatorio para intentar reproducibilidad. 'Best effort' determinista en la mayoría de proveedores.",
+    "rango": "Entero. Ollama default 0; fijarla genera mismo texto para mismo prompt (según doc).",
+    "efecto": "Reproducibilidad aproximada de salidas para mismo prompt y parámetros.",
+    "riesgos": "Varios proveedores no garantizan determinismo absoluto incluso con seed fija.",
+    "compatibilidad": "OpenAI: seed (deprecado/beta en Chat). Cohere/Gemini/HF/Ollama: seed. Mistral: random_seed."
+  },
+  "presence_penalty": {
+    "nombre": "Presence penalty (presence_penalty, presencePenalty)",
+    "definicion": "Penaliza tokens que ya han aparecido para fomentar vocabulario nuevo y temas nuevos.",
+    "rango": "OpenAI: -2..2. Cohere/Mistral: 0–1, default 0. Gemini: binaria.",
+    "efecto": "Reduce repeticiones y empuja a hablar de temas nuevos.",
+    "riesgos": "Valores demasiado altos pueden forzar saltos temáticos o pérdida de cohesión.",
+    "compatibilidad": "OpenAI: presence_penalty. Gemini: presencePenalty. Cohere/Mistral: presence_penalty. Ollama: en options (ejemplo). HF: no listado en text-generation (sí frequency_penalty)."
+  },
+  "frequency_penalty": {
+    "nombre": "Frequency penalty (frequency_penalty, frequencyPenalty)",
+    "definicion": "Penaliza tokens en proporción a su frecuencia previa; reduce bucles y repetición literal.",
+    "rango": "OpenAI: -2..2. Cohere/Mistral: 0..1, default 0. Gemini: proporcional.",
+    "efecto": "Disminuye probabilidad de repetir la misma línea literalmente.",
+    "riesgos": "Penalizaciones negativas (Gemini) pueden empujar a repetición masiva hasta el límite de tokens.",
+    "compatibilidad": "OpenAI: frequency_penalty. Gemini: frequencyPenalty. Cohere/Mistral: frequency_penalty. HF: parameters."
+  },
+  "repetition_penalty": {
+    "nombre": "Repetition penalty (repetition_penalty, repeat_penalty)",
+    "definicion": "Familia de controles en open-source para reducir repeticiones persistentes. Ollama: repeat_penalty (default 1.1), repeat_last_n (default 64).",
+    "rango": "Transformers: 1.0 = sin penalización. Ollama: repeat_penalty, repeat_last_n.",
+    "efecto": "Reduce repeticiones, especialmente en modelos pequeños o prompts muy guiados.",
+    "riesgos": "Subir demasiado puede empeorar fluidez o forzar sinónimos raros.",
+    "compatibilidad": "HF: repetition_penalty. Ollama: repeat_penalty, repeat_last_n."
+  },
+  "response_format": {
+    "nombre": "Salida estructurada / JSON (response_format, format)",
+    "definicion": "Fuerza al modelo a emitir texto plano o JSON (y a veces JSON Schema). Aumenta robustez de integraciones y parsing.",
+    "rango": "OpenAI: response_format (json_schema, json_object, text). Gemini: responseMimeType (application/json, text/plain), responseSchema. Cohere/Mistral: response_format. Ollama: format 'json'.",
+    "efecto": "Reduce prompts tipo 'devuélveme JSON válido' que fallan en edge-cases.",
+    "riesgos": "Si el modelo no soporta el modo puede ignorarlo o fallar. JSON sin buena instrucción en system/user puede producir salidas problemáticas (recomendado instruir explícitamente).",
+    "compatibilidad": "OpenAI: response_format / text.format. Gemini: responseMimeType + responseSchema. Cohere/Mistral: response_format. HF: grammar (json/regex/json_schema). Ollama: format json."
+  },
+  "safety_mode": {
+    "nombre": "Seguridad y filtros (safetySettings, safety_mode, safe_prompt)",
+    "definicion": "Mecanismos para bloquear o moderar contenido según categorías y umbrales, o inyectar prompts de seguridad.",
+    "rango": "Gemini: safetySettings[] por categoría. Cohere: safety_mode (CONTEXTUAL default, OFF omite instrucción). Mistral: safe_prompt boolean (default false).",
+    "efecto": "Reduce probabilidad de outputs no deseados; puede aumentar rechazos o respuestas genéricas en categorías sensibles.",
+    "riesgos": "Falsos positivos (bloqueo de contenido legítimo), incompatibilidades con tools (Cohere).",
+    "compatibilidad": "Gemini: safetySettings. Cohere: safety_mode. Mistral: safe_prompt. Bedrock: Guardrails."
+  }
+}

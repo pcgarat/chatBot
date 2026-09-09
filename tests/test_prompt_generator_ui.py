@@ -3,8 +3,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "app" / "static" / "js" / "app.js"
-STYLE_CSS = ROOT / "app" / "static" / "css" / "style.css"
+APP_JS = ROOT / "frontend" / "src" / "app.js"
+STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_sidebar_has_txt2img_button_under_new():

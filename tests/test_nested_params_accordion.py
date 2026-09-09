@@ -2,8 +2,8 @@
 import re
 from pathlib import Path
 
-STYLE_CSS = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "style.css"
-APP_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "app.js"
+STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
+APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
 
 

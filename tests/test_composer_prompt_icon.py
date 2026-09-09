@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML = ROOT / "app" / "static" / "index.html"
-STYLE_CSS = ROOT / "app" / "static" / "css" / "style.css"
+STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_composer_has_no_prompt_icon():
