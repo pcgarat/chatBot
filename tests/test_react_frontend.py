@@ -6,6 +6,14 @@ FRONTEND_SRC = ROOT / "frontend" / "src"
 APP_JSX = FRONTEND_SRC / "App.jsx"
 MAIN_JSX = FRONTEND_SRC / "main.jsx"
 LEGACY_JS = FRONTEND_SRC / "app.js"
+STYLE_CSS = FRONTEND_SRC / "styles" / "style.css"
+
+
+def _css_rule_block(css: str, selector: str) -> str:
+    needle = f"{selector} {{"
+    idx = css.find(needle)
+    assert idx >= 0, f"Falta la regla CSS {selector!r}"
+    return css[idx : css.index("}", idx)]
 
 
 def test_react_shell_is_the_markup_source():
@@ -50,3 +58,18 @@ def test_static_bundle_exposes_legacy_controller(client):
     assert r.status_code == 200
     assert "initApp" in r.text
     assert "initImageGallery" in r.text
+
+
+def test_react_root_fills_viewport_height_chain():
+    """Sin #root en la cadena flex, body recorta los tres paneles por la mitad."""
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    root = _css_rule_block(css, "#root")
+    assert "display: flex" in root
+    assert "flex-direction: column" in root
+    assert "flex: 1" in root
+    assert "min-height: 0" in root
+    assert "height: 100%" in root
+    app = _css_rule_block(css, ".app-shell,\n#app")
+    assert "flex: 1" in app
+    assert "min-height: 0" in app
+    assert "flex-direction: row" in app
