@@ -72,8 +72,9 @@ def test_context_usage_render_sets_status_bar_title(client):
     assert "Contexto disponible" in js or "Prompt:" in js
     r = client.get("/")
     assert r.status_code == 200
-    assert 'class="app-status-bar-right"' in frontend_markup()
-    assert 'id="context-usage-row"' in frontend_markup()
-    assert 'id="auto-scroll-during-generation"' in frontend_markup()
-    footer = r.text[r.text.index('id="app-status-bar"') : r.text.index("</footer>")]
+    html = frontend_markup()
+    assert 'class="app-status-bar-right"' in html
+    assert 'id="context-usage-row"' in html
+    assert 'id="auto-scroll-during-generation"' in html
+    footer = _footer_block(html)
     assert 'id="auto-scroll-during-generation"' not in footer

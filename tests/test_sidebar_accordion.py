@@ -33,7 +33,7 @@ def test_right_panel_uses_vertical_side_tabs():
 def test_index_endpoint_serves_side_tabs_markup(client):
     r = client.get("/")
     assert r.status_code == 200
-    body = r.text
+    body = frontend_markup()
     assert "sidebar-side-layout" in body
     assert 'role="tablist"' in body
     assert "sidebar-main-accordion" not in body

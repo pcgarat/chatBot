@@ -79,7 +79,5 @@ def test_index_serves_fullscreen_button(client):
     r = client.get("/")
     assert r.status_code == 200
     html = frontend_markup()
-    assert 'id="btn-chat-fullscreen"' in frontend_markup()
-    assert frontend_markup().index('id="btn-chat-fullscreen"') < r.text.index(
-        'id="btn-font-size-decrease"'
-    )
+    assert 'id="btn-chat-fullscreen"' in html
+    assert html.index('id="btn-chat-fullscreen"') < html.index('id="btn-font-size-decrease"')

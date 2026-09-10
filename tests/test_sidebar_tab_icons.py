@@ -2,8 +2,9 @@
 from pathlib import Path
 import re
 
+from tests.frontend_source import frontend_markup
+
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
 STYLE = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 TABS = (
@@ -15,7 +16,7 @@ TABS = (
 
 
 def _rail_html() -> str:
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     return html.split('class="sidebar-tab-rail"')[1].split("sidebar-tab-panels")[0]
 
 
@@ -36,7 +37,7 @@ def test_side_tabs_have_no_visible_labels():
 
 
 def test_side_tabs_use_native_tooltip_and_aria_label():
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     for tab_id, label in TABS:
         btn = _button(html, tab_id)
         assert f'title="{label}"' in btn

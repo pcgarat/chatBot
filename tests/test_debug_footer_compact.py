@@ -1,13 +1,14 @@
 """Footer derecho: acordeones de debug, sin switches compactos."""
 from pathlib import Path
 
+from tests.frontend_source import frontend_markup
+
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
 STYLE = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_diagnostics_footer_has_no_title():
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     start = html.index('id="debug-dock"')
     end = html.index('id="app-status-bar"')
     block = html[start:end]
