@@ -1,19 +1,19 @@
 """Debug y Debug imágenes: acordeones al pie del panel derecho, FIFO de sesión."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def _html() -> str:
-    return INDEX.read_text(encoding="utf-8")
+    return frontend_markup()
 
 
 def _js() -> str:
-    return APP_JS.read_text(encoding="utf-8")
+    return frontend_source()
 
 
 def _css() -> str:

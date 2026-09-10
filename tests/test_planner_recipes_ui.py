@@ -1,13 +1,13 @@
 """UI: recetas del planificador de prompts, igual que en Ajustes."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 
 
 def _planner_html() -> str:
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     images = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
     return images.split('data-accordion-section="images-planner"')[1].split(
         'data-accordion-section="images-planner-rules"'
@@ -34,7 +34,7 @@ def test_planner_panel_has_recipe_controls_tied_to_chat_config():
 
 
 def test_js_loads_planner_contract_and_sends_prompt_model_params():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function loadPlannerContract" in js
     assert "function applyPlannerRecipe" in js
     assert "function collectPlannerModelParams" in js

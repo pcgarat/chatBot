@@ -1,14 +1,15 @@
 """El texto del relato debe ocupar el hueco al lado de las ilustraciones."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def _js() -> str:
-    return APP_JS.read_text(encoding="utf-8")
+    return frontend_source()
 
 
 def _css() -> str:
@@ -94,7 +95,7 @@ def test_layout_keeps_pre_image_paragraph_out_of_wrap_unit():
     """
     js = _js()
     assert "function layoutIllustratedHtml" in js
-    fn = re.search(r"function layoutIllustratedHtml\([\s\S]*?\n  \}", js)
+    fn = re.search(r"function layoutIllustratedHtml\([\s\S]*?return out\.join\(\"\"\);\s*\}", js)
     assert fn, "No se encontró layoutIllustratedHtml"
     body = fn.group(0)
     assert "illustration-lead" in body

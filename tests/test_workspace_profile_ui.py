@@ -1,10 +1,10 @@
 """La barra de perfil vive en la columna de configuración, no en el chat."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
@@ -25,7 +25,7 @@ def _visible_text(chunk: str) -> str:
 
 
 def test_profile_bar_is_at_top_of_right_column():
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     right = html.split('id="column-right"')[1]
     profile_pos = right.find("workspace-profile-bar")
     tabs_pos = right.find("sidebar-side-layout")
@@ -35,7 +35,7 @@ def test_profile_bar_is_at_top_of_right_column():
 
 
 def test_profile_bar_is_select_plus_icon_actions():
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="workspace-profile-select"' in html
     assert 'id="workspace-profile-list"' not in html
     assert 'id="workspace-profile-empty"' not in html
@@ -64,13 +64,13 @@ def test_profile_bar_is_select_plus_icon_actions():
     delete_idx = html.find('id="btn-workspace-profile-delete"')
     assert select_idx < apply_idx < save_idx < save_as_idx < delete_idx
 
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function renderWorkspaceProfileSelect" in js
     assert "function applySelectedWorkspaceProfile" in js
 
 
 def test_js_surfaces_profile_list_load_errors():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "No se pudieron cargar los perfiles" in js
     assert "catch (_)" not in js.split("async function refreshWorkspaceProfiles")[1].split(
         "function promptWorkspaceProfileName"
@@ -78,7 +78,7 @@ def test_js_surfaces_profile_list_load_errors():
 
 
 def test_js_collects_all_panel_params_not_just_diffs():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function collectAllModelParams" in js
     collect_fn = js.split("function collectWorkspaceSnapshot")[1].split(
         "async function persistWorkspaceToConversation"
@@ -88,7 +88,7 @@ def test_js_collects_all_panel_params_not_just_diffs():
 
 
 def test_js_collects_and_applies_workspace_snapshot():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function collectWorkspaceSnapshot" in js
     assert "function applyWorkspaceSnapshot" in js
     assert "function saveWorkspaceProfile" in js

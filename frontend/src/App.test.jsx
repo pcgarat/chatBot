@@ -2,8 +2,8 @@ import { render } from "@testing-library/react";
 import { vi } from "vitest";
 import App from "./App.jsx";
 
-vi.mock("./app.js", () => ({
-  initApp: vi.fn(),
+vi.mock("./app/boot.js", () => ({
+  bootApp: vi.fn(),
 }));
 
 describe("shell React", () => {

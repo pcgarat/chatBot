@@ -1,4 +1,6 @@
 """Al abrir un mensaje (consulta o lectura) el scroll debe quedar al inicio, no al final."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
@@ -6,7 +8,7 @@ STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" 
 
 
 def _js() -> str:
-    return APP_JS.read_text(encoding="utf-8")
+    return frontend_source()
 
 
 def _fn(js: str, name: str, next_name: str) -> str:

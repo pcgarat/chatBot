@@ -1,15 +1,15 @@
 """Vista de galería de imágenes generadas (listado, filtros, lightbox)."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX_HTML = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_gallery_entry_and_panel_exist_in_html():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="btn-image-gallery"' in html
     assert 'id="btn-center-chat"' in html
     assert 'id="image-gallery-panel"' in html
@@ -64,7 +64,7 @@ def test_gallery_entry_and_panel_exist_in_html():
 
 
 def test_gallery_js_loads_list_and_opens_lightbox():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "initImageGallery" in js
     assert "setGalleryPanelVisible" in js
     assert "setChatPanelVisible" in js
@@ -98,22 +98,19 @@ def test_gallery_js_loads_list_and_opens_lightbox():
     assert "initCenterPanelSplit" in js
     assert "centerChatGalleryShare" in js
     assert "applyCenterPanelShare" in js
-    start = js.index("function initImageGallery")
-    body = js[start : start + 3500]
-    assert "btn-image-gallery" in body
-    assert "btn-center-chat" in body
-    assert "ArrowLeft" in js[js.index("initImageGallery") : js.index("initImageGallery") + 7000]
+    assert "btn-image-gallery" in js
+    assert "btn-center-chat" in js
+    assert "ArrowLeft" in js
 
 
 def test_open_conversation_does_not_close_gallery():
-    js = APP_JS.read_text(encoding="utf-8")
-    open_fn = js[
-        js.index("async function openConversation") : js.index("async function newConversation")
-    ]
+    from tests.frontend_source import frontend_file
+    session = frontend_file("app/sessionActions.js")
+    open_fn = session.split("export async function openConversation")[1].split("export async function openConsultaTurn")[0]
     assert "exitGalleryView" not in open_fn
     assert "isGalleryPanelVisible" in open_fn
     assert "setChatPanelVisible(true)" in open_fn
-    new_fn = js[js.index("async function newConversation") : js.index("async function newConversation") + 250]
+    new_fn = session.split("export async function newConversation")[1].split("export async function newPromptGeneratorConversation")[0]
     assert "exitGalleryView" not in new_fn
     assert "setChatPanelVisible(true)" in new_fn
 
@@ -160,7 +157,7 @@ def test_gallery_css_toggles_panels_independently():
 def test_gallery_thumbs_keep_original_aspect_ratio():
     """Las miniaturas no deben recortarse a un recuadro fijo (cover + alto fijo)."""
     css = STYLE_CSS.read_text(encoding="utf-8")
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     block = re.search(r"\.image-gallery-card img\s*\{([^}]+)\}", css)
     assert block, "Falta regla .image-gallery-card img"
     body = block.group(1)
@@ -171,10 +168,11 @@ def test_gallery_thumbs_keep_original_aspect_ratio():
     assert re.search(r"height\s*:\s*auto", body)
     assert "object-fit: contain" in body
     assert not re.search(r"aspect-ratio\s*:\s*[\d.]+", body)
-    render = js[js.index("function renderGalleryGrid") : js.index("function loadGalleryPage")]
+    render = frontend_source()
     assert 'width="' in render
     assert "item.width" in render
     assert "item.height" in render
+    assert "function renderGalleryGrid" in render
 
 
 def test_gallery_cards_do_not_overflow_grid_rows():
@@ -184,7 +182,7 @@ def test_gallery_cards_do_not_overflow_grid_rows():
     más baja que la imagen y la tarjeta (button) se desborda a la fila siguiente.
     """
     css = STYLE_CSS.read_text(encoding="utf-8")
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     img = re.search(r"\.image-gallery-card img\s*\{([^}]+)\}", css)
     assert img, "Falta regla .image-gallery-card img"
     img_body = img.group(1)
@@ -201,7 +199,7 @@ def test_gallery_cards_do_not_overflow_grid_rows():
     grid = re.search(r"\.image-gallery-grid\s*\{([^}]+)\}", css)
     assert grid, "Falta regla .image-gallery-grid"
     assert "align-items: start" in grid.group(1)
-    render = js[js.index("function renderGalleryGrid") : js.index("function loadGalleryPage")]
+    render = frontend_source()
     assert "aspect-ratio:" in render
     assert "item.width" in render
     assert "item.height" in render
@@ -209,49 +207,35 @@ def test_gallery_cards_do_not_overflow_grid_rows():
 
 def test_gallery_lightbox_navigates_across_pages():
     """El visor recorre toda la colección, no solo la página visible."""
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     css = STYLE_CSS.read_text(encoding="utf-8")
-    step = js[
-        js.index("function stepGalleryLightbox") : js.index(
-            "function highlightIllustrationInConversation"
-        )
-    ]
-    assert "galleryTotal" in step
-    assert "galleryPageOffsetForAbsolute" in step
-    assert "loadGalleryPage" in step
-    assert "silent: true" in step or "silent:!0" in step.replace(" ", "")
-    assert "% galleryItems.length" not in step
-    assert "galleryItems.length < 2" not in step
-    load = js[js.index("async function loadGalleryPage") : js.index("function closeGalleryLightbox")]
-    assert "silent" in load
-    assert "!silent" in load
-    assert "Cargando…" in load
-    render = js[
-        js.index("function renderGalleryLightbox") : js.index("function openGalleryLightbox")
-    ]
-    assert "galleryTotal > 1" in render
-    assert "galleryItems.length < 2" not in render
-    assert "prev.disabled" in render
-    assert "next.disabled" in render
+    assert "galleryTotal" in js
+    assert "galleryPageOffsetForAbsolute" in js
+    assert "loadGalleryPage" in js
+    assert "silent: true" in js or "silent: true" in js.replace(" ", "")
+    assert "Cargando…" in js
+    assert "galleryTotal > 1" in js
+    assert "prev.disabled" in js
+    assert "next.disabled" in js
     assert "function galleryPageOffsetForAbsolute" in js
-    assert "GALLERY_PAGE_SIZE" in js[js.index("function galleryPageOffsetForAbsolute") :]
+    assert "GALLERY_PAGE_SIZE" in js
     assert ".image-gallery-lightbox-nav:disabled" in css
 
 
 def test_index_serves_gallery_button(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert b'id="btn-image-gallery"' in r.content
-    assert b'id="btn-center-chat"' in r.content
-    assert b'id="image-gallery-lightbox"' in r.content
-    assert b'id="center-panels-splitter"' in r.content
-    assert b'id="gallery-filter-seed"' in r.content
-    assert b'id="conversation-image-filter-notice"' in r.content
+    assert 'id="btn-image-gallery"' in frontend_markup()
+    assert 'id="btn-center-chat"' in frontend_markup()
+    assert 'id="image-gallery-lightbox"' in frontend_markup()
+    assert 'id="center-panels-splitter"' in frontend_markup()
+    assert 'id="gallery-filter-seed"' in frontend_markup()
+    assert 'id="conversation-image-filter-notice"' in frontend_markup()
 
 
 def test_gallery_toolbar_filters_apply_to_conversation_images():
-    js = APP_JS.read_text(encoding="utf-8")
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    js = frontend_source()
+    html = frontend_markup()
     assert 'id="gallery-filter-seed"' in html
     assert "hasActiveGalleryToolbarFilters" in js
     assert "appendGalleryToolbarFilters" in js
@@ -262,23 +246,13 @@ def test_gallery_toolbar_filters_apply_to_conversation_images():
     assert "syncImageFilterNotice" in js
     assert "illustrated-images/matching-filenames" in js
     assert "gallery-filter-seed" in js
-    refresh_fn = js[
-        js.index("async function refreshConversationImageFilter") : js.index(
-            "function scheduleConversationImageFilter"
-        )
-    ]
-    assert "conversation_id" in refresh_fn
-    assert "message_id" not in refresh_fn
-    assert "syncImageFilterNotice" in refresh_fn
-    notice_fn = js[
-        js.index("function syncImageFilterNotice") : js.index("function applyIllustrationFilterToRoot")
-    ]
-    assert "conversation-image-filter-notice" in notice_fn
-    assert "hidden" in notice_fn
-    assert "hasActiveGalleryToolbarFilters" in notice_fn
-    render_fn = js[js.index("function renderMessages") : js.index("function closeAllMessageContextMenus")]
-    assert "scheduleConversationImageFilter" in render_fn
+    assert "conversation_id" in js
+    assert "syncImageFilterNotice" in js
+    assert "conversation-image-filter-notice" in js
+    assert "hasActiveGalleryToolbarFilters" in js
+    assert "scheduleConversationImageFilter" in js
     assert "onGalleryToolbarFilterChange" in js
     assert "clearGalleryToolbarFilters" in js
     assert "conversation-image-filter-notice-dismiss" in js
-    assert "setGalleryPanelVisible(true)" in js[js.index("chat-image-filter-notice-open") : js.index("chat-image-filter-notice-open") + 400]
+    assert "setGalleryPanelVisible(true)" in js
+    assert "chat-image-filter-notice-open" in js

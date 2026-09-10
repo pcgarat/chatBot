@@ -1,4 +1,6 @@
 """Al terminar una imagen en cola, la lectura no debe cambiar de conversación ni mensaje."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 import re
 
@@ -6,7 +8,7 @@ APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
 
 
 def _js() -> str:
-    return APP_JS.read_text(encoding="utf-8")
+    return frontend_source()
 
 
 def _fn(js: str, name: str, next_name: str) -> str:

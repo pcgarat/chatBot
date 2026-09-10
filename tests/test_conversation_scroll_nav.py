@@ -1,4 +1,6 @@
 """Botones flotantes ↑/↓ para saltar al inicio/fin del mensaje visible en el stream."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 import re
 
@@ -36,14 +38,14 @@ def test_align_end_math_reaches_bottom_in_one_step():
 
 def test_scroll_message_end_corrects_residual_after_layout():
     """El click ↓ debe corregir residual tras layout; si no, hace falta un segundo click."""
-    body = _fn_body(APP_JS.read_text(encoding="utf-8"), "scrollMessageEndIntoView")
+    body = _fn_body(frontend_source(), "scrollMessageEndIntoView")
     assert "clientHeight" in body
     assert "requestAnimationFrame" in body
     assert re.search(r"scrollTop\s*=", body), "debe asignar scrollTop absoluto, no solo += delta"
 
 
 def test_index_has_scroll_nav_markup():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="chat-scroll-nav"' in html
     assert 'id="btn-scroll-msg-up"' in html
     assert 'id="btn-scroll-msg-down"' in html
@@ -62,7 +64,7 @@ def test_scroll_nav_css_is_mid_right_and_idle_hidden():
 
 
 def test_scroll_nav_js_wires_visibility_and_message_targets():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "initConversationScrollNav" in js
     assert "getPartiallyVisibleMessageRows" in js
     assert "scrollToFirstVisibleMessageStart" in js
@@ -76,6 +78,7 @@ def test_scroll_nav_js_wires_visibility_and_message_targets():
 def test_index_serves_scroll_nav_markup(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert 'id="chat-scroll-nav"' in r.text
-    assert 'id="btn-scroll-msg-up"' in r.text
-    assert 'id="btn-scroll-msg-down"' in r.text
+    html = frontend_markup()
+    assert 'id="chat-scroll-nav"' in frontend_markup()
+    assert 'id="btn-scroll-msg-up"' in frontend_markup()
+    assert 'id="btn-scroll-msg-down"' in frontend_markup()

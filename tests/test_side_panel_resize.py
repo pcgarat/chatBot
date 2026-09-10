@@ -1,14 +1,14 @@
 """Los paneles laterales se redimensionan arrastrando el borde interior."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX_HTML = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_side_splitters_exist_in_html():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="sidebar-left-splitter"' in html
     assert 'id="sidebar-right-splitter"' in html
     assert 'id="column-right"' in html
@@ -26,7 +26,7 @@ def test_side_splitters_exist_in_html():
 
 
 def test_side_panel_resize_js_persists_and_binds_pointer():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "initSidePanelResize" in js
     start = js.index("function initSidePanelResize")
     body = js[start : start + 5500]
@@ -78,6 +78,6 @@ def test_side_panel_resize_css_uses_variables_and_handles():
 def test_index_serves_side_splitters(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert b'id="sidebar-left-splitter"' in r.content
-    assert b'id="sidebar-right-splitter"' in r.content
-    assert b'id="column-right"' in r.content
+    assert 'id="sidebar-left-splitter"' in frontend_markup()
+    assert 'id="sidebar-right-splitter"' in frontend_markup()
+    assert 'id="column-right"' in frontend_markup()

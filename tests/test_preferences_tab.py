@@ -1,14 +1,14 @@
 """Tab Preferencias anclado al fondo del rail derecho, con acordeón Interfaz."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX_HTML = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_preferences_tab_is_docked_after_work_tabs():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     reglas = html.index('id="sidebar-tab-reglas"')
     ajustes = html.index('id="sidebar-tab-parametros"')
     imagenes = html.index('id="sidebar-tab-imagenes"')
@@ -22,7 +22,7 @@ def test_preferences_tab_is_docked_after_work_tabs():
 
 
 def test_interfaz_accordion_hosts_interface_controls():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     prefs = html.split('id="tab-preferencias"')[1].split("sidebar-footer")[0]
     assert 'data-accordion-section="prefs-interfaz"' in prefs
     assert "Interfaz" in prefs
@@ -68,7 +68,7 @@ def test_interfaz_accordion_hosts_interface_controls():
 
 
 def test_chat_header_keeps_font_and_collapse_shortcuts():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     stream = html.split('id="chat-column"')[1].split('id="center-panels-splitter"')[0]
     assert 'id="btn-font-size-decrease"' in stream
     assert 'id="btn-font-size-increase"' in stream
@@ -76,7 +76,7 @@ def test_chat_header_keeps_font_and_collapse_shortcuts():
 
 
 def test_preferences_js_shares_handlers_without_duplicate_logic():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert '"preferencias"' in js
     assert "pref-font-decrease" in js
     assert "pref-font-increase" in js
@@ -110,7 +110,7 @@ def test_preferences_js_shares_handlers_without_duplicate_logic():
 
 def test_preferences_css_docks_tab_and_lays_out_rows():
     css = STYLE_CSS.read_text(encoding="utf-8")
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert ".sidebar-tab-rail-spacer" in css
     assert "sidebar-tab--docked" in html
     assert ".pref-row" in css
@@ -129,18 +129,18 @@ def test_preferences_css_docks_tab_and_lays_out_rows():
 def test_index_serves_preferences_tab(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert b'id="sidebar-tab-preferencias"' in r.content
-    assert b'id="tab-preferencias"' in r.content
-    assert b'id="pref-collapse-all-messages"' in r.content
-    assert b'id="pref-font-base-value"' in r.content
-    assert b'id="pref-font-left-value"' in r.content
-    assert b'id="pref-font-right-value"' in r.content
-    assert b'id="pref-image-value"' in r.content
-    assert b'id="pref-debug-log-value"' in r.content
+    assert 'id="sidebar-tab-preferencias"' in frontend_markup()
+    assert 'id="tab-preferencias"' in frontend_markup()
+    assert 'id="pref-collapse-all-messages"' in frontend_markup()
+    assert 'id="pref-font-base-value"' in frontend_markup()
+    assert 'id="pref-font-left-value"' in frontend_markup()
+    assert 'id="pref-font-right-value"' in frontend_markup()
+    assert 'id="pref-image-value"' in frontend_markup()
+    assert 'id="pref-debug-log-value"' in frontend_markup()
 
 
 def test_sidebar_font_scale_persists_in_head_script():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     head = html.split("</head>")[0]
     assert "uiBaseFontScale" in head
     assert "--ui-base-font-scale" in head

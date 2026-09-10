@@ -1,15 +1,15 @@
 """Pantalla completa del panel de conversación (botón junto al zoom)."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX_HTML = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_fullscreen_button_is_left_of_zoom_controls():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="btn-chat-fullscreen"' in html
     assert 'class="icon-btn font-size-btn"' in html
     fs = html.index('id="btn-chat-fullscreen"')
@@ -22,7 +22,7 @@ def test_fullscreen_button_is_left_of_zoom_controls():
 
 
 def test_chat_fullscreen_js_requests_browser_fs_and_restores_panels():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "initChatFullscreen" in js
     assert "requestFullscreen" in js
     assert "exitFullscreen" in js
@@ -78,7 +78,8 @@ def test_chat_fullscreen_css_hides_composer():
 def test_index_serves_fullscreen_button(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert 'id="btn-chat-fullscreen"' in r.text
-    assert r.text.index('id="btn-chat-fullscreen"') < r.text.index(
+    html = frontend_markup()
+    assert 'id="btn-chat-fullscreen"' in frontend_markup()
+    assert frontend_markup().index('id="btn-chat-fullscreen"') < r.text.index(
         'id="btn-font-size-decrease"'
     )

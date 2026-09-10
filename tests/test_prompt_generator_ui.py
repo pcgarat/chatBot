@@ -1,14 +1,14 @@
 """UI estática del prompt generator (txt2img)."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX_HTML = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_sidebar_has_txt2img_button_under_new():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="btn-new-chat"' in html
     assert 'id="btn-prompt-generator"' in html
     assert ">txt2img<" in html or "txt2img</span>" in html
@@ -18,13 +18,13 @@ def test_sidebar_has_txt2img_button_under_new():
 
 
 def test_composer_has_generate_prompt_button():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="btn-generate-prompt"' in html
     assert "Generar prompt" in html
 
 
 def test_js_wires_prompt_generator_flow():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "newPromptGeneratorConversation" in js
     assert "sendPromptGeneratorTurn" in js
     assert "prompt-generator/turn" in js

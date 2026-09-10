@@ -1,13 +1,13 @@
 """UI: los ajustes de imágenes persisten como el resto del rig (conversación + recarga)."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "frontend" / "src" / "app.js"
-INDEX_HTML = ROOT / "app" / "static" / "index.html"
 
 
 def _js() -> str:
-    return APP_JS.read_text(encoding="utf-8")
+    return frontend_source()
 
 
 def test_js_persists_images_on_conversation_with_other_workspace_fields():
@@ -82,7 +82,7 @@ def test_js_has_reactor_gender_controls():
 
 
 def test_index_html_has_reactor_controls():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="images-reactor-enabled"' in html
     assert 'id="images-reactor-female-face-model"' in html
     assert 'id="images-reactor-male-face-model"' in html
@@ -90,7 +90,7 @@ def test_index_html_has_reactor_controls():
 
 
 def test_images_panel_has_visual_consistency_toggle():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     images = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
     planner = images.split('data-accordion-section="images-planner"')[1].split(
         'data-accordion-section="images-planner-rules"'

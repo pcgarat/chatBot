@@ -1,14 +1,14 @@
 """UI: click derecho en un párrafo del mensaje para generar una imagen ahí."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_text_context_menu_exists_in_html():
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="msg-text-context-menu"' in html
     assert 'data-action="illustrate-at"' in html
     assert "Generar imagen aquí" in html
@@ -16,7 +16,7 @@ def test_text_context_menu_exists_in_html():
 
 
 def test_js_maps_paragraph_and_calls_illustrate_at():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function bindMessageTextContextMenu" in js
     assert "function illustrateAtParagraph" in js
     assert "function paragraphIndexFromEventTarget" in js
@@ -34,7 +34,7 @@ def test_js_maps_paragraph_and_calls_illustrate_at():
 
 
 def test_plain_messages_wrap_paragraphs_for_click_targets():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function wrapNarrativeParagraphs" in js
     assert "function countNarrativeParagraphs" in js
     collapsible = js.split("function buildCollapsibleMessageHtml")[1].split(

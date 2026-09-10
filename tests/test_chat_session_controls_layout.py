@@ -1,4 +1,6 @@
 """History en Ajustes; zoom/colapso flotantes en el stream; sin toolbar intermedia."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
@@ -24,7 +26,7 @@ def _ajustes_contexto_block(html: str) -> str:
 
 
 def test_history_turns_lives_in_ajustes_contexto():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     contexto = _ajustes_contexto_block(html)
     assert 'id="history-turns-input"' in contexto
     assert "Mensajes de historial" in contexto
@@ -34,7 +36,7 @@ def test_history_turns_lives_in_ajustes_contexto():
 
 
 def test_stream_view_controls_float_in_conversation_panel_corner():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     header = _header_block(html)
     stream = _stream_wrap_block(html)
     assert 'id="btn-clear-memory"' in header
@@ -57,7 +59,7 @@ def test_floating_view_controls_are_translucent_until_hover():
 
 
 def test_chat_toolbar_removed_after_relocating_controls():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="chat-toolbar"' not in html
     assert 'class="chat-toolbar"' not in html
 
@@ -65,7 +67,8 @@ def test_chat_toolbar_removed_after_relocating_controls():
 def test_index_serves_floating_stream_controls(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert 'id="history-turns-input"' in r.text
-    assert "chat-font-size-corner" in r.text
-    assert 'id="btn-collapse-all-messages"' in r.text
-    assert 'id="chat-toolbar"' not in r.text
+    html = frontend_markup()
+    assert 'id="history-turns-input"' in frontend_markup()
+    assert "chat-font-size-corner" in frontend_markup()
+    assert 'id="btn-collapse-all-messages"' in frontend_markup()
+    assert 'id="chat-toolbar"' not in frontend_markup()
