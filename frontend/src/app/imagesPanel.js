@@ -67,6 +67,7 @@ export function isVisualConsistencyEnabled() {
 export const SCENE_SELECTION_STRATEGIES = [
   { id: "distributed", label: "Distribuida (huecos)" },
   { id: "llm_erotic_story", label: "Narrativa erótica (LLM)" },
+  { id: "llm_pornographic_peaks", label: "Picos pornográficos (LLM)" },
 ];
 
 export const DEFAULT_SCENE_SELECTION_STRATEGY = "distributed";

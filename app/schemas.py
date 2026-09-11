@@ -435,7 +435,8 @@ class IllustrateRequest(ForgePanelParamFields):
         default="distributed",
         description=(
             "Estrategia de selección de escenas: "
-            "'distributed' (huecos) o 'llm_erotic_story' (LLM elige momentos eróticos)."
+            "'distributed' (huecos), 'llm_erotic_story' (narrativa erótica) "
+            "o 'llm_pornographic_peaks' (picos pornográficos)."
         ),
     )
     reactor: ReactorPanelSettings = Field(default_factory=ReactorPanelSettings)

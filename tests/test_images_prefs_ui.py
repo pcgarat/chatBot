@@ -123,6 +123,7 @@ def test_images_panel_has_scene_selection_strategy_select():
     assert 'id="images-scene-selection-strategy"' in planner
     assert 'value="distributed"' in planner
     assert 'value="llm_erotic_story"' in planner
+    assert 'value="llm_pornographic_peaks"' in planner
     js = _js()
     collect = js.split("function collectImagesSnapshot")[1].split("function fillImagesPanelFromPrefs")[0]
     assert "readSceneSelectionStrategy()" in collect
