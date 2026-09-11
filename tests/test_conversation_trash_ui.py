@@ -1,4 +1,6 @@
 """UI de papelera (soft-delete) en el historial."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
@@ -6,13 +8,13 @@ APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
 
 
 def test_index_has_trash_markup():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="conversations-trash"' in html
     assert 'id="conversations-trash-list"' in html
 
 
 def test_app_js_loads_and_restores_deleted():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "loadDeletedConversations" in js
     assert "restoreConversation" in js
     assert "/conversations/deleted" in js

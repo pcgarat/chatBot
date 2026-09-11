@@ -1,4 +1,6 @@
 """Ajustes: modelo fijo; Presets y Contexto en acordeón."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
@@ -7,7 +9,7 @@ STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" 
 
 
 def _ajustes_html() -> str:
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     return html.split('id="tab-parametros"')[1].split('id="tab-imagenes"')[0]
 
 
@@ -60,7 +62,7 @@ def test_pin_and_presets_layout_css():
 
 
 def test_js_renders_presets_from_same_recipes_as_composer():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function fillRecipeChipHost" in js
     assert "function rebuildRecipeParamInspector" in js
     assert "function syncSettingsPresetsMirrors" in js

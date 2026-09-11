@@ -136,12 +136,131 @@ def test_load_overlays_ollama_cubre_cloud_instalados():
         "deepseek-v4-flash:cloud",
         "gemma4:31b-cloud",
         "glm-5.3-flash:cloud",
+        "glm-5.3:cloud",
         "glm-5.2:cloud",
         "kimi-k2.6:cloud",
         "kimi-k3:cloud",
         "mistral-large-3:675b-cloud",
     }
-    assert set(data) == expected
+    assert expected <= set(data)
+
+
+def test_overlay_glm_53_flash_thinking_siempre_on_low_high_max():
+    overlay = load_overlays("ollama")["glm-5.3-flash:cloud"]
+    thinking = overlay["capabilities"]["thinking"]
+    assert overlay["capabilities"]["vision"] is True
+    assert thinking["can_disable"] is False
+    assert thinking["true_maps_to"] == "high"
+    assert list(thinking["values"]) == ["low", "high", "max"]
+    assert thinking["default"] == "high"
+    recipes = {r["id"]: r for r in overlay["recipes"]}
+    assert recipes["fast"]["params"]["think"] == "low"
+    assert recipes["hard"]["params"]["think"] == "max"
+
+
+def test_overlay_glm_52_effort_high_max():
+    overlay = load_overlays("ollama")["glm-5.2:cloud"]
+    thinking = overlay["capabilities"]["thinking"]
+    assert overlay["capabilities"]["vision"] is False
+    assert thinking["can_disable"] is False
+    assert list(thinking["values"]) == ["high", "max"]
+    assert thinking["default"] == "high"
+    recipes = {r["id"]: r for r in overlay["recipes"]}
+    assert recipes["chat"]["params"]["think"] == "high"
+    assert recipes["hard"]["params"]["think"] == "max"
+
+
+def test_overlay_kimi_k3_thinking_siempre_on_default_max():
+    overlay = load_overlays("ollama")["kimi-k3:cloud"]
+    thinking = overlay["capabilities"]["thinking"]
+    assert overlay["capabilities"]["vision"] is True
+    assert thinking["can_disable"] is False
+    assert list(thinking["values"]) == ["low", "high", "max"]
+    assert thinking["default"] == "max"
+    recipes = {r["id"]: r for r in overlay["recipes"]}
+    assert recipes["research"]["params"]["think"] == "max"
+
+
+def test_load_overlays_openai_cubre_flagships():
+    _clear_overlay_cache("openai")
+    data = load_overlays("openai")
+    expected = {
+        "gpt-6-astra",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.4",
+        "gpt-5.2",
+        "gpt-4.1",
+        "gpt-4o",
+        "o3",
+    }
+    assert expected <= set(data)
+    sol = data["gpt-5.6-sol"]
+    assert sol["capabilities"]["vision"] is True
+    assert sol["capabilities"]["thinking"]["can_disable"] is True
+    assert sol["capabilities"]["thinking"]["default"] == "medium"
+    assert sol["params"]["think"]["api_key"] == "reasoning_effort"
+    astra = data["gpt-6-astra"]
+    assert astra["capabilities"]["thinking"]["can_disable"] is False
+    assert "none" not in astra["capabilities"]["thinking"]["values"]
+    pro = data["gpt-5.4-pro"]
+    assert pro["capabilities"]["thinking"]["can_disable"] is False
+    assert list(pro["capabilities"]["thinking"]["values"]) == ["medium", "high", "xhigh"]
+    assert pro["capabilities"]["thinking"]["default"] == "medium"
+    assert data["gpt-4o"]["capabilities"]["thinking"]["kind"] == "none"
+
+
+def test_load_overlays_mancer_cubre_catalogo_conocido():
+    _clear_overlay_cache("mancer")
+    data = load_overlays("mancer")
+    expected = {
+        "mythomax",
+        "mytholite",
+        "weaver",
+        "remm-slerp",
+        "magnum-72b-v4",
+        "glm-4.7",
+        "danspe-v1-3-0-12b",
+        "danspe-v1-3-0-24b",
+    }
+    assert expected <= set(data)
+    assert data["glm-4.7"]["capabilities"]["tools"] is True
+    assert data["mythomax"]["capabilities"]["tools"] is False
+    assert data["mythomax"]["capabilities"]["thinking"]["kind"] == "none"
+
+
+def test_load_overlays_abliteration_cubre_tres_modelos():
+    _clear_overlay_cache("abliteration")
+    data = load_overlays("abliteration")
+    assert {
+        "abliterated-model",
+        "abliterated-model-large",
+        "abliterated-model-large-v2",
+    } <= set(data)
+    base = data["abliterated-model"]
+    assert base["capabilities"]["vision"] is True
+    assert base["capabilities"]["thinking"]["can_disable"] is True
+    assert base["params"]["think"]["api_key"] == "reasoning_effort"
+    large_v2 = data["abliterated-model-large-v2"]
+    assert large_v2["capabilities"]["vision"] is False
+    assert large_v2["capabilities"]["thinking"]["can_disable"] is False
+    assert large_v2["capabilities"]["thinking"]["default"] == "max"
+
+
+def test_resolve_openai_think_usa_reasoning_effort():
+    contract = resolve_model_contract("openai", "gpt-5.6-sol")
+    assert contract.params["think"]["api_key"] == "reasoning_effort"
+    assert contract.capabilities.thinking.kind == "levels"
+    assert contract.capabilities.vision is True
+    assert "none" in contract.capabilities.thinking.values
+
+
+def test_resolve_abliteration_large_v2_no_se_apaga():
+    contract = resolve_model_contract("abliteration", "abliterated-model-large-v2")
+    assert contract.capabilities.thinking.can_disable is False
+    assert contract.capabilities.vision is False
+    assert contract.params["think"]["api_key"] == "reasoning_effort"
 
 
 def test_resolve_mistral_sin_thinking_con_recetas():

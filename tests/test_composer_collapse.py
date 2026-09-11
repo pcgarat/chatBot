@@ -1,4 +1,6 @@
 """El composer inferior se puede ocultar; el stream ocupa el hueco."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
@@ -7,7 +9,7 @@ STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" 
 
 
 def test_composer_has_collapse_and_expand_controls():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="composer-panel"' in html
     assert 'id="btn-collapse-composer"' in html
     assert 'id="btn-expand-composer"' in html
@@ -16,7 +18,7 @@ def test_composer_has_collapse_and_expand_controls():
 
 
 def test_composer_collapse_persists_in_js():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "initComposerCollapse" in js
     assert "composerCollapsed" in js
     assert "data-composer" in js
@@ -39,6 +41,7 @@ def test_composer_collapse_css_hides_panel_and_expands_stream():
 def test_index_serves_composer_collapse_markup(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert 'id="btn-collapse-composer"' in r.text
-    assert 'id="btn-expand-composer"' in r.text
-    assert 'id="composer-panel"' in r.text
+    html = frontend_markup()
+    assert 'id="btn-collapse-composer"' in frontend_markup()
+    assert 'id="btn-expand-composer"' in frontend_markup()
+    assert 'id="composer-panel"' in frontend_markup()

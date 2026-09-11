@@ -1,5 +1,0 @@
----
-alwaysApply: true
----
-
-cuando crees o modifiques un endpoint crea o modifica su test e2e

@@ -27,20 +27,12 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       output: {
         entryFileNames: "js/main.js",
-        chunkFileNames: (chunk) =>
-          chunk.name === "app" ? "js/app.js" : "js/[name].js",
+        chunkFileNames: "js/[name].js",
         assetFileNames: (asset) => {
           if (asset.name && asset.name.endsWith(".css")) {
             return "css/style.css";
           }
           return "assets/[name][extname]";
-        },
-        manualChunks(id) {
-          const normalized = id.replace(/\\/g, "/");
-          if (normalized.endsWith("/src/app.js")) {
-            return "app";
-          }
-          return undefined;
         },
       },
     },

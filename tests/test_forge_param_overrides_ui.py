@@ -1,13 +1,13 @@
 """UI: parámetros Forge en el panel Imágenes."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 
 
 def test_images_panel_has_forge_param_controls():
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     images = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
     assert 'id="images-forge-steps"' in images
     assert 'id="images-forge-width"' in images
@@ -18,7 +18,7 @@ def test_images_panel_has_forge_param_controls():
 
 
 def test_js_sends_forge_params_on_illustrate_and_remaining():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     illustrate = js.split("async function maybeIllustrateAssistantMessage")[1].split(
         "async function generateRemainingImages"
     )[0]

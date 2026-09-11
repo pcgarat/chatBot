@@ -204,7 +204,7 @@ def test_get_provider_params_abliteration(client):
 
 
 def test_get_provider_presets_abliteration(client):
-    """GET /api/providers/abliteration/presets incluye los dos modelos oficiales."""
+    """GET /api/providers/abliteration/presets incluye los tres modelos oficiales."""
     r = client.get("/api/providers/abliteration/presets")
     assert r.status_code == 200
     data = r.json()
@@ -212,8 +212,10 @@ def test_get_provider_presets_abliteration(client):
     presets = data["presets"]
     assert "abliterated-model" in presets
     assert "abliterated-model-large" in presets
+    assert "abliterated-model-large-v2" in presets
     assert presets["abliterated-model"]["context_length"]["max"] == 262144
     assert presets["abliterated-model-large"]["context_length"]["max"] == 1000000
+    assert presets["abliterated-model-large-v2"]["context_length"]["max"] == 1000000
 
 
 def test_get_provider_params_unknown(client):

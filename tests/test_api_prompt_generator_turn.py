@@ -131,3 +131,56 @@ def test_turn_does_not_include_user_chat_rules_in_system(client):
         )
     assert "pirata" not in captured["system"].lower()
     assert "brief" in captured["system"].lower() or "prompt_language" in captured["system"]
+
+
+def test_turn_accepts_content_alias_as_message(client):
+    data = _create_pg(client)
+    cid = data["id"]
+
+    def fake_chat(model, messages, extra_body=None):
+        return (
+            '{"assistant_text":"ok","brief_patch":{},"phase":"interview","prompt":null}'
+        )
+
+    with patch(
+        "app.services.prompt_generator.turn.get_provider",
+        return_value=_mock_provider(fake_chat),
+    ):
+        r = client.post(
+            f"/api/conversations/{cid}/prompt-generator/turn",
+            json={"content": "alias-content"},
+        )
+    assert r.status_code == 200
+    assert r.json()["user_message"]["content"] == "alias-content"
+
+
+def test_turn_applies_request_model_params_to_provider(client):
+    data = _create_pg(client)
+    cid = data["id"]
+    seen = {}
+
+    def fake_chat(model, messages, extra_body=None):
+        seen["extra_body"] = extra_body
+        return (
+            '{"assistant_text":"ok","brief_patch":{},"phase":"interview","prompt":null}'
+        )
+
+    with (
+        patch(
+            "app.services.prompt_generator.turn.get_provider",
+            return_value=_mock_provider(fake_chat),
+        ),
+        patch(
+            "app.services.prompt_generator.turn.build_extra_body",
+            return_value={"options": {"temperature": 0.15}},
+        ) as mock_extra,
+    ):
+        r = client.post(
+            f"/api/conversations/{cid}/prompt-generator/turn",
+            json={"message": "hola", "model_params": {"temperature": 0.15}},
+        )
+    assert r.status_code == 200
+    mock_extra.assert_called()
+    assert mock_extra.call_args[0][1] == {"temperature": 0.15}
+    assert mock_extra.call_args.kwargs.get("model_id") == "m"
+    assert seen["extra_body"] == {"options": {"temperature": 0.15}}

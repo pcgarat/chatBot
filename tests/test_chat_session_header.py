@@ -1,4 +1,6 @@
 """Header de sesión del panel central: identidad + acción destructiva."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
@@ -7,7 +9,7 @@ STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" 
 
 
 def test_chat_panel_header_groups_identity_and_delete_action():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'class="chat-panel-header"' in html
     assert 'class="chat-session-identity"' in html
     assert 'class="chat-session-actions"' in html
@@ -53,18 +55,18 @@ def test_chat_panel_header_has_distinct_surface_and_danger_icon_styles():
 def test_index_serves_session_header_markup(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert 'class="chat-session-identity"' in r.text
-    assert 'id="conversation-auto-title"' in r.text
-    assert 'id="btn-clear-memory"' in r.text
-    assert "chat-delete-btn" in r.text
-    assert 'id="btn-center-chat"' in r.text
-    assert "center-view-toggle" in r.text
+    assert 'class="chat-session-identity"' in frontend_markup()
+    assert 'id="conversation-auto-title"' in frontend_markup()
+    assert 'id="btn-clear-memory"' in frontend_markup()
+    assert "chat-delete-btn" in frontend_markup()
+    assert 'id="btn-center-chat"' in frontend_markup()
+    assert "center-view-toggle" in frontend_markup()
 
 
 def test_js_persiste_titulo_al_cambiar_el_input():
     """El título se guarda al confirmar el input; no depende de un botón Guardar ausente."""
-    js = APP_JS.read_text(encoding="utf-8")
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    js = frontend_source()
+    html = frontend_markup()
     assert 'id="btn-save"' not in html
     assert "commitConversationTitle" in js
     assert 'el.conversationTitle.addEventListener("change"' in js
@@ -72,7 +74,7 @@ def test_js_persiste_titulo_al_cambiar_el_input():
 
 
 def test_js_titulo_automatico_hace_readonly_el_input():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     css = STYLE_CSS.read_text(encoding="utf-8")
     assert "commitAutoTitleFlag" in js
     assert "applyAutoTitleUi" in js

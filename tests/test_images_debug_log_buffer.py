@@ -1,13 +1,14 @@
 """Debug de imágenes: el log se acumula siempre en un FIFO; al abrir el acordeón se ve el histórico."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 
 
 def _js() -> str:
-    return APP_JS.read_text(encoding="utf-8")
+    return frontend_source()
 
 
 def test_images_debug_log_is_buffered_independently_of_ui():

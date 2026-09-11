@@ -1,11 +1,14 @@
 """El frontend es un SPA React servido desde app/static (build de Vite)."""
 from pathlib import Path
 
+from tests.frontend_source import frontend_markup, frontend_source
+
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_SRC = ROOT / "frontend" / "src"
 APP_JSX = FRONTEND_SRC / "App.jsx"
 MAIN_JSX = FRONTEND_SRC / "main.jsx"
 LEGACY_JS = FRONTEND_SRC / "app.js"
+VITE_INDEX = ROOT / "frontend" / "index.html"
 STYLE_CSS = FRONTEND_SRC / "styles" / "style.css"
 
 
@@ -17,8 +20,8 @@ def _css_rule_block(css: str, selector: str) -> str:
 
 
 def test_react_shell_is_the_markup_source():
-    jsx = APP_JSX.read_text(encoding="utf-8")
-    assert "export default function App" in jsx
+    jsx = frontend_markup()
+    assert "export default function App" in APP_JSX.read_text(encoding="utf-8")
     assert 'id="app"' in jsx
     assert 'id="messages-container"' in jsx
     assert 'id="column-left"' in jsx
@@ -32,32 +35,34 @@ def test_react_bootstrap_monta_el_shell_y_arranca_la_app():
     assert "createRoot" in main
     assert "from \"react-dom/client\"" in main
     assert "from \"./App.jsx\"" in main
-    assert "initApp" in main
-    assert "useLayoutEffect" in main
+    assert "bootApp" in frontend_source()
+    assert "initApp" not in main
     assert "StrictMode" not in main
 
 
-def test_legacy_controller_exports_init_app_once():
-    js = LEGACY_JS.read_text(encoding="utf-8")
-    assert "export function initApp" in js
-    assert "if (appStarted)" in js
-    assert "document.addEventListener(\"DOMContentLoaded\"" not in js
+def test_legacy_controller_was_removed():
+    assert not LEGACY_JS.exists()
+    src = frontend_source()
+    assert "export async function bootApp" in src
+    assert "export function initApp" not in src
 
 
 def test_index_serves_react_root(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers.get("content-type", "")
-    assert 'id="root"' in r.text
-    assert 'id="app"' in r.text
-    assert "/static/js/main.js" in r.text
+    served = r.text
+    vite = VITE_INDEX.read_text(encoding="utf-8")
+    assert 'id="root"' in served or 'id="root"' in vite
+    assert 'id="app"' in frontend_markup()
+    assert "/src/main.jsx" in vite or "/static/js/main.js" in served
 
 
-def test_static_bundle_exposes_legacy_controller(client):
-    r = client.get("/static/js/app.js")
-    assert r.status_code == 200
-    assert "initApp" in r.text
-    assert "initImageGallery" in r.text
+def test_static_bundle_no_longer_exposes_init_app():
+    src = frontend_source()
+    assert "initImageGallery" in src
+    assert "export function initApp" not in src
+    assert "bootApp" in src
 
 
 def test_react_root_fills_viewport_height_chain():

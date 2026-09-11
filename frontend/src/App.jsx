@@ -1,7 +1,23 @@
+import { useEffect } from "react";
+import { LayoutEffects } from "./ui/layout/LayoutEffects.jsx";
+import { onAppClick, onAppChange, onAppPointerDown, onAppPointerMove, onAppPointerUp } from "./ui/layout/shellEvents.js";
+import { ConversationsList, HistorySortSelect } from "./ui/history/HistoryLists.jsx";
+import { MessagesPane, ReadingModeOverlay } from "./ui/messages/MessagesPane.jsx";
+import { GalleryPanelBody } from "./ui/gallery/GalleryPanelBody.jsx";
+import { QueuePanelBody } from "./ui/queue/QueuePanelBody.jsx";
+import { RulesList } from "./ui/rules/RulesList.jsx";
+import { RuleEditModal } from "./ui/rules/RuleEditModal.jsx";
+import { bootApp } from "./app/boot.js";
+import { StoreDomSync } from "./ui/layout/StoreDomSync.jsx";
+import { PrefPercentValue, PrefDebugLogValue } from "./ui/layout/PreferenceValues.jsx";
+
 export default function App() {
+  useEffect(() => { bootApp(); }, []);
   return (
     <>
-    <div id="app" className="app-shell">
+    <LayoutEffects />
+    <StoreDomSync />
+    <div id="app" className="app-shell" onClick={onAppClick} onChange={onAppChange} onPointerDown={onAppPointerDown} onPointerMove={onAppPointerMove} onPointerUp={onAppPointerUp} onPointerCancel={onAppPointerUp}>
         <aside className="column-left sidebar-column" id="column-left" aria-label="Conversaciones">
           <div className="sidebar-header">
             <div className="sidebar-logo-block">
@@ -35,21 +51,13 @@ export default function App() {
           <div className="conversations-list-wrap">
             <div className="left-history-sort" id="left-history-sort">
               <label className="param-label left-history-sort-label" htmlFor="left-history-sort-select">Orden</label>
-              <select id="left-history-sort-select" className="param-control left-history-sort-select" aria-label="Ordenar historial">
-                <option value="activity">Actividad</option>
-                <option value="created_at">Creación</option>
-              </select>
+              <HistorySortSelect />
             </div>
             <div className="message-history-search-wrap" id="message-history-search-wrap" hidden>
               <label className="param-label left-history-sort-label" htmlFor="message-history-search">Buscar</label>
               <input type="search" id="message-history-search" className="param-control message-history-search" placeholder="Título o texto" aria-label="Buscar mensajes" />
             </div>
-            <div className="conversations-list" id="conversations-list"></div>
-            <div className="message-history-pager" id="message-history-pager" hidden></div>
-            <div className="conversations-trash" id="conversations-trash" hidden>
-              <div className="conv-group-label" id="conversations-trash-label">Papelera</div>
-              <div className="conversations-trash-list" id="conversations-trash-list"></div>
-            </div>
+            <ConversationsList />
           </div>
           <div id="sidebar-left-splitter" className="sidebar-column-splitter sidebar-column-splitter--right" role="separator" aria-orientation="vertical" aria-controls="column-left" aria-label="Redimensionar historial" aria-valuemin="180" aria-valuemax="420" aria-valuenow="188" tabIndex="0" title="Arrastra para cambiar el ancho. Doble clic restaura."></div>
         </aside>
@@ -102,7 +110,7 @@ export default function App() {
                 <button type="button" id="btn-font-size-increase" className="icon-btn font-size-btn" title="Aumentar tamaño" aria-label="Aumentar tamaño"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
                 <button type="button" id="btn-collapse-all-messages" className="icon-btn font-size-btn" title="Colapsar todos los mensajes" aria-label="Colapsar todos los mensajes"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 14 12 6 20 14"/><polyline points="4 20 12 12 20 20"/></svg></button>
               </div>
-              <div className="chat-stream scroll-y-reveal" id="messages-container"></div>
+              <MessagesPane />
               <div className="chat-scroll-nav" id="chat-scroll-nav" aria-hidden="true">
                 <button type="button" id="btn-scroll-msg-up" className="chat-scroll-nav-btn" title="Ir al inicio del primer mensaje visible" aria-label="Ir al inicio del primer mensaje visible">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>
@@ -143,80 +151,10 @@ export default function App() {
           </section>
           <div id="center-panels-splitter" className="center-panels-splitter" hidden role="separator" aria-orientation="horizontal" aria-label="Redimensionar conversación y galería" aria-valuemin="28" aria-valuemax="72" aria-valuenow="50" tabIndex="0"></div>
           <section className="image-gallery-panel" id="image-gallery-panel" hidden aria-label="Galería de imágenes generadas">
-            <div className="image-gallery-toolbar" id="image-gallery-toolbar">
-              <label className="image-gallery-filter">
-                <span>LLM</span>
-                <select id="gallery-filter-prompt-model" className="param-control" aria-label="Filtrar por modelo LLM del prompt">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label className="image-gallery-filter">
-                <span>Provider</span>
-                <select id="gallery-filter-prompt-provider" className="param-control" aria-label="Filtrar por provider LLM">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label className="image-gallery-filter">
-                <span>Checkpoint</span>
-                <select id="gallery-filter-forge-model" className="param-control" aria-label="Filtrar por checkpoint Forge">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label className="image-gallery-filter">
-                <span>Steps</span>
-                <select id="gallery-filter-steps" className="param-control" aria-label="Filtrar por steps">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label className="image-gallery-filter">
-                <span>Tamaño</span>
-                <select id="gallery-filter-size" className="param-control" aria-label="Filtrar por tamaño">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label className="image-gallery-filter">
-                <span>Modo</span>
-                <select id="gallery-filter-mode" className="param-control" aria-label="Filtrar por modo">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label className="image-gallery-filter">
-                <span>Seed</span>
-                <select id="gallery-filter-seed" className="param-control" aria-label="Filtrar por seed">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label className="image-gallery-filter image-gallery-filter-prompt">
-                <span>Prompt</span>
-                <input type="search" id="gallery-filter-prompt-q" className="param-control" placeholder="Buscar en el prompt" aria-label="Buscar en el prompt" />
-              </label>
-            </div>
-            <div className="image-gallery-scope" id="image-gallery-scope">
-              <button type="button" id="gallery-scope-all" className="btn btn-secondary btn-small" aria-pressed="false">Todas las conversaciones</button>
-              <span id="gallery-scope-conv-label" className="image-gallery-scope-label" hidden></span>
-              <button type="button" id="gallery-purge-orphans" className="btn btn-secondary btn-small image-gallery-purge-orphans" title="Eliminar del disco las imágenes que no están incrustadas en ningún mensaje">Eliminar archivos huérfanos</button>
-            </div>
-            <div className="image-gallery-messages" id="image-gallery-messages" hidden></div>
-            <div className="image-gallery-grid" id="image-gallery-grid"></div>
-            <div className="image-gallery-pager" id="image-gallery-pager"></div>
+            <GalleryPanelBody />
           </section>
           <section className="image-queue-panel" id="image-queue-panel" hidden aria-label="Cola de imágenes">
-            <div className="image-queue-toolbar">
-              <div className="image-queue-filters" role="group" aria-label="Filtrar cola de imágenes">
-                <button type="button" className="image-queue-filter-btn is-active" data-queue-status="">Todas</button>
-                <button type="button" className="image-queue-filter-btn" data-queue-status="pending">Pendientes</button>
-                <button type="button" className="image-queue-filter-btn" data-queue-status="generating">Generándose</button>
-                <button type="button" className="image-queue-filter-btn" data-queue-status="completed">Generadas</button>
-                <button type="button" className="image-queue-filter-btn" data-queue-status="failed">Fallidas</button>
-              </div>
-              <div className="image-queue-toolbar-actions">
-                <span id="image-queue-paused-label" className="image-queue-paused-label" hidden>Cola pausada</span>
-                <button type="button" id="image-queue-pause-toggle" className="btn btn-secondary btn-small image-queue-pause-btn" aria-pressed="false" title="Pausar la generación encolada">Pausar</button>
-                <button type="button" id="image-queue-cancel-all" className="btn btn-secondary btn-small" title="Cancelar pendientes y en curso">Cancelar todo</button>
-                <span id="image-queue-active-count" className="image-queue-active-count" aria-live="polite"></span>
-              </div>
-            </div>
-            <div className="image-queue-list scroll-y-reveal" id="image-queue-list"></div>
+            <QueuePanelBody />
           </section>
         </main>
         <aside className="column-right sidebar-column" id="column-right" aria-label="Reglas, ajustes y preferencias">
@@ -260,7 +198,9 @@ export default function App() {
                   <p className="panel-hint">Se envían como un solo mensaje system, concatenadas con espacio.</p>
                   <section className="panel-section rules-panel" aria-labelledby="rules-active-heading">
                     <h3 id="rules-active-heading" className="panel-section-title">Activas</h3>
-                    <div id="rules-list" className="rules-list" role="list"></div>
+                    <div id="rules-list">
+                    <RulesList scope="chat" />
+                    </div>
                   </section>
                   <section className="panel-section" aria-labelledby="rules-library-heading">
                     <h3 id="rules-library-heading" className="panel-section-title">Añadir existente</h3>
@@ -559,7 +499,10 @@ export default function App() {
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         </button>
                       </div>
-                      <div id="planner-rules-list" className="rules-list" role="list"></div>
+                      {/* id="planner-rules-list" */}
+                      <div id="planner-rules-list">
+                      <RulesList scope="planner" />
+                      </div>
                       <div className="rules-add-existing">
                         <select id="planner-rule-library-select" className="rule-library-select" aria-label="Seleccionar regla del planificador">
                           <option value="">Elegir regla</option>
@@ -797,7 +740,7 @@ export default function App() {
                           <button type="button" id="pref-font-base-decrease" className="icon-btn font-size-btn" title="Reducir tamaño de texto base" aria-label="Reducir tamaño de texto base">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-font-base-value" className="pref-font-value" aria-live="polite">100%</span>
+                          <PrefPercentValue id="pref-font-base-value" field="uiBaseFontScale" />
                           <button type="button" id="pref-font-base-increase" className="icon-btn font-size-btn" title="Aumentar tamaño de texto base" aria-label="Aumentar tamaño de texto base">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -812,7 +755,7 @@ export default function App() {
                           <button type="button" id="pref-font-decrease" className="icon-btn font-size-btn" title="Reducir tamaño del texto" aria-label="Reducir tamaño del texto">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-font-value" className="pref-font-value" aria-live="polite">80%</span>
+                          <PrefPercentValue id="pref-font-value" field="conversationFontRem" />
                           <button type="button" id="pref-font-increase" className="icon-btn font-size-btn" title="Aumentar tamaño del texto" aria-label="Aumentar tamaño del texto">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -827,7 +770,7 @@ export default function App() {
                           <button type="button" id="pref-font-left-decrease" className="icon-btn font-size-btn" title="Reducir texto del historial" aria-label="Reducir texto del panel izquierdo">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-font-left-value" className="pref-font-value" aria-live="polite">100%</span>
+                          <PrefPercentValue id="pref-font-left-value" field="sidebarLeftFontScale" />
                           <button type="button" id="pref-font-left-increase" className="icon-btn font-size-btn" title="Aumentar texto del historial" aria-label="Aumentar texto del panel izquierdo">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -842,7 +785,7 @@ export default function App() {
                           <button type="button" id="pref-font-right-decrease" className="icon-btn font-size-btn" title="Reducir texto de reglas y ajustes" aria-label="Reducir texto del panel derecho">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-font-right-value" className="pref-font-value" aria-live="polite">100%</span>
+                          <PrefPercentValue id="pref-font-right-value" field="sidebarRightFontScale" />
                           <button type="button" id="pref-font-right-increase" className="icon-btn font-size-btn" title="Aumentar texto de reglas y ajustes" aria-label="Aumentar texto del panel derecho">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -857,7 +800,7 @@ export default function App() {
                           <button type="button" id="pref-image-decrease" className="icon-btn font-size-btn" title="Reducir tamaño de las ilustraciones" aria-label="Reducir tamaño de las ilustraciones">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-image-value" className="pref-font-value" aria-live="polite">100%</span>
+                          <PrefPercentValue id="pref-image-value" field="imageSizeFactor" />
                           <button type="button" id="pref-image-increase" className="icon-btn font-size-btn" title="Aumentar tamaño de las ilustraciones" aria-label="Aumentar tamaño de las ilustraciones">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -872,7 +815,7 @@ export default function App() {
                           <button type="button" id="pref-debug-log-decrease" className="icon-btn font-size-btn" title="Reducir historial de debug" aria-label="Reducir historial de debug">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-debug-log-value" className="pref-font-value" aria-live="polite">100</span>
+                          <PrefDebugLogValue id="pref-debug-log-value" />
                           <button type="button" id="pref-debug-log-increase" className="icon-btn font-size-btn" title="Aumentar historial de debug" aria-label="Aumentar historial de debug">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -884,6 +827,14 @@ export default function App() {
                           <span className="pref-row-hint">Fondo y paneles</span>
                         </span>
                         <input type="checkbox" id="dark-mode-toggle" className="fluent-switch-input" aria-label="Tema oscuro" />
+                        <span className="fluent-switch-track" aria-hidden="true"><span className="fluent-switch-thumb"></span></span>
+                      </label>
+                      <label className="pref-row fluent-toggle-row" title="Interpretar Markdown en los mensajes del panel de conversación">
+                        <span className="pref-row-copy">
+                          <span className="pref-row-label">Markdown en conversación</span>
+                          <span className="pref-row-hint">Títulos, negrita, listas y el resto del formato</span>
+                        </span>
+                        <input type="checkbox" id="render-markdown-toggle" className="fluent-switch-input" defaultChecked aria-label="Markdown en conversación" />
                         <span className="fluent-switch-track" aria-hidden="true"><span className="fluent-switch-thumb"></span></span>
                       </label>
                       <label className="pref-row fluent-toggle-row" title="Durante la generación, hacer scroll al último contenido">
@@ -958,34 +909,7 @@ export default function App() {
           </div>
         </div>
       </footer>
-      <div id="reading-mode" className="reading-mode" hidden role="dialog" aria-modal="true" aria-label="Modo lectura">
-        <div className="reading-mode-toolbar font-size-controls" role="toolbar" aria-label="Controles de lectura">
-          <button type="button" id="reading-font-decrease" className="icon-btn font-size-btn" title="Reducir tamaño del texto" aria-label="Reducir tamaño del texto">
-            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <button type="button" id="reading-font-increase" className="icon-btn font-size-btn" title="Aumentar tamaño del texto" aria-label="Aumentar tamaño del texto">
-            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <span className="reading-mode-toolbar-sep" aria-hidden="true"></span>
-          <button type="button" id="reading-image-decrease" className="icon-btn font-size-btn" title="Reducir tamaño de imágenes" aria-label="Reducir tamaño de imágenes">
-            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="8" cy="10" r="1.5"/><path d="M17 15l-3-3-5 5"/><line x1="18" y1="4" x2="22" y2="4"/></svg>
-          </button>
-          <button type="button" id="reading-image-increase" className="icon-btn font-size-btn" title="Aumentar tamaño de imágenes" aria-label="Aumentar tamaño de imágenes">
-            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="8" cy="10" r="1.5"/><path d="M17 15l-3-3-5 5"/><line x1="20" y1="2" x2="20" y2="6"/><line x1="18" y1="4" x2="22" y2="4"/></svg>
-          </button>
-          <span className="reading-mode-toolbar-sep" aria-hidden="true"></span>
-          <button type="button" id="reading-mode-close" className="icon-btn font-size-btn reading-mode-close-btn" title="Cerrar modo lectura" aria-label="Cerrar modo lectura">
-            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <div className="reading-mode-stage">
-          <div id="reading-mode-panel" className="reading-mode-panel">
-            <div className="reading-mode-resize reading-mode-resize--left" data-edge="left" role="separator" aria-orientation="vertical" aria-label="Ajustar ancho de lectura" tabIndex="0"></div>
-            <div id="reading-mode-body" className="reading-mode-body"></div>
-            <div className="reading-mode-resize reading-mode-resize--right" data-edge="right" role="separator" aria-orientation="vertical" aria-label="Ajustar ancho de lectura" tabIndex="0"></div>
-          </div>
-        </div>
-      </div>
+      <ReadingModeOverlay />
       <div id="model-info-modal" className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="model-info-modal-title" hidden>
         <div className="modal-content model-info-modal-content">
           <h2 id="model-info-modal-title" className="modal-title">Ficha del modelo</h2>
@@ -1028,38 +952,7 @@ export default function App() {
           </div>
         </div>
       </div>
-      <div id="rule-edit-modal" className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="rule-edit-modal-title" hidden>
-        <div className="modal-content rule-edit-modal-content">
-          <h2 id="rule-edit-modal-title" className="modal-title">Editar regla</h2>
-          <div className="rule-edit-form">
-            <label className="rule-edit-label" htmlFor="rule-edit-title">Título</label>
-            <input type="text" id="rule-edit-title" className="rule-edit-input" placeholder="Título" />
-            <label className="rule-edit-label" htmlFor="rule-edit-content">Contenido</label>
-            <textarea id="rule-edit-content" className="rule-edit-textarea" rows="4" placeholder="Contenido de la regla"></textarea>
-          </div>
-          <div className="rule-edit-actions">
-            <button type="button" id="rule-edit-btn-delete" className="btn rule-edit-btn-delete">Eliminar regla</button>
-            <button type="button" id="rule-edit-btn-save" className="btn btn-primary">Guardar</button>
-            <button type="button" id="rule-edit-btn-save-new" className="btn btn-secondary">Guardar nuevo</button>
-          </div>
-        </div>
-      </div>
-      <div id="image-gallery-lightbox" className="modal-overlay image-gallery-lightbox" role="dialog" aria-modal="true" aria-labelledby="image-gallery-lightbox-title" hidden>
-        <div className="modal-content image-gallery-lightbox-content">
-          <div className="image-gallery-lightbox-header">
-            <h2 id="image-gallery-lightbox-title" className="modal-title">Imagen generada</h2>
-            <button type="button" id="image-gallery-lightbox-close" className="icon-btn" title="Cerrar" aria-label="Cerrar">×</button>
-          </div>
-          <div className="image-gallery-lightbox-body">
-            <div className="image-gallery-lightbox-media">
-              <button type="button" id="image-gallery-lightbox-prev" className="image-gallery-lightbox-nav" title="Anterior" aria-label="Imagen anterior">‹</button>
-              <img id="image-gallery-lightbox-img" alt="" />
-              <button type="button" id="image-gallery-lightbox-next" className="image-gallery-lightbox-nav" title="Siguiente" aria-label="Imagen siguiente">›</button>
-            </div>
-            <div className="image-gallery-lightbox-meta" id="image-gallery-lightbox-meta"></div>
-          </div>
-        </div>
-      </div>
+      <RuleEditModal />
       <div id="msg-text-context-menu" className="msg-text-context-menu" role="menu" hidden>
         <button type="button" className="msg-context-item" role="menuitem" data-action="illustrate-at">Generar imagen aquí</button>
         <button type="button" className="msg-context-item" role="menuitem" data-action="copy-selection" id="msg-text-copy" hidden>Copiar</button>

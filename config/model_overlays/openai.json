@@ -1,0 +1,2151 @@
+{
+  "gpt-6-astra": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "max"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.6": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "can_disable": true,
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "max"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.6-sol": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "can_disable": true,
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "max"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.6-terra": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "can_disable": true,
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "max"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.6-luna": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "can_disable": true,
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.4": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": true,
+        "default": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.4-mini": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": true,
+        "default": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.4-nano": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": true,
+        "default": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.4-pro": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "high"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.3-codex": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.2": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": true,
+        "default": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "none"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.2-pro": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": false,
+        "default": "high",
+        "true_maps_to": "high"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "high"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "high"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.2-codex": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.2-chat-latest": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.1": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": true,
+        "default": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "none"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "none"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.1-codex": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.1-codex-max": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "xhigh"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.1-codex-mini": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5.1-chat-latest": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "minimal"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5-mini": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "minimal"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5-nano": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "minimal"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5-pro": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "high"
+        ],
+        "can_disable": false,
+        "default": "high",
+        "true_maps_to": "high"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "high"
+        ],
+        "default": "high"
+      }
+    },
+    "recipes": [
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5-codex": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-5-chat-latest": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 128000
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-4.1": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 32768
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-4.1-mini": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-4.1-nano": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-4o": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-4o-mini": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "chatgpt-4o-latest": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "none"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      }
+    },
+    "recipes": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "params": {
+          "temperature": 0.7
+        }
+      },
+      {
+        "id": "precise",
+        "label": "Preciso",
+        "params": {
+          "temperature": 0.2
+        }
+      },
+      {
+        "id": "creative",
+        "label": "Creativo",
+        "params": {
+          "temperature": 1.0
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "o3": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 100000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "o3-mini": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 100000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "o3-pro": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 100000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "o4-mini": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "o1": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 100000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "o1-pro": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 100000
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "o1-mini": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-oss-120b": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  },
+  "gpt-oss-20b": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "can_disable": false,
+        "default": "medium",
+        "true_maps_to": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": {
+        "max": 16384
+      },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      {
+        "id": "fast",
+        "label": "Rápido",
+        "params": {
+          "think": "low"
+        }
+      },
+      {
+        "id": "analysis",
+        "label": "Análisis",
+        "params": {
+          "think": "medium"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "Máximo",
+        "params": {
+          "think": "high"
+        }
+      }
+    ],
+    "quirks": []
+  }
+}

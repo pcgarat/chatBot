@@ -1,13 +1,13 @@
 """UI: recetas del planificador de prompts, igual que en Ajustes."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 
 
 def _planner_html() -> str:
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     images = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
     return images.split('data-accordion-section="images-planner"')[1].split(
         'data-accordion-section="images-planner-rules"'
@@ -34,20 +34,18 @@ def test_planner_panel_has_recipe_controls_tied_to_chat_config():
 
 
 def test_js_loads_planner_contract_and_sends_prompt_model_params():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function loadPlannerContract" in js
     assert "function applyPlannerRecipe" in js
     assert "function collectPlannerModelParams" in js
     collect = js.split("function collectImagesSnapshot")[1].split("function fillImagesPanelFromPrefs")[0]
     assert "prompt_model_params" in collect
-    illustrate = js.split("async function maybeIllustrateAssistantMessage")[1].split(
-        "async function generateRemainingImages"
+    assert "plannerOverlayParamDefaults" in js.split("function collectPlannerModelParams")[1].split(
+        "function collectImagesSnapshot"
     )[0]
-    assert "prompt_model_params" in illustrate
-    at = js.split("async function illustrateAtParagraph")[1].split(
-        "async function runIllustrationStream"
-    )[0]
-    assert "prompt_model_params" in at
+    snapshot = js.split("function snapshotBody")[1].split("export async function runIllustrationStream")[0]
+    assert "prompt_model_params" in snapshot
+    assert "use_chat_config" in snapshot
     chips = js.split("function fillRecipeChipHost")[1].split("function syncRecipeChipSelection")[0]
     assert "applyFn" in chips or "onApply" in chips
     assert "data-planner-param-id" in js

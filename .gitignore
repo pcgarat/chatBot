@@ -32,6 +32,7 @@ data/
 
 # Servidor (Makefile)
 .server.pid
+.vite.pid
 
 # Tests y cobertura
 .pytest_cache/

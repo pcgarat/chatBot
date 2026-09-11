@@ -294,6 +294,11 @@ class ForgePanelParamFields(BaseModel):
         description="Override de seed en Forge (-1 = aleatorio); None = usar el del último gen.",
     )
 
+    @field_validator("steps", "width", "height", "seed", mode="before")
+    @classmethod
+    def _blank_forge_param_to_none(cls, value):
+        return None if value == "" else value
+
 
 class ReactorPanelSettings(BaseModel):
     """Prefs ReActor del panel Imágenes; vacío = usar defaults de .env."""
@@ -323,6 +328,30 @@ class ReactorPanelSettings(BaseModel):
     random_image: Optional[int] = Field(default=None, ge=0, le=1)
     upscale_force: Optional[int] = Field(default=None, ge=0, le=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _blank_optional_numerics_to_none(cls, data):
+        if not isinstance(data, dict):
+            return data
+        numeric_keys = (
+            "scale",
+            "upscale_visibility",
+            "restorer_visibility",
+            "codeformer_weight",
+            "restore_first",
+            "gender_source",
+            "gender_target",
+            "mask_face",
+            "select_source",
+            "random_image",
+            "upscale_force",
+        )
+        out = dict(data)
+        for key in numeric_keys:
+            if out.get(key) == "":
+                out[key] = None
+        return out
+
 
 class ReactorDefaultsResponse(BaseModel):
     """Valores por defecto ReActor leídos de .env (autorrelleno del panel)."""
@@ -346,7 +375,10 @@ class IllustrateRequest(ForgePanelParamFields):
     prompt_model: str = Field(default="", description="Obligatorio salvo use_chat_config.")
     prompt_model_params: Optional[dict[str, Any]] = Field(
         default=None,
-        description="Params/receta del modelo del planificador si no se usa use_chat_config.",
+        description=(
+            "Params del LLM planificador. Sin use_chat_config: overlay/receta del panel. "
+            "Con use_chat_config: params vivos del chat (si vacío, se usan los de la conversación)."
+        ),
     )
     retries: int = Field(default=1, ge=0, le=10)
     prompt: str = Field(
@@ -362,13 +394,14 @@ class IllustrateRequest(ForgePanelParamFields):
     use_chat_config: bool = Field(
         default=False,
         description=(
-            "Si true, el planificador usa provider, modelo, reglas y params de la conversación; "
+            "Si true, el planificador usa provider, modelo y reglas de la conversación; "
+            "prompt_model_params vivos del body (si hay) o los guardados en la conversación; "
             "las instrucciones del planificador se concatenan igualmente."
         ),
     )
     include_prompt_debug: bool = Field(
         default=False,
-        description="Si true, emite eventos llm_debug (request/response del planificador) por escena.",
+        description="Si true, emite eventos llm_debug (request/response del planificador) por llamada al LLM.",
     )
     visual_consistency: bool = Field(
         default=True,

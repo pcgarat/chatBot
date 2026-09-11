@@ -1,4 +1,6 @@
 """El panel derecho usa side tabs (Reglas / Ajustes / Imágenes)."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
@@ -6,7 +8,7 @@ APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
 
 
 def test_right_panel_uses_vertical_side_tabs():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'class="sidebar-tabs-row sidebar-tabs"' not in html
     assert "sidebar-main-accordion" not in html
     assert 'class="sidebar-side-layout"' in html
@@ -31,7 +33,7 @@ def test_right_panel_uses_vertical_side_tabs():
 def test_index_endpoint_serves_side_tabs_markup(client):
     r = client.get("/")
     assert r.status_code == 200
-    body = r.text
+    body = frontend_markup()
     assert "sidebar-side-layout" in body
     assert 'role="tablist"' in body
     assert "sidebar-main-accordion" not in body
@@ -39,7 +41,7 @@ def test_index_endpoint_serves_side_tabs_markup(client):
 
 
 def test_reglas_subsections_are_principal_stacked_not_accordion():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     reglas = html.split('id="tab-reglas"')[1].split('id="tab-parametros"')[0]
     assert 'id="rules-active-heading"' in reglas
     assert 'id="rules-library-heading"' in reglas
@@ -49,7 +51,7 @@ def test_reglas_subsections_are_principal_stacked_not_accordion():
 
 
 def test_ajustes_subsections_are_principal_accordion():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     ajustes = html.split('id="tab-parametros"')[1].split('id="tab-imagenes"')[0]
     assert "sidebar-accordion-params" in ajustes
     for section_id in (
@@ -67,7 +69,7 @@ def test_ajustes_subsections_are_principal_accordion():
 
 
 def test_imagenes_subsections_are_principal_accordion():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     imagenes = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
     for section_id in (
         "images-activation",
@@ -86,7 +88,7 @@ def test_imagenes_subsections_are_principal_accordion():
 
 
 def test_js_switches_sidebar_tabs_and_persists():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function initSidebarTabs" in js
     assert "function setSidebarTab" in js
     assert "SIDEBAR_TAB_STORAGE_KEY" in js
@@ -94,5 +96,6 @@ def test_js_switches_sidebar_tabs_and_persists():
     assert "ensureExclusiveMainAccordion" not in js
     assert "migrateSidebarTabToAccordionState" not in js
     assert "ArrowDown" in js
-    assert "getElementById(\"tab-reglas\")" in js
-    assert "reglasPanel.hidden" in js or "!reglasPanel.hidden" in js
+    assert "querySelectorAll(\".sidebar-tab-panel\")" in js
+    assert "panel.hidden = !on" in js
+    assert "dataset.sidebarPanel" in js

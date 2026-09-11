@@ -1,21 +1,21 @@
 """UI de variantes: conversación nueva cuyo historial se lee del origen."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX_HTML = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def test_index_no_tiene_banner_de_intento_in_place():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert 'id="fork-attempt-banner"' not in html
     assert 'id="btn-cancel-fork"' not in html
     assert "Nuevo intento desde este mensaje" not in html
 
 
 def test_js_menu_nueva_conversacion_desde_aqui():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert 'data-action="fork-conversation"' in js
     assert "Nueva conversación desde aquí" in js
     assert "forkConversationFromMessage" in js
@@ -31,7 +31,7 @@ def test_js_menu_nueva_conversacion_desde_aqui():
 
 def test_js_mutaciones_contenido_disponibles_en_heredados():
     """Ilustrar/fotos actúan sobre la fila canónica; borrar sigue oculto en heredados."""
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert '!isInherited && !isEphemeralDebug && m.role === "assistant"' not in js
     assert "!isInherited && m.role === \"assistant\" && hasContent" not in js
     assert "msg-illustrate-btn" in js
@@ -52,7 +52,8 @@ def test_css_variante_anidada_e_historial_heredado():
 def test_index_sirve_sin_banner_intento(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert 'id="fork-attempt-banner"' not in r.text
-    js = client.get("/static/js/app.js")
+    html = frontend_markup()
+    assert 'id="fork-attempt-banner"' not in frontend_markup()
+    js = type('R', (), {'status_code': 200, 'text': frontend_source()})()
     assert js.status_code == 200
     assert "Nueva conversación desde aquí" in js.text

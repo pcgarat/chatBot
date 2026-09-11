@@ -37,11 +37,46 @@ from app.services.image_illustration.run_context import IllustrationRunContext
 from app.services.image_illustration import status_codes as st
 
 
+def planner_llm_debug_event(
+    planner: object,
+    plan: ScenePlan | None,
+    *,
+    batch: int | None = None,
+    paragraph_index: int | None = None,
+) -> IllustrationEvent | None:
+    """Una entrada de debug por llamada al LLM del planificador (request/response)."""
+    debug = getattr(planner, "last_debug", None)
+    if not isinstance(debug, dict):
+        return None
+    scenes = list(getattr(plan, "scenes", None) or [])
+    scene_ids = [s.id for s in scenes if getattr(s, "id", None)]
+    if paragraph_index is not None:
+        label = f"Petición al LLM de planificador (párrafo {paragraph_index})"
+    elif batch is not None:
+        label = f"Petición al LLM de planificador (lote {batch})"
+    else:
+        label = "Petición al LLM de planificador"
+    return IllustrationEvent(
+        type="llm_debug",
+        scene_id=scene_ids[0] if scene_ids else None,
+        message=label,
+        data={
+            "debug_request": debug.get("debug_request") or "",
+            "debug_response": debug.get("debug_response") or "",
+            "label": label,
+            "batch": batch,
+            "paragraph_index": paragraph_index,
+            "scene_ids": scene_ids,
+            "reason": getattr(plan, "reason", "") or "",
+        },
+    )
+
+
 def _img_tag(url: str, scene_id: str, filename: str = "", prompt: str = "") -> str:
     safe_id = html.escape(scene_id)
     attrs = (
         f'src="{html.escape(url)}" alt="escena {safe_id}" '
-        f'class="chat-illustration" loading="lazy"'
+        f'class="chat-illustration" loading="lazy" data-scene="{safe_id}"'
     )
     if filename:
         attrs += f' data-filename="{html.escape(filename)}"'
@@ -379,27 +414,11 @@ class ImageIllustrationOrchestrator:
                 },
             )
 
-            planner_debug = getattr(self.planner, "last_debug", None)
-            if include_prompt_debug and isinstance(planner_debug, dict):
-                scenes_for_debug = plan.scenes if plan.scenes else [None]
-                for scene in scenes_for_debug:
-                    sid = scene.id if scene else None
-                    scene_prompt = scene.prompt if scene else ""
-                    yield IllustrationEvent(
-                        type="llm_debug",
-                        scene_id=sid,
-                        message=scene_prompt or (plan.reason or "Planificador de prompts"),
-                        data={
-                            "debug_request": planner_debug.get("debug_request") or "",
-                            "debug_response": planner_debug.get("debug_response") or "",
-                            "label": (
-                                f"Prompt escena {sid} (lote {batch_idx})"
-                                if sid
-                                else f"Planificador de prompts (lote {batch_idx}, sin escenas)"
-                            ),
-                            "batch": batch_idx,
-                        },
-                    )
+            planner_debug = planner_llm_debug_event(
+                self.planner, plan, batch=batch_idx
+            )
+            if include_prompt_debug and planner_debug:
+                yield planner_debug
 
             if not plan.illustrate or not plan.scenes:
                 if not any_batch:
@@ -603,27 +622,11 @@ class ImageIllustrationOrchestrator:
                 scenes=bound[:1] if bound else [],
             )
 
-        planner_debug = getattr(self.planner, "last_debug", None)
-        if include_prompt_debug and isinstance(planner_debug, dict):
-            scenes_for_debug = plan.scenes if plan.scenes else [None]
-            for scene in scenes_for_debug:
-                sid = scene.id if scene else None
-                scene_prompt = scene.prompt if scene else ""
-                yield IllustrationEvent(
-                    type="llm_debug",
-                    scene_id=sid,
-                    message=scene_prompt or (plan.reason or "Planificador de prompts"),
-                    data={
-                        "debug_request": planner_debug.get("debug_request") or "",
-                        "debug_response": planner_debug.get("debug_response") or "",
-                        "label": (
-                            f"Prompt escena {sid} (párrafo {paragraph_index})"
-                            if sid
-                            else f"Planificador de prompts (párrafo {paragraph_index})"
-                        ),
-                        "paragraph_index": paragraph_index,
-                    },
-                )
+        planner_debug = planner_llm_debug_event(
+            self.planner, plan, paragraph_index=paragraph_index
+        )
+        if include_prompt_debug and planner_debug:
+            yield planner_debug
 
         if not plan.illustrate or not plan.scenes:
             yield st.status_event(

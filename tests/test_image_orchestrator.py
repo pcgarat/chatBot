@@ -9,6 +9,7 @@ from app.services.image_illustration.models import (
 from app.services.image_illustration.orchestrator import (
     ImageIllustrationOrchestrator,
     compose_forge_prompt,
+    planner_llm_debug_event,
 )
 
 
@@ -113,6 +114,29 @@ def _payload():
     )
 
 
+def test_planner_llm_debug_event_is_one_call_not_per_scene():
+    planner = FakePlanner(ScenePlan(illustrate=True, reason="r", scenes=[]))
+    planner.last_debug = {
+        "debug_request": '{"model": "m"}',
+        "debug_response": '{"illustrate": true}',
+    }
+    plan = ScenePlan(
+        illustrate=True,
+        reason="relato",
+        scenes=[
+            SceneSpec(id="s1", prompt="p1"),
+            SceneSpec(id="s2", prompt="p2"),
+        ],
+    )
+    event = planner_llm_debug_event(planner, plan, batch=3)
+    assert event is not None
+    assert event.type == "llm_debug"
+    assert event.data["scene_ids"] == ["s1", "s2"]
+    assert event.data["batch"] == 3
+    assert event.data["label"] == "Petición al LLM de planificador (lote 3)"
+    assert event.data["debug_request"] == '{"model": "m"}'
+
+
 def test_compose_forge_prompt_empty_extra_returns_scene_only():
     assert compose_forge_prompt("a lighthouse in storm") == "a lighthouse in storm"
     assert compose_forge_prompt("a lighthouse", "") == "a lighthouse"
@@ -138,7 +162,7 @@ def test_compose_forge_prompt_extra_only_when_scene_empty():
     assert compose_forge_prompt("  ", "masterpiece") == "masterpiece"
 
 
-def test_orchestrator_emits_llm_debug_per_scene_when_requested():
+def test_orchestrator_emits_one_llm_debug_per_planner_call():
     scenes = [
         SceneSpec(id="s1", prompt="p1", anchor_excerpt="A."),
         SceneSpec(id="s2", prompt="p2", anchor_excerpt="B."),
@@ -156,11 +180,12 @@ def test_orchestrator_emits_llm_debug_per_scene_when_requested():
     )
     events = list(orch.run("A.\n\nB.", max_images=2, retries=0, include_prompt_debug=True))
     debugs = [e for e in events if e.type == "llm_debug"]
-    assert len(debugs) == 2
-    assert debugs[0].scene_id == "s1"
+    assert len(debugs) == 1
     assert debugs[0].data["debug_request"].startswith("{")
-    assert "p1" in (debugs[0].message or "")
-    assert debugs[1].scene_id == "s2"
+    assert debugs[0].data["debug_response"]
+    assert "Petición al LLM de planificador" in (debugs[0].message or "")
+    assert debugs[0].data["scene_ids"] == ["s1", "s2"]
+    assert debugs[0].data["label"].startswith("Petición al LLM de planificador")
 
 
 def test_orchestrator_skips_llm_debug_by_default():
@@ -248,6 +273,7 @@ def test_orchestrator_emits_status_pipeline_for_generation():
     assert "generation_time_ms" in (images[0].data.get("params") or {})
     assert (images[0].data.get("params") or {})["generation_time_ms"] >= 0
     assert 'data-filename="s1.png"' in (images[0].content or "")
+    assert 'data-scene="s1"' in (images[0].content or "")
 
 
 def test_orchestrator_retries_only_after_full_first_pass():
@@ -633,6 +659,39 @@ def test_run_at_inserts_beside_existing_image_on_same_paragraph():
     assert old_at < new_at < calm_at
     assert content.count("chat-illustration") >= 2
     assert not any(e.type == "error" for e in events)
+
+
+def test_run_at_emits_one_llm_debug_when_requested():
+    planner = FakePlanner(
+        ScenePlan(
+            illustrate=True,
+            reason="r",
+            scenes=[SceneSpec(id="s1", prompt="coat in wind", paragraph_index=0)],
+        )
+    )
+    planner.last_debug = {
+        "debug_request": '{"model": "planner"}',
+        "debug_response": '{"illustrate": true}',
+    }
+    orch = ImageIllustrationOrchestrator(
+        planner=planner,
+        payload_source=FakePayloadSource(_payload()),
+        forge=FakeForge({"coat in wind": b"img"}),
+        save_image=lambda sid, b: f"{sid}.png",
+    )
+    events = list(
+        orch.run_at(
+            "El faro seguía en pie.",
+            paragraph_index=0,
+            retries=0,
+            include_prompt_debug=True,
+        )
+    )
+    debugs = [e for e in events if e.type == "llm_debug"]
+    assert len(debugs) == 1
+    assert debugs[0].data["debug_request"].startswith("{")
+    assert "Petición al LLM de planificador" in debugs[0].data["label"]
+    assert "párrafo 0" in debugs[0].data["label"]
 
 
 def test_run_at_skips_out_of_range_paragraph():

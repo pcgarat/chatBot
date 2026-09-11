@@ -1,4 +1,6 @@
 """Subacordeones de Ajustes: solo el panel hijo directo se abre con is-open."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 import re
 from pathlib import Path
 
@@ -29,7 +31,7 @@ def test_accordion_open_max_height_uses_child_combinator_not_descendant():
 
 
 def test_ajustes_has_principal_param_accordion_sections():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     assert "sidebar-accordion-params" in html
     for section_id in (
         "params-presets",
@@ -45,7 +47,7 @@ def test_ajustes_has_principal_param_accordion_sections():
 
 
 def test_accordion_click_targets_closest_section_only():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert 'btn.closest(".accordion-section")' in js
     assert "getSiblingAccordionSections" in js
     assert "setAccordionSectionOpen" in js

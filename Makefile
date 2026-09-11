@@ -8,7 +8,10 @@ PYTEST := $(VENV)/bin/pytest
 # Cobertura: siempre sobre app; exclusiones en .coveragerc
 COVERAGE_OPTS := --cov=app --cov-report=term-missing
 PORT ?= 8000
+VITE_PORT ?= 5173
+VERBOSE ?= 0
 PIDFILE := .server.pid
+VITE_PIDFILE := .vite.pid
 
 # Versión de Python para crear el entorno virtual. Lee .env (PYTHON_VERSION=3.12); si no existe, 3.12 por defecto.
 PYTHON_VERSION := $(strip $(shell grep '^PYTHON_VERSION=' .env 2>/dev/null | cut -d= -f2- | tr -d '\r'))
@@ -17,8 +20,8 @@ PYTHON_VERSION := 3.12
 endif
 PYTHON_CMD := python$(PYTHON_VERSION)
 
-.PHONY: help up down start start-verbose stop reload reload-dev restart-dev test coverage-html mutation-test status clean setup
-.PHONY: frontend-install frontend-build frontend-dev frontend-test
+.PHONY: help up down up-dev start stop reload test test-e2e coverage-html mutation-test status clean setup
+.PHONY: frontend-install frontend-build frontend-test print-app-urls
 .PHONY: chroma-up chroma-down chroma-logs chroma-status chroma-clean chroma-ping ingest venv312
 .PHONY: overlay overlay-batch
 
@@ -26,21 +29,19 @@ help:
 	@echo "Chat IA con Ollama - Comandos disponibles:"
 	@echo ""
 	@echo "  App (no tocan el contenedor Docker de Chroma):"
-	@echo "  make up      Crear entorno virtual (Python desde .env PYTHON_VERSION, por defecto 3.12), instalar deps e iniciar"
-	@echo "  make down    Detener la aplicación y eliminar el entorno virtual"
-	@echo "  make start   Iniciar el servidor (puerto $(PORT))"
-	@echo "  make stop    Detener el servidor"
-	@echo "  make reload  make down + make up (reinicio completo)"
-	@echo "  make reload-dev  make down + setup + tests + start-verbose (dev con tests antes de levantar)"
-	@echo "  make restart-dev  make stop + tests + start-verbose con hot reload (cambios en código se ven al guardar)"
-	@echo "  make test    Ejecutar los tests sin e2e (con cobertura sobre app); e2e solo con make test-e2e"
-	@echo "  make test-e2e  Ejecutar solo tests e2e (requieren Ollama levantado)"
-	@echo "  make test-no-e2e  Alias de make test (tests sin e2e)"
-	@echo "  make coverage-html  Tests + informe HTML de cobertura (htmlcov/index.html)"
-	@echo "  make mutation-test  Tests de mutación con mutmut (config en setup.cfg); genera .mutmut-cache"
-	@echo "  make status  Mostrar estado del entorno y del servidor"
-	@echo "  make clean   Parar la app y borrar .server.pid (no toca Docker ni Chroma)"
-	@echo "  make start-verbose  Arrancar en primer plano con VERBOSE=1 (stderr: LLM + ScenePlanner + Forge Neo)"
+	@echo "  make up       venv + deps + API en segundo plano (sirve el SPA publicado en app/static)"
+	@echo "  make up-dev   venv + deps + API --reload (:$(PORT)) + Vite HMR (:$(VITE_PORT)). Ctrl+C para ambos"
+	@echo "  make down     Detener procesos y borrar el entorno virtual"
+	@echo "  make start    Solo API (:$(PORT)). VERBOSE=1 para stderr de LLM/Forge"
+	@echo "  make stop     Detener API y Vite"
+	@echo "  make reload   make down + make up"
+	@echo "  make frontend-build  Publicar el SPA React en app/static (lo que sirve make up)"
+	@echo "  make test     Tests sin e2e (pytest + vitest si hay npm)"
+	@echo "  make test-e2e  Solo e2e (requiere Ollama)"
+	@echo "  make coverage-html  Tests + informe HTML de cobertura"
+	@echo "  make mutation-test  Tests de mutación (mutmut)"
+	@echo "  make status   Estado de venv, API y Vite"
+	@echo "  make clean    Parar la app y borrar PID (no toca Docker ni Chroma)"
 	@echo ""
 	@echo "  ChromaDB (solo gestión del contenedor Docker):"
 	@echo "  make chroma-up     Levantar contenedor (puerto 8001); datos en ./data/chroma"
@@ -61,19 +62,21 @@ help:
 	@echo "  make overlay-batch            Dry-run batch de modelos listados sin overlay"
 	@echo "  make overlay-batch WRITE=1    Batch missing con escritura"
 	@echo ""
-	@echo "  Frontend React (Vite; el build se publica en app/static):"
-	@echo "  make frontend-install  npm install en frontend/"
-	@echo "  make frontend-build    Compilar el SPA a app/static/"
-	@echo "  make frontend-dev      Vite dev server (proxy /api -> :8000)"
-	@echo "  make frontend-test     Tests de Vitest del frontend"
-	@echo ""
 	@echo "  make help    Mostrar esta ayuda"
 	@echo ""
 
 # Valor por defecto de Chroma (mismo que en docker-compose: puerto 8001 en el host)
 CHROMA_DEFAULT := http://localhost:8001
+APP_URL := http://localhost:$(PORT)
+VITE_URL := http://localhost:$(VITE_PORT)
 # Usar Python 3.12 (.venv312) para start si existe, para que RAG/Chroma funcione (Chroma falla en 3.14)
 PYTHON_RUN := $(if $(wildcard .venv312/bin/python),.venv312/bin/python,$(PYTHON))
+
+print-app-urls:
+	@echo ""
+	@echo "  Frontend: $(APP_URL)"
+	@echo "  Backend:  $(APP_URL)"
+	@echo ""
 
 setup:
 	@echo "Actualizando .env desde variables de entorno (OPENAI_API_KEY, CHROMA_HOST, MANCERAI_API_KEY)..."
@@ -140,22 +143,18 @@ setup:
 up: setup
 	@$(MAKE) start
 
+up-dev: setup
+	@command -v npm >/dev/null || { echo "up-dev necesita npm (Node 20+)."; exit 1; }
+	@echo "Stack de desarrollo: API :$(PORT) (reload) + Vite :$(VITE_PORT) (HMR)"
+	@PORT=$(PORT) VITE_PORT=$(VITE_PORT) PIDFILE=$(PIDFILE) VITE_PIDFILE=$(VITE_PIDFILE) \
+		PYTHON_RUN=$(PYTHON_RUN) VERBOSE=$${VERBOSE:-1} \
+		bash scripts/dev_stack.sh start
+
 reload: down
 	$(MAKE) up
 
-reload-dev: down
-	@$(MAKE) setup
-	@$(MAKE) test
-	@$(MAKE) start-verbose
-
-restart-dev:
-	@$(MAKE) stop
-	@$(MAKE) setup
-	@$(MAKE) test
-	@$(MAKE) start-verbose
-
 down:
-	@if [ -f $(PIDFILE) ]; then $(MAKE) stop; fi
+	@$(MAKE) stop
 	@echo "Eliminando entorno virtual..."
 	@rm -rf $(VENV)
 	@echo "Entorno eliminado."
@@ -165,49 +164,29 @@ start: $(VENV)/bin/uvicorn
 		pid=$$(cat $(PIDFILE)); \
 		if kill -0 $$pid 2>/dev/null; then \
 			echo "El servidor ya está en marcha (PID $$pid). Usa 'make stop' para detenerlo."; \
+			$(MAKE) print-app-urls; \
 			exit 0; \
 		fi; \
 		rm -f $(PIDFILE); \
 	fi
-	@echo "Iniciando servidor en http://0.0.0.0:$(PORT) ..."
-	@$(PYTHON_RUN) -m uvicorn app.main:app --host 0.0.0.0 --port $(PORT) & echo $$! > $(PIDFILE)
+	@echo "Iniciando servidor..."
+	@if [ "$(VERBOSE)" = "1" ]; then \
+		$(PYTHON_RUN) run.py -v --host 0.0.0.0 --port $(PORT) & echo $$! > $(PIDFILE); \
+	else \
+		$(PYTHON_RUN) -m uvicorn app.main:app --host 0.0.0.0 --port $(PORT) & echo $$! > $(PIDFILE); \
+	fi
 	@sleep 1
 	@echo "Servidor iniciado (PID $$(cat $(PIDFILE))). Usa 'make stop' para detenerlo."
-
-start-verbose: $(VENV)/bin/uvicorn
-	@$(MAKE) stop
-	@echo "Iniciando en primer plano (VERBOSE=1, --reload) en http://0.0.0.0:$(PORT)"
-	@echo "Stderr: payloads LLM + request/response ScenePlanner + cada petición a Forge Neo."
-	@echo "Ctrl+C para detener."
-	@VERBOSE=1 $(PYTHON_RUN) run.py -v --reload --host 0.0.0.0 --port $(PORT)
+	@$(MAKE) print-app-urls
 
 stop:
-	@if [ -f $(PIDFILE) ]; then \
-		pid=$$(cat $(PIDFILE)); \
-		if kill -0 $$pid 2>/dev/null; then \
-			kill $$pid && echo "Servidor detenido (PID $$pid)."; \
-		else \
-			echo "El proceso $$pid no está en ejecución."; \
-		fi; \
-		rm -f $(PIDFILE); \
-	else \
-		echo "No hay PID guardado. Buscando proceso uvicorn en puerto $(PORT)..."; \
-		pid=$$(lsof -ti:$(PORT) 2>/dev/null || true); \
-		if [ -n "$$pid" ]; then \
-			kill $$pid 2>/dev/null && echo "Servidor detenido (PID $$pid)." || true; \
-		else \
-			echo "No se encontró servidor en ejecución."; \
-		fi; \
-	fi
+	@PORT=$(PORT) PIDFILE=$(PIDFILE) VITE_PIDFILE=$(VITE_PIDFILE) bash scripts/dev_stack.sh stop
 
 frontend-install:
 	cd frontend && npm install
 
 frontend-build: frontend-install
 	cd frontend && npm run build
-
-frontend-dev:
-	cd frontend && npm run dev
 
 frontend-test:
 	cd frontend && npm test
@@ -220,11 +199,6 @@ test: $(VENV)/bin/pytest
 # Tests e2e: requieren Ollama accesible; solo se ejecutan con make test-e2e
 test-e2e: $(VENV)/bin/pytest
 	$(PYTEST) -m e2e -v
-
-# Alias explícito: tests sin e2e (mismo que make test)
-test-no-e2e: $(VENV)/bin/pytest
-	$(PYTEST) -m "not e2e" $(COVERAGE_OPTS)
-	@if [ -x frontend/node_modules/.bin/vitest ]; then cd frontend && npm test; fi
 
 # Tests de mutación (mutmut). Config en setup.cfg; ver INFORME_MUTACIONES.md.
 # En algunos entornos la fase "stats" puede fallar (multiprocessing); entonces ejecutar
@@ -281,7 +255,7 @@ status:
 	@if [ -f $(PIDFILE) ]; then \
 		pid=$$(cat $(PIDFILE)); \
 		if kill -0 $$pid 2>/dev/null; then \
-			echo "Servidor: en ejecución (PID $$pid, http://localhost:$(PORT))"; \
+			echo "Servidor: en ejecución (PID $$pid, $(APP_URL))"; \
 		else \
 			echo "Servidor: no en ejecución (PID obsoleto en $(PIDFILE))"; \
 		fi; \
@@ -291,6 +265,21 @@ status:
 			echo "Servidor: en ejecución en puerto $(PORT) (PID $$pid)"; \
 		else \
 			echo "Servidor: no en ejecución"; \
+		fi; \
+	fi
+	@if [ -f $(VITE_PIDFILE) ]; then \
+		vpid=$$(cat $(VITE_PIDFILE)); \
+		if kill -0 $$vpid 2>/dev/null; then \
+			echo "Vite: en ejecución (PID $$vpid, $(VITE_URL))"; \
+		else \
+			echo "Vite: no en ejecución (PID obsoleto en $(VITE_PIDFILE))"; \
+		fi; \
+	else \
+		vpid=$$(lsof -ti:$(VITE_PORT) 2>/dev/null || true); \
+		if [ -n "$$vpid" ]; then \
+			echo "Vite: en ejecución en puerto $(VITE_PORT) (PID $$vpid)"; \
+		else \
+			echo "Vite: no en ejecución"; \
 		fi; \
 	fi
 
@@ -308,7 +297,8 @@ $(VENV)/bin/pytest:
 chroma-up:
 	@mkdir -p data/chroma
 	docker compose up -d
-	@echo "ChromaDB levantado (datos en ./data/chroma). App: CHROMA_HOST=http://localhost:8001"
+	@echo "ChromaDB levantado (datos en ./data/chroma)."
+	@echo "  Chroma: $(CHROMA_DEFAULT)"
 
 chroma-down:
 	docker compose down

@@ -538,7 +538,8 @@ def test_build_orchestrator_uses_prompt_model_params_when_not_chat_config():
     assert captured.get("extra_body") == {"think": False, "options": {"temperature": 0.5}}
 
 
-def test_build_orchestrator_chat_config_ignores_prompt_model_params(db_session):
+def test_build_orchestrator_chat_config_prefers_live_prompt_model_params(db_session):
+    """Con use_chat_config, params vivos del body ganan sobre los de BD (UI actual)."""
     from app import crud
     from app.routers.api_images import _build_orchestrator
     from app.schemas import IllustrateRequest
@@ -556,7 +557,7 @@ def test_build_orchestrator_chat_config_ignores_prompt_model_params(db_session):
         patch("app.routers.api_images.ForgeHttpClient"),
         patch(
             "app.routers.api_images.build_extra_body",
-            return_value={"options": {"temperature": 0.2}},
+            return_value={"options": {"temperature": 0.9}},
         ) as mock_extra,
     ):
         mock_planner.side_effect = lambda **kwargs: captured.update(kwargs) or MagicMock()
@@ -567,8 +568,38 @@ def test_build_orchestrator_chat_config_ignores_prompt_model_params(db_session):
         )
         _build_orchestrator(body, conv=conv, db=db_session)
 
+    assert mock_extra.call_args[0][1] == {"temperature": 0.9, "think": "max"}
+    assert captured.get("extra_body") == {"options": {"temperature": 0.9}}
+
+
+def test_build_orchestrator_chat_config_falls_back_to_conv_params_when_body_empty(db_session):
+    from app import crud
+    from app.routers.api_images import _build_orchestrator
+    from app.schemas import IllustrateRequest
+
+    conv = crud.create_conversation(
+        db_session, title="t", model_id="m1", provider="ollama"
+    )
+    crud.update_conversation(db_session, conv.id, model_params={"temperature": 0.2})
+    conv = crud.get_conversation(db_session, conv.id)
+    with (
+        patch("app.routers.api_images.get_provider", return_value=MagicMock()),
+        patch("app.routers.api_images.LlmScenePlanner"),
+        patch("app.routers.api_images.FileSystemLastPayloadSource"),
+        patch("app.routers.api_images.ForgeHttpClient"),
+        patch(
+            "app.routers.api_images.build_extra_body",
+            return_value={"options": {"temperature": 0.2}},
+        ) as mock_extra,
+    ):
+        body = IllustrateRequest(
+            use_chat_config=True,
+            prompt_model="ignored",
+            prompt_model_params={},
+        )
+        _build_orchestrator(body, conv=conv, db=db_session)
+
     assert mock_extra.call_args[0][1] == {"temperature": 0.2}
-    assert captured.get("extra_body") == {"options": {"temperature": 0.2}}
 
 
 def test_illustrate_request_requires_prompt_model_unless_use_chat_config():
@@ -697,6 +728,29 @@ def test_illustrate_request_forge_param_overrides_optional():
         IllustrateRequest(prompt_model="m", steps=0)
     with pytest.raises(ValidationError):
         IllustrateRequest(prompt_model="m", width=32)
+
+
+def test_illustrate_request_empty_panel_placeholders_are_none():
+    """Inputs vacíos del panel (placeholder «del último gen» / «.env») no deben 422."""
+    from app.schemas import IllustrateRequest, WorkspaceImagesSnapshot
+
+    req = IllustrateRequest.model_validate(
+        {
+            "prompt_model": "m",
+            "steps": "",
+            "width": "",
+            "height": "",
+            "seed": "",
+            "reactor": {"enabled": False, "codeformer_weight": ""},
+        }
+    )
+    assert req.steps is None
+    assert req.width is None
+    assert req.reactor.codeformer_weight is None
+    snap = WorkspaceImagesSnapshot.model_validate(
+        {"reactor": {"codeformer_weight": ""}}
+    )
+    assert snap.reactor.codeformer_weight is None
 
 
 def test_clear_photos_deletes_files_and_updates_content(client, db_session, tmp_path, monkeypatch):

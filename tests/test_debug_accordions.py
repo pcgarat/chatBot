@@ -1,19 +1,19 @@
 """Debug y Debug imágenes: acordeones al pie del panel derecho, FIFO de sesión."""
+from tests.frontend_source import frontend_file, frontend_markup, frontend_source
+
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
 def _html() -> str:
-    return INDEX.read_text(encoding="utf-8")
+    return frontend_markup()
 
 
 def _js() -> str:
-    return APP_JS.read_text(encoding="utf-8")
+    return frontend_source()
 
 
 def _css() -> str:
@@ -63,8 +63,14 @@ def test_js_opens_debug_panels_exclusively():
     assert "function setDebugPanelOpen" in js
     fn = js.split("function setDebugPanelOpen")[1].split("\n  function ")[0]
     assert "chat" in fn and "images" in fn
-    assert "is-debug-expanded" in fn
-    assert "aria-expanded" in fn
+    assert "is-debug-expanded" in js
+    assert "aria-expanded" in js
+    assert 'classList.toggle("is-open"' in js or "classList.toggle('is-open'" in js
+    assert "debug-entry-toggle" in js
+    assert "Sin eventos todavía." in js
+    assert "json-tree" in js
+    assert "formatDebugPayload" in js
+    assert "toggleDebugJsonPath" in js
 
 
 def test_js_fifo_buffer_trims_oldest_entries():
@@ -89,7 +95,7 @@ def test_js_collects_chat_debug_without_inline_message_blocks():
     assert "updateChatDebugEntry" in send
 
 
-def test_js_images_debug_always_records_llm_and_queue():
+def test_js_images_debug_records_queue_and_planner_goes_to_chat_debug():
     js = _js()
     assert "function pushImagesDebugEntry" in js
     assert "function ingestQueueItemsForDebug" in js
@@ -97,9 +103,17 @@ def test_js_images_debug_always_records_llm_and_queue():
     assert "include_prompt_debug: isShowDebugMode()" not in js
     assert 'if (data.type === "llm_debug" && isShowDebugMode())' not in js
     assert 'data.type === "llm_debug"' in js
-    stream = js.split("async function runIllustrationStream")[1].split("(function initDarkMode")[0]
+    assert "ingestPlannerLlmDebug" in js
+    assert 'title: "llm_debug"' not in js
+    stream = frontend_file("app", "illustrate.js")
     assert "ephemeral_debug" not in stream
-    assert "pushImagesDebugEntry" in stream or "appendImagesDebugLog" in stream
+    assert "ingestPlannerLlmDebug" in stream
+    assert "Petición al LLM de planificador" in stream
+    assert "pushChatDebugEntry" in stream
+    debug_js = frontend_file("store", "debug.js")
+    assert "function ingestPlannerLlmDebug" in debug_js
+    assert "pushChatDebugEntry" in debug_js.split("function ingestPlannerLlmDebug")[1].split("export function")[0]
+    assert "pushImagesDebugEntry" not in debug_js.split("function ingestPlannerLlmDebug")[1].split("export function")[0]
 
 
 def test_generated_image_debug_entry_is_a_conversation_link():

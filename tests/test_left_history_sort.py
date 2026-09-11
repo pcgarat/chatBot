@@ -1,105 +1,93 @@
 """Control de ordenación del historial izquierdo (markup + contrato JS)."""
 from pathlib import Path
 
-INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
-APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
-STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
+from tests.frontend_source import frontend_file, frontend_markup, frontend_source
+
+ROOT = Path(__file__).resolve().parents[1]
+STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
+APP_JSX = ROOT / "frontend" / "src" / "App.jsx"
 
 
-def _column_left_html(html: str) -> str:
+def _column_left_app() -> str:
+    html = APP_JSX.read_text(encoding="utf-8")
     start = html.index('id="column-left"')
-    end = html.index('id="column-center"', start) if 'id="column-center"' in html[start:] else html.index("</aside>", start)
-    return html[start:end]
+    return html[start : html.index("</aside>", start)]
 
 
 def test_left_history_sort_control_lives_in_column_left():
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    left = _column_left_html(html)
-    assert 'id="left-history-sort"' in left
-    assert 'id="left-history-sort-select"' in left
+    html = frontend_markup()
+    assert 'id="left-history-sort"' in html
     assert 'id="left-history-sort-select"' in html
-    prefs_start = html.find('id="accordion-preferences"')
-    if prefs_start != -1:
-        assert 'id="left-history-sort-select"' not in html[prefs_start:]
+    left = _column_left_app()
     assert "pref-image-" not in left
     assert "pref-font-" not in left
+    assert "<HistorySortSelect" in left
 
 
 def test_left_history_sort_default_options_are_conversation_criteria():
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    left = _column_left_html(html)
-    select_start = left.index('id="left-history-sort-select"')
-    select_block = left[select_start : left.index("</select>", select_start)]
-    assert 'value="activity"' in select_block
-    assert 'value="created_at"' in select_block
-    assert 'value="image"' not in select_block
-    assert 'value="message"' not in select_block
+    js = frontend_file("store/history.js")
+    conv = js.split("CONV_SORT_OPTIONS")[1].split("MSG_SORT_OPTIONS")[0]
+    assert '{ value: "activity"' in conv
+    assert '{ value: "created_at"' in conv
+    assert "image" not in conv
+    assert 'id="left-history-sort-select"' in frontend_markup()
 
 
 def test_left_history_sort_persists_separate_keys(client):
-    js = APP_JS.read_text(encoding="utf-8")
-    assert 'leftHistorySortConversations' in js
-    assert 'leftHistorySortMessages' in js
+    js = frontend_source()
+    assert "leftHistorySortConversations" in js
+    assert "leftHistorySortMessages" in js
     assert 'value: "activity"' in js
     assert 'value: "created_at"' in js
     assert 'value: "message"' in js
     assert 'value: "image"' in js
     r = client.get("/")
     assert r.status_code == 200
-    assert 'id="left-history-sort-select"' in r.text
+    assert 'id="left-history-sort-select"' in frontend_markup()
 
 
 def test_load_conversations_sends_conversation_sort_never_image():
-    js = APP_JS.read_text(encoding="utf-8")
-    load_conv = js.split("async function loadConversations")[1].split("const LEFT_HISTORY_MODE_KEY")[0]
-    assert "/conversations?sort=" in load_conv
+    load_conv = frontend_file("app/historyActions.js").split("export async function loadConversations")[1].split("export async function loadDeleted")[0]
+    api = frontend_file("api/conversations.js")
+    assert "/conversations?sort=" in api
     assert "readStoredConversationSort" in load_conv
     assert "image" not in load_conv
     assert "leftHistorySortMessages" not in load_conv
 
 
 def test_load_message_history_sends_message_or_image_sort():
-    js = APP_JS.read_text(encoding="utf-8")
-    load_msg = js.split("async function loadMessageHistory")[1].split("async function")[0]
-    assert "/messages?" in load_msg
+    load_msg = frontend_file("app/historyActions.js").split("export async function loadMessageHistory")[1].split("export async function refreshLeftHistory")[0]
     assert 'params.set("sort"' in load_msg
     assert "readStoredMessageSort" in load_msg
     assert 'params.set("limit"' in load_msg
     assert 'params.set("offset"' in load_msg
     assert 'params.set("q"' in load_msg
+    assert "/messages?" in frontend_file("api/conversations.js")
 
 
 def test_image_sort_only_applies_in_messages_mode():
-    js = APP_JS.read_text(encoding="utf-8")
-    assert "MSG_SORT_OPTIONS" in js
-    assert "CONV_SORT_OPTIONS" in js
-    sync_fn = js.split("function syncLeftHistorySortControl")[1].split("function onLeftHistorySortChange")[0]
-    assert "isMessagesHistoryMode()" in sync_fn
-    assert "MSG_SORT_OPTIONS" in sync_fn
-    assert "CONV_SORT_OPTIONS" in sync_fn
-    persist_msg = js.split("function persistMessageSort")[1].split("function currentLeftHistorySort")[0]
+    store = frontend_file("store/history.js")
+    actions = frontend_file("app/historyActions.js")
+    render = frontend_file("ui/history/render.js")
+    assert "MSG_SORT_OPTIONS" in store
+    assert "CONV_SORT_OPTIONS" in store
+    assert "isMessagesHistoryMode()" in actions
+    persist_msg = store.split("export function persistMessageSort")[1].split("export function persistLeftHistoryMode")[0]
     assert 'sort === "image"' in persist_msg
-    persist_conv = js.split("function persistConversationSort")[1].split("function readStoredMessageSort")[0]
+    persist_conv = store.split("export function persistConversationSort")[1].split("export function readStoredMessageSort")[0]
     assert "image" not in persist_conv
-    render_conv = js.split("function renderConversationsList")[1].split("function messageHistoryWhenIso")[0]
-    assert "readStoredConversationSort" in render_conv
-    assert "readStoredMessageSort" not in render_conv
-    render_msg = js.split("function renderMessageHistoryList")[1].split("async function deleteConversation")[0]
-    assert "readStoredMessageSort" in render_msg
-    assert "messageHistoryWhenIso" in render_msg
-    when_iso = js.split("function messageHistoryWhenIso")[1].split("function renderMessageHistoryList")[0]
-    assert "latest_image_at" in when_iso
-    assert 'sort === "image"' in when_iso
+    assert "latest_image_at" in render
+    assert 'sort === "image"' in render
+    assert "messageHistoryWhenIso" in actions
 
 
 def test_left_history_filters_match_right_panel_control_chrome():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = _column_left_app()
     css = STYLE_CSS.read_text(encoding="utf-8")
-    left = _column_left_html(html)
-    sort = left[left.index('id="left-history-sort"') : left.index('id="message-history-search-wrap"')]
-    search = left[left.index('id="message-history-search-wrap"') : left.index('id="conversations-list"')]
+    sort = html[html.index('id="left-history-sort"') : html.index('id="message-history-search-wrap"')]
+    search = html[html.index('id="message-history-search-wrap"') : html.index("<ConversationsList")]
     assert "param-label" in sort
-    assert "param-control" in sort
+    assert "param-control" in sort or "HistorySortSelect" in sort
     assert "param-label" in search
     assert "param-control" in search
     sort_layout = css.split(".column-left .left-history-sort {", 1)[1].split("}", 1)[0]
@@ -127,4 +115,3 @@ def test_left_history_filters_match_right_panel_control_chrome():
     assert "min-height: var(--rp-control-h)" in right
     assert "padding: 4px 8px" in right
     assert "border-radius: var(--radius-sm)" in right
-

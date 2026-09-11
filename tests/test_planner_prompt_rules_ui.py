@@ -1,13 +1,13 @@
 """UI: reglas del planificador en el panel Imágenes (mismo patrón que el chat)."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 
 
 def _imagenes_html() -> str:
-    html = INDEX.read_text(encoding="utf-8")
+    html = frontend_markup()
     return html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
 
 
@@ -47,21 +47,21 @@ def test_planner_rules_stay_enabled_with_chat_config():
 
 
 def test_js_loads_planner_rules_with_isolated_scope():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "/rules?scope=planner" in js
     assert "/rules?scope=chat" in js
     assert 'scope: "planner"' in js or '"scope": "planner"' in js or "scope: 'planner'" in js
 
 
 def test_js_hydrates_planner_chips_from_library():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "hydratePlannerRulesFromLibrary" in js
     init = js.split("function initImagesPanel")[1].split("initImageGallery")[0]
     assert "loadPlannerLibraryRules" in init
 
 
 def test_js_conversation_switch_does_not_apply_planner_rules():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     setter = js.split("async function setCurrentConversation")[1].split(
         "let saveRulesDebounceTimer"
     )[0]
@@ -82,7 +82,7 @@ def test_js_conversation_switch_does_not_apply_planner_rules():
 
 
 def test_js_does_not_persist_planner_rules_on_conversation():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     persist = js.split("function persistImagesToConversation")[1].split(
         "let saveImagesToConvTimer"
     )[0]
@@ -94,7 +94,7 @@ def test_js_does_not_persist_planner_rules_on_conversation():
 
 
 def test_js_concatenates_planner_rules_on_illustrate():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     illustrate = js.split("async function maybeIllustrateAssistantMessage")[1].split("async function generateRemainingImages")[0]
     assert "getPlannerRulesTextForSystem" in illustrate or "plannerRules" in illustrate
     assert "images-prompt-system" not in illustrate
@@ -117,7 +117,7 @@ def test_planner_rules_panel_has_preset_bar():
 
 
 def test_js_planner_rule_presets_crud_and_apply():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "function collectPlannerRulePresetSnapshot" in js
     assert "function applyPlannerRulePresetSnapshot" in js
     assert "/planner-rule-presets" in js
@@ -134,4 +134,6 @@ def test_js_planner_rule_presets_crud_and_apply():
         "async function savePlannerRulePreset"
     )[0]
     assert "No se pudieron cargar los presets de reglas" in refresh
+    assert "plannerRulePresets" in js
+    assert "btn-planner-rule-preset-apply" in js
 

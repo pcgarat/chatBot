@@ -835,12 +835,14 @@ class TestAbliterationProvider:
             mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
             mock_httpx.Client.return_value.__exit__.return_value = None
             models = provider.list_models()
-        assert len(models) == 2
+        assert len(models) == 3
         by_name = {m.name: m for m in models}
         assert by_name["abliterated-model"].context_length == 262_144
         assert by_name["abliterated-model-large"].context_length == 1_000_000
+        assert by_name["abliterated-model-large-v2"].context_length == 1_000_000
         assert by_name["abliterated-model"].pricing["prompt_per_1k"] == 0.003
         assert by_name["abliterated-model-large"].pricing["prompt_per_1k"] == 0.005
+        assert by_name["abliterated-model-large-v2"].pricing["prompt_per_1k"] == 0.005
 
     def test_list_models_fallback_completes_catalog(self):
         """Si la API solo devuelve un modelo, se completa con el catálogo conocido."""
@@ -860,7 +862,11 @@ class TestAbliterationProvider:
             mock_httpx.Client.return_value.__exit__.return_value = None
             models = provider.list_models()
         names = {m.name for m in models}
-        assert names == {"abliterated-model", "abliterated-model-large"}
+        assert names == {
+            "abliterated-model",
+            "abliterated-model-large",
+            "abliterated-model-large-v2",
+        }
 
     def test_chat_success(self):
         with patch("app.providers.abliteration.settings") as mock_settings:

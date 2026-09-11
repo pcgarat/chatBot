@@ -50,16 +50,23 @@ def _history_messages(db: Session, conversation_id: str) -> list[dict[str, str]]
     return out
 
 
-def _provider_complete(conv) -> CompleteFn:
+def _provider_complete(conv, model_params_override: dict | None = None) -> CompleteFn:
     provider = get_provider(conv.provider)
-    raw_params = getattr(conv, "model_params", None)
     model_params = None
-    if raw_params:
-        try:
-            model_params = json.loads(raw_params) if isinstance(raw_params, str) else raw_params
-        except (TypeError, json.JSONDecodeError):
-            model_params = None
-    extra_default = build_extra_body(conv.provider, model_params) if model_params else None
+    if isinstance(model_params_override, dict) and model_params_override:
+        model_params = model_params_override
+    else:
+        raw_params = getattr(conv, "model_params", None)
+        if raw_params:
+            try:
+                model_params = json.loads(raw_params) if isinstance(raw_params, str) else raw_params
+            except (TypeError, json.JSONDecodeError):
+                model_params = None
+    extra_default = (
+        build_extra_body(conv.provider, model_params, model_id=conv.model_id)
+        if model_params
+        else None
+    )
 
     def _fn(model: str, messages: list[dict], extra_body: dict | None = None) -> str:
         return provider.chat(
@@ -87,6 +94,7 @@ def run_turn(
     *,
     message: str | None = None,
     force: bool = False,
+    model_params: dict | None = None,
     complete_fn: CompleteFn | None = None,
 ) -> TurnResult:
     conv = crud.get_conversation(db, conversation_id)
@@ -118,7 +126,7 @@ def run_turn(
     if llm_user:
         messages.append({"role": "user", "content": llm_user})
 
-    fn = complete_fn or _provider_complete(conv)
+    fn = complete_fn or _provider_complete(conv, model_params_override=model_params)
     raw = fn(conv.model_id, messages, extra_body=None)
     try:
         parsed = parse_agent_response(raw)

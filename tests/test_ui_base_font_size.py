@@ -1,10 +1,10 @@
 """Texto base de la interfaz: escala global; los tamaños de sección son relativos."""
+from tests.frontend_source import frontend_markup, frontend_source
+
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX_HTML = ROOT / "app" / "static" / "index.html"
-APP_JS = ROOT / "frontend" / "src" / "app.js"
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 PX_FONT_SIZE = re.compile(r"font-size:\s*[^;]*\d+(?:\.\d+)?px")
@@ -14,7 +14,7 @@ PX_TYPE_TOKEN = re.compile(
 
 
 def _interfaz() -> str:
-    html = INDEX_HTML.read_text(encoding="utf-8")
+    html = frontend_markup()
     return html.split('data-accordion-section="prefs-interfaz"')[1].split("sidebar-footer")[0]
 
 
@@ -40,7 +40,7 @@ def test_section_font_hints_are_relative_to_base():
 
 
 def test_head_script_applies_base_font_scale_before_paint():
-    head = INDEX_HTML.read_text(encoding="utf-8").split("</head>")[0]
+    head = frontend_markup().split("</head>")[0]
     assert "uiBaseFontScale" in head
     assert "--ui-base-font-scale" in head
     assert "baseFs <= 5" in head
@@ -49,7 +49,7 @@ def test_head_script_applies_base_font_scale_before_paint():
 
 
 def test_js_defines_base_font_scale_as_independent_multiplier():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     assert "uiBaseFontScale" in js
     assert "--ui-base-font-scale" in js
     assert "initUiBaseFontScale" in js
@@ -84,7 +84,7 @@ def test_font_sizes_use_rem_so_html_scale_reaches_the_whole_ui():
 
 
 def test_conversation_image_size_stays_independent_of_base_font():
-    js = APP_JS.read_text(encoding="utf-8")
+    js = frontend_source()
     start = js.index("function applyConversationImageSize")
     fn = js[start : js.index("function ", start + 1)]
     assert "--ui-base-font-scale" not in fn
@@ -94,5 +94,5 @@ def test_conversation_image_size_stays_independent_of_base_font():
 def test_index_serves_base_font_control(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert b'id="pref-font-base-value"' in r.content
-    assert b"Texto base" in r.content
+    assert 'id="pref-font-base-value"' in frontend_markup()
+    assert "Texto base" in frontend_markup()
