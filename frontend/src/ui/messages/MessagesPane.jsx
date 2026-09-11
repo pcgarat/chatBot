@@ -2,13 +2,15 @@ import { sessionStore } from "../../store/session.js";
 import { layoutStore, updateLayout } from "../../store/layout.js";
 import { useStore } from "../../hooks/useStore.js";
 import { messagesForDisplay } from "../../lib/tree.js";
+import { canLoadOlderMessage } from "../../lib/messageWindow.js";
 import { formatMessageHtml, buildCollapsibleMessageHtml, messageCollapseKey, splitFirstParagraph, escapeHtml, kickLazyIllustrations } from "../../lib/html.js";
-import { forkConversationFromMessage, deleteMessageFromHistory, findMessageWithIllustration } from "../../app/sessionActions.js";
+import { forkConversationFromMessage, deleteMessageFromHistory, findMessageWithIllustration, loadOlderMessageInView } from "../../app/sessionActions.js";
 import { maybeIllustrateAssistantMessage, generateRemainingImages, illustrateAtParagraph } from "../../app/illustrate.js";
 import { scheduleConversationImageFilter, highlightIllustrationInConversation } from "../../app/galleryActions.js";
 import { findChatIllustration } from "../../lib/illustrationLocate.js";
 import { showNotice, showError } from "../../store/ui.js";
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { isMessagesHistoryMode } from "../../store/history.js";
 
 function splitTxt2imgPrompt(content) {
   const re = /```txt2img-prompt\n([\s\S]*?)\n```/;
@@ -84,7 +86,6 @@ export function renderMessages() {
   const collapsedMessageKeys = new Set(sessionStore.get().collapsedMessageKeys);
   const wrap = document.getElementById("messages-container");
   const prevScrollTop = wrap ? wrap.scrollTop : 0;
-  const consulta = sessionStore.get().consultaAssistantId;
   document.querySelectorAll(".msg-collapse-toggle").forEach((btn) => {
     btn.addEventListener("click", () => {
       const collapseKey = btn.closest("[data-collapse-key]") && btn.closest("[data-collapse-key]").getAttribute("data-collapse-key");
@@ -454,7 +455,7 @@ export function initReadingMode() {}
 
 export function MessagesPane() {
   const messages = useStore(sessionStore, (s) => s.messages);
-  const consulta = useStore(sessionStore, (s) => s.consultaAssistantId);
+  const viewStartIndex = useStore(sessionStore, (s) => s.viewStartIndex);
   const streamingText = useStore(sessionStore, (s) => s.streamingText);
   const streamingStatus = useStore(sessionStore, (s) => s.streamingStatus);
   const collapsed = useStore(sessionStore, (s) => s.collapsedMessageKeys);
@@ -464,27 +465,77 @@ export function MessagesPane() {
   const renderMarkdown = useStore(layoutStore, (s) => s.renderMarkdown);
   const pendingReveal = useStore(sessionStore, (s) => s.pendingReveal);
   const ref = useRef(null);
-  const display = messagesForDisplay(messages, consulta);
+  const pendingScrollRestore = useRef(null);
+  const loadingOlderRef = useRef(false);
+  const display = messagesForDisplay(messages, viewStartIndex);
+  const hideComposerActions = isMessagesHistoryMode();
 
   useLayoutEffect(() => {
     if (!pendingReveal) return;
     schedulePendingRevealLoop();
-  }, [pendingReveal, messages, collapsed, consulta]);
+  }, [pendingReveal, messages, collapsed, viewStartIndex]);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const restore = pendingScrollRestore.current;
+    if (!el || !restore) return;
+    const delta = el.scrollHeight - restore.prevScrollHeight;
+    el.scrollTop = restore.prevScrollTop + delta;
+    pendingScrollRestore.current = null;
+    loadingOlderRef.current = false;
+  }, [viewStartIndex, display.length]);
 
   useEffect(() => {
     const el = ref.current;
     if (el) kickLazyIllustrations(el);
-  }, [messages, streamingText, display.length]);
+  }, [messages, streamingText, display.length, viewStartIndex]);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (consulta) return;
     if (!autoScroll) return;
     if (pendingReveal) return;
     if (!streamingText && !streamingStatus) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, streamingText, streamingStatus, consulta, autoScroll, pendingReveal]);
+  }, [messages, streamingText, streamingStatus, autoScroll, pendingReveal, viewStartIndex]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    function tryLoadOlder() {
+      if (loadingOlderRef.current) return;
+      if (sessionStore.get().pendingReveal) return;
+      if (!canLoadOlderMessage(sessionStore.get().viewStartIndex)) return;
+      if (el.scrollTop > 24) return;
+      loadingOlderRef.current = true;
+      pendingScrollRestore.current = {
+        prevScrollHeight: el.scrollHeight,
+        prevScrollTop: el.scrollTop,
+      };
+      if (!loadOlderMessageInView()) {
+        pendingScrollRestore.current = null;
+        loadingOlderRef.current = false;
+      }
+    }
+
+    function onScroll() {
+      tryLoadOlder();
+    }
+
+    function onWheel(e) {
+      if (e.deltaY >= 0) return;
+      if (el.scrollTop > 24) return;
+      tryLoadOlder();
+    }
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener("wheel", onWheel, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [conversationId, messages.length]);
 
   function toggleCollapse(key) {
     sessionStore.set((s) => {
@@ -556,7 +607,7 @@ export function MessagesPane() {
                 {!isEphemeralDebug && (hasContent || m.id) ? (
                   <div className="message-footer">
                     <div className="message-footer-actions">
-                      {hasContent && !consulta ? (
+                      {hasContent && !hideComposerActions ? (
                         <button type="button" className="msg-action-btn msg-to-input-btn" title="Enviar texto al cuadro de mensaje" onClick={() => {
                           sessionStore.set({ composerDraft: m.content || "" });
                           updateLayout({ composerCollapsed: false });

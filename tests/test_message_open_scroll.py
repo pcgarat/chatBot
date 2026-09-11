@@ -1,9 +1,8 @@
-"""Al abrir un mensaje (consulta o lectura) el scroll debe quedar al inicio, no al final."""
-from tests.frontend_source import frontend_markup, frontend_source
+"""Al abrir un mensaje el panel usa la ventana unificada (ancla + scroll), no consulta Q+A."""
+from tests.frontend_source import frontend_source
 
 from pathlib import Path
 
-APP_JS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app.js"
 STYLE_CSS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "styles" / "style.css"
 
 
@@ -23,31 +22,23 @@ def _rule_body(css: str, selector: str) -> str:
     return css.split(marker, 1)[1].split("}", 1)[0]
 
 
-def test_open_consulta_scrolls_to_start_not_end():
-    """Clic en modo Mensajes no debe dejar la respuesta larga anclada al final."""
+def test_open_message_uses_unified_window_not_consulta_filter():
+    """Historial/galería/debug comparten goToConversationTarget + viewStartIndex."""
     js = _js()
-    assert "function scheduleScrollMessagesToTop" in js
-    assert "function scrollMessagesToTop" in js
-    set_fn = _fn(js, "async function setCurrentConversation", "let saveRulesDebounceTimer")
-    assert "keepConsulta" in set_fn
-    assert "scheduleScrollMessagesToTop" in set_fn
+    assert "viewStartIndex" in js
+    assert "function messagesInWindow" in js or "messagesInWindow" in js
+    assert "loadOlderMessageInView" in js
     open_fn = _fn(js, "async function openConsultaTurn", "async function newConversation")
-    assert "keepConsulta: true" in open_fn
-    assert "scheduleScrollMessagesToBottom" not in open_fn
+    assert "openConversationAtMessage" in open_fn
+    assert "keepConsulta: true" not in open_fn
 
 
-def test_render_messages_does_not_force_bottom_in_consulta():
-    """Auto-scroll al generar no puede empujar una consulta al final del mensaje."""
+def test_messages_pane_loads_older_on_scroll_top():
     js = _js()
-    render_fn = _fn(js, "function renderMessages", "function closeAllMessageContextMenus")
-    scroll_block = render_fn[render_fn.rindex("scheduleConversationImageFilter") :]
-    assert "pendingReveal" in scroll_block
-    assert "prevScrollTop" in scroll_block
-    assert "scrollHeight" not in scroll_block
     pane = _fn(js, "function MessagesPane", "function toggleCollapse")
-    assert "consulta" in pane
-    assert "pendingReveal" in pane
-    assert pane.index("consulta") < pane.index("scrollHeight")
+    assert "viewStartIndex" in pane
+    assert "loadOlderMessageInView" in pane
+    assert "scrollTop" in pane
 
 
 def test_open_reading_mode_pins_scroll_to_start_after_layout():

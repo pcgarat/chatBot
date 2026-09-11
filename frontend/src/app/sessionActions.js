@@ -7,16 +7,20 @@ import { historyStore } from "../store/history.js";
 import { imagesStore, persistImagesPrefs } from "../store/images.js";
 import { updateLayout, setChatPanelVisible, isGalleryPanelVisible } from "../store/layout.js";
 import { persistImagesPanel, applyImagesSnapshot, imagesSnapshotForConversation } from "./imagesPanel.js";
-import { applyConversationTree } from "../lib/tree.js";
+import { applyConversationTree, visibleMessages } from "../lib/tree.js";
+import { initialViewStartIndex, clampViewStartIndex } from "../lib/messageWindow.js";
 import { getDefaultConversationTitle } from "../lib/dates.js";
 import { buildModelParams } from "../lib/params.js";
 import {
   illustrationNeedleInContent as contentHasIllustration,
   contentHasExactFilename,
 } from "../lib/illustrationLocate.js";
-import { applyConsultaChrome, refreshLeftHistory, setLeftHistoryMode } from "./historyActions.js";
+import { applyConsultaChrome, refreshLeftHistory, setLeftHistoryMode, syncMessageHistoryActiveItem } from "./historyActions.js";
 import { serializeRuleItems, hydrateChatRulesFromLibrary } from "./rulesActions.js";
 import { loadModelContract, loadModels, loadParamsForProvider, applyConversationParams } from "./settingsActions.js";
+import { loadOlderMessageInView } from "./messageWindowActions.js";
+
+export { loadOlderMessageInView };
 
 export { resetSession };
 
@@ -66,10 +70,16 @@ async function persistPreviousConversation(previousId) {
   }
 }
 
+function setFocusMessageId(messageId) {
+  const id = messageId || null;
+  sessionStore.set({ focusMessageId: id, consultaAssistantId: id });
+  syncMessageHistoryActiveItem();
+}
+
 export async function setCurrentConversation(conv, options = {}) {
   const previousId = sessionStore.get().conversationId;
-  if (!(options.keepConsulta)) {
-    sessionStore.set({ consultaAssistantId: null });
+  if (!(options.keepFocus || options.keepConsulta)) {
+    setFocusMessageId(null);
   }
   applyConsultaChrome();
   if (previousId && (!conv || conv.id !== previousId)) {
@@ -85,6 +95,14 @@ export async function setCurrentConversation(conv, options = {}) {
     collapsedMessageKeys.clear();
   }
   const tree = applyConversationTree(conv);
+  const focusId = options.focusMessageId || null;
+  let viewStartIndex;
+  if (options.preserveView && !focusId) {
+    viewStartIndex = clampViewStartIndex(tree.messages, sessionStore.get().viewStartIndex);
+  } else {
+    viewStartIndex = initialViewStartIndex(tree.messages, focusId);
+  }
+  if (focusId) setFocusMessageId(focusId);
   sessionStore.set({
     conversationId: conv.id,
     conversationKind: conv.kind || "chat",
@@ -97,6 +115,7 @@ export async function setCurrentConversation(conv, options = {}) {
         ? conv.rules
         : [],
     ...tree,
+    viewStartIndex,
     streamingText: "",
     streamingStatus: null,
     collapsedMessageKeys: options.preserveView ? sessionStore.get().collapsedMessageKeys : [],
@@ -120,7 +139,7 @@ export async function setCurrentConversation(conv, options = {}) {
   if (conv.history_turns != null) settingsStore.set({ historyTurns: conv.history_turns });
   applyAutoTitleUi(sessionStore.get().autoTitle);
   if (!options.skipScroll) {
-    if (options.keepConsulta) scheduleScrollMessagesToTop();
+    if (focusId || options.keepConsulta) scheduleScrollMessagesToTop();
     else scheduleScrollMessagesToBottom();
   }
   void sameId;
@@ -129,7 +148,7 @@ export async function setCurrentConversation(conv, options = {}) {
 let saveRulesDebounceTimer;
 
 export async function openConversation(id, options = {}) {
-  sessionStore.set({ consultaAssistantId: null });
+  if (!(options.keepFocus || options.focusMessageId)) setFocusMessageId(null);
   applyConsultaChrome();
   setChatPanelVisible(true);
   isGalleryPanelVisible();
@@ -141,22 +160,16 @@ export async function openConversation(id, options = {}) {
   }
 }
 
+/** @deprecated Usar goToConversationTarget / openConversationAtMessage (misma ventana unificada). */
 export async function openConsultaTurn(conversationId, assistantId) {
   if (!conversationId || !assistantId) return;
   updateLayout({ centerChatVisible: true });
-  sessionStore.set({ consultaAssistantId: assistantId });
-  applyConsultaChrome();
-  try {
-    const conv = await conversationsApi.getConversation(conversationId);
-    await setCurrentConversation(conv, { preserveView: true, keepConsulta: true });
-  } catch (e) {
-    showError("Error al abrir el mensaje: " + e.message);
-  }
+  return openConversationAtMessage(conversationId, assistantId);
 }
 
 export async function newConversation() {
   if (historyStore.get().mode === "messages") await setLeftHistoryMode("conversations");
-  sessionStore.set({ consultaAssistantId: null });
+  setFocusMessageId(null);
   applyConsultaChrome();
   setChatPanelVisible(true);
   const settings = settingsStore.get();
@@ -180,7 +193,7 @@ export async function newConversation() {
 
 export async function newPromptGeneratorConversation() {
   if (historyStore.get().mode === "messages") await setLeftHistoryMode("conversations");
-  sessionStore.set({ consultaAssistantId: null });
+  setFocusMessageId(null);
   applyConsultaChrome();
   updateLayout({ centerChatVisible: true });
   const settings = settingsStore.get();
@@ -350,37 +363,102 @@ export function findMessageWithIllustration(messages, filename, sceneId, preferr
   return null;
 }
 
+function applyFocusMessageWindow(focusMessageId) {
+  const state = sessionStore.get();
+  const focusId = focusMessageId || null;
+  const open = state.messages || [];
+  let all = state.allMessages || [];
+  if (focusId && open.some((m) => m.id === focusId) && !all.some((m) => m.id === focusId)) {
+    all = open;
+  } else if (!all.length) {
+    all = open;
+  }
+  const messages = focusId ? visibleMessages(all, focusId) : open;
+  sessionStore.set({
+    activeLeafId: focusId || state.activeLeafId,
+    allMessages: all,
+    messages,
+    viewStartIndex: initialViewStartIndex(messages, focusId),
+    focusMessageId: focusId,
+    consultaAssistantId: focusId,
+  });
+  syncMessageHistoryActiveItem();
+}
+
 async function revealMessageInConversation(conversationId, messageId, options = {}) {
   setChatPanelVisible(true);
   const current = sessionStore.get();
-  if (current.consultaAssistantId) {
-    sessionStore.set({ consultaAssistantId: null });
-    applyConsultaChrome();
-  }
+
   const lookingForPhoto = !!(options.filename || options.sceneId);
-  const photoHere = findMessageWithIllustration(current.messages, options.filename, null);
-  const messageHere = !!messageId && (current.messages || []).some((m) => m.id === messageId);
-  const sameConv = !conversationId || conversationId === current.conversationId;
-  const stayHere = !!photoHere || (sameConv && messageHere) || (!lookingForPhoto && messageHere);
-  if (!stayHere) {
-    const targetConv = conversationId || current.conversationId;
-    if (!targetConv) return photoHere;
-    await openConversation(targetConv, { skipScroll: true });
-    const opened = sessionStore.get().messages || [];
-    const photoAfter = findMessageWithIllustration(opened, options.filename, null);
-    const visible = !!photoAfter || opened.some((m) => m.id === messageId);
-    if (!visible && messageId) {
-      await conversationsApi.patchConversation(targetConv, { active_leaf_message_id: messageId });
-      await openConversation(targetConv, { skipScroll: true });
-    }
+  // Solo por filename: no pasar messageId (puede ser stale y “ganar” sin tener la foto).
+  const photoInCurrent = lookingForPhoto
+    ? findMessageWithIllustration(current.messages, options.filename, null, null)
+    : null;
+  const messageInCurrent =
+    !!messageId && (current.messages || []).some((m) => m.id === messageId);
+
+  // Si la foto ya está en el hilo abierto (p. ej. fork), no saltar al dueño.
+  // Con búsqueda de foto, la mera presencia del messageId no basta (puede ser stale).
+  let targetConv = conversationId || current.conversationId;
+  if (photoInCurrent) {
+    targetConv = current.conversationId;
+  } else if (!lookingForPhoto && messageInCurrent && current.conversationId) {
+    targetConv = current.conversationId;
   }
-  const resolved = findMessageWithIllustration(
-    sessionStore.get().messages,
-    options.filename,
-    options.sceneId,
-    messageId
-  );
-  const expandId = (resolved && resolved.id) || messageId;
+  if (!targetConv) return photoInCurrent || null;
+
+  const sameConv = targetConv === current.conversationId;
+  if (!sameConv) {
+    await openConversation(targetConv, { skipScroll: true });
+  }
+
+  let resolved =
+    findMessageWithIllustration(
+      sessionStore.get().messages,
+      options.filename,
+      options.sceneId,
+      messageId
+    ) || photoInCurrent;
+  let resolvedMessageId = (resolved && resolved.id) || messageId || null;
+
+  const all = sessionStore.get().allMessages || [];
+  const openMsgs = sessionStore.get().messages || [];
+  const known =
+    !!resolvedMessageId &&
+    (openMsgs.some((m) => m && m.id === resolvedMessageId) ||
+      all.some((m) => m && m.id === resolvedMessageId && !m.ephemeral_debug));
+
+  if (resolvedMessageId && !known) {
+    await conversationsApi.patchConversation(targetConv, {
+      active_leaf_message_id: resolvedMessageId,
+    });
+    await openConversation(targetConv, {
+      skipScroll: true,
+      focusMessageId: resolvedMessageId,
+    });
+    resolved = findMessageWithIllustration(
+      sessionStore.get().messages,
+      options.filename,
+      options.sceneId,
+      resolvedMessageId
+    );
+    resolvedMessageId = (resolved && resolved.id) || resolvedMessageId;
+  }
+
+  if (resolvedMessageId) {
+    const prevLeaf = sessionStore.get().activeLeafId;
+    applyFocusMessageWindow(resolvedMessageId);
+    if (prevLeaf !== resolvedMessageId) {
+      conversationsApi
+        .patchConversation(targetConv, { active_leaf_message_id: resolvedMessageId })
+        .catch(() => {});
+    }
+  } else {
+    const msgs = sessionStore.get().messages || [];
+    sessionStore.set({ viewStartIndex: initialViewStartIndex(msgs, null) });
+  }
+
+  const expandId = (resolved && resolved.id) || resolvedMessageId;
   if (ensureMessageExpanded(expandId)) await waitForMessagesPaint();
   return resolved;
 }
@@ -402,7 +480,7 @@ function queueRevealInMessages(conversationId, messageId, options = {}) {
   });
 }
 
-/** Punto único para ir a un mensaje/foto desde galería, cola, debug, etc. */
+/** Punto único para ir a un mensaje/foto desde historial, galería, cola, debug, etc. */
 export async function goToConversationTarget(target = {}) {
   const conversationId = target.conversationId || "";
   const messageId = target.messageId || "";
@@ -417,6 +495,14 @@ export async function goToConversationTarget(target = {}) {
 export async function openConversationAtMessage(conversationId, messageId) {
   try {
     await revealMessageInConversation(conversationId, messageId);
+    const msgs = sessionStore.get().messages || [];
+    const focusId = messageId || null;
+    sessionStore.set({
+      viewStartIndex: initialViewStartIndex(msgs, focusId),
+      focusMessageId: focusId,
+      consultaAssistantId: focusId,
+    });
+    syncMessageHistoryActiveItem();
     queueRevealInMessages(conversationId, messageId);
   } catch (err) {
     showError("No se pudo abrir el mensaje: " + err.message);
@@ -429,7 +515,15 @@ export async function openConversationAtIllustration(conversationId, messageId, 
       ? filenameOrOptions
       : { filename: filenameOrOptions || "", sceneId: sceneId || "" };
   try {
-    await revealMessageInConversation(conversationId, messageId, options);
+    const resolved = await revealMessageInConversation(conversationId, messageId, options);
+    const focusId = (resolved && resolved.id) || messageId || null;
+    const msgs = sessionStore.get().messages || [];
+    sessionStore.set({
+      viewStartIndex: initialViewStartIndex(msgs, focusId),
+      focusMessageId: focusId,
+      consultaAssistantId: focusId,
+    });
+    syncMessageHistoryActiveItem();
     queueRevealInMessages(conversationId, messageId, options);
   } catch (err) {
     showError("No se pudo abrir el mensaje: " + err.message);
@@ -440,7 +534,7 @@ export async function deleteMessageFromHistory(conversationId, messageId) {
   try {
     await conversationsApi.deleteMessage(conversationId, messageId);
     const conv = await conversationsApi.getConversation(conversationId);
-    await setCurrentConversation(conv, { keepConsulta: true });
+    await setCurrentConversation(conv, { preserveView: true, keepFocus: true });
   } catch (e) {
     showError("Error al eliminar mensaje: " + e.message);
   }

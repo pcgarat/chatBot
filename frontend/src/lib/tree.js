@@ -1,3 +1,5 @@
+import { messagesInWindow } from "./messageWindow.js";
+
 export function mapApiMessage(m) {
   return {
     role: m.role,
@@ -60,10 +62,7 @@ export function applyConversationTree(conv) {
   return { allMessages, activeLeafId, messages };
 }
 
-export function messagesForDisplay(messages, consultaAssistantId) {
-  if (!consultaAssistantId) return messages;
-  const assistant = messages.find((m) => m.id === consultaAssistantId);
-  if (!assistant) return messages;
-  const parent = assistant.parent_id ? messages.find((m) => m.id === assistant.parent_id) : null;
-  return parent ? [parent, assistant] : [assistant];
+/** Vista del panel: desde viewStartIndex hasta el final del camino (incluye lo generado tras entrar). */
+export function messagesForDisplay(messages, viewStartIndex) {
+  return messagesInWindow(messages, viewStartIndex);
 }

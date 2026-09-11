@@ -24,6 +24,7 @@ vi.mock("./historyActions.js", () => ({
   applyConsultaChrome: vi.fn(),
   refreshLeftHistory: vi.fn(),
   setLeftHistoryMode: vi.fn(),
+  syncMessageHistoryActiveItem: vi.fn(),
 }));
 
 vi.mock("./imagesPanel.js", () => ({
@@ -278,10 +279,11 @@ describe("openConversationAtIllustration", () => {
     );
   });
 
-  it("sale del modo consulta para poder anclar la foto en el hilo", async () => {
+  it("unifica el salto en la ventana de mensajes (deja de filtrar consulta Q+A)", async () => {
     sessionStore.set({
       conversationId: "c1",
-      consultaAssistantId: "m1",
+      consultaAssistantId: "other",
+      focusMessageId: "other",
       messages: sampleConv().messages,
       allMessages: sampleConv().messages,
       collapsedMessageKeys: [],
@@ -292,7 +294,11 @@ describe("openConversationAtIllustration", () => {
       filename: "faro.png",
       sceneId: "s-faro",
     });
-    expect(sessionStore.get().consultaAssistantId).toBeNull();
+    expect(sessionStore.get().focusMessageId).toBe("m1");
+    expect(sessionStore.get().consultaAssistantId).toBe("m1");
+    expect(sessionStore.get().viewStartIndex).toBe(
+      sessionStore.get().messages.findIndex((m) => m.id === "m1")
+    );
     expect(getConversation).not.toHaveBeenCalled();
     expect(sessionStore.get().pendingReveal).toEqual(
       expect.objectContaining({ filename: "faro.png", sceneId: "s-faro" })

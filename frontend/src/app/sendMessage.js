@@ -5,6 +5,7 @@ import { appStatus, showError, showNotice } from "../store/ui.js";
 import { pushChatDebugEntry, updateChatDebugEntry } from "../store/debug.js";
 import { buildModelParams } from "../lib/params.js";
 import { visibleMessages } from "../lib/tree.js";
+import { clampViewStartIndex } from "../lib/messageWindow.js";
 import { newConversation } from "./sessionActions.js";
 import { refreshLeftHistory } from "./historyActions.js";
 import { createStreamBuffer } from "./stream.js";
@@ -13,10 +14,13 @@ import { getChatRulesTextForSystem } from "./rulesActions.js";
 
 function applyTreeToStore(allMessages, activeLeafId, extra = {}) {
   const ephemerals = (sessionStore.get().messages || []).filter((m) => m.ephemeral_debug);
+  const messages = visibleMessages(allMessages, activeLeafId, extra.keepEphemeral === false ? [] : ephemerals);
+  const viewStartIndex = clampViewStartIndex(messages, sessionStore.get().viewStartIndex);
   sessionStore.set({
     allMessages,
     activeLeafId,
-    messages: visibleMessages(allMessages, activeLeafId, extra.keepEphemeral === false ? [] : ephemerals),
+    messages,
+    viewStartIndex,
     ...extra,
   });
 }
@@ -58,7 +62,6 @@ export async function sendPromptGeneratorTurn({ force = false } = {}) {
 
 export async function sendMessage() {
   const session = sessionStore.get();
-  if (session.consultaAssistantId) return;
   const currentAbortController = session.abortController;
   if (currentAbortController) return;
   if (session.conversationKind === "prompt_generator") {
