@@ -83,6 +83,33 @@ def collect_orphan_filenames(
     )
 
 
+def delete_unreferenced_illustrated_files(
+    db: Session,
+    filenames: Iterable[str],
+) -> tuple[int, int]:
+    """
+    Borra del disco y de meta los filenames que ya no aparecen en ningún mensaje.
+    Útil tras borrar mensajes o conversaciones (papelera).
+    """
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for name in filenames:
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        candidates.append(name)
+    if not candidates:
+        return 0, 0
+    referenced = referenced_illustrated_filenames(crud.list_all_message_contents(db))
+    to_delete = [name for name in candidates if name not in referenced]
+    deleted_files = 0
+    for name in to_delete:
+        if delete_illustrated_image(name):
+            deleted_files += 1
+    deleted_meta = crud.delete_illustrated_images_by_filenames(db, to_delete) if to_delete else 0
+    return deleted_files, deleted_meta
+
+
 def purge_orphan_files(
     db: Session,
     *,
@@ -95,9 +122,4 @@ def purge_orphan_files(
         directory=directory,
         grace_seconds=grace_seconds,
     )
-    deleted_files = 0
-    for name in names:
-        if delete_illustrated_image(name):
-            deleted_files += 1
-    deleted_meta = crud.delete_illustrated_images_by_filenames(db, names)
-    return deleted_files, deleted_meta
+    return delete_unreferenced_illustrated_files(db, names)

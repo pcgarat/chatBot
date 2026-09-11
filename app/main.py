@@ -14,6 +14,7 @@ from app.services.rules.seed import seed_builtin_rules
 from app.routers import (
     api_conversations,
     api_images,
+    api_message_tree,
     api_models,
     api_ollama,
     api_planner_rule_presets,
@@ -26,6 +27,7 @@ app = FastAPI(title="Chat IA con Ollama", version="1.0.0")
 
 app.include_router(api_models.router)
 app.include_router(api_conversations.router)
+app.include_router(api_message_tree.router)
 app.include_router(api_prompt_generator.router)
 app.include_router(api_rules.router)
 app.include_router(api_ollama.router)

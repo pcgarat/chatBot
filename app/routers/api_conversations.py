@@ -29,6 +29,7 @@ from app.schemas import (
     MessageInChat,
     MessageResponse,
     MessageSend,
+    PurgeDeletedConversationsResponse,
 )
 
 router = APIRouter(prefix="/api", tags=["conversations"])
@@ -326,6 +327,15 @@ def list_deleted_conversations(db: Session = Depends(get_db)):
     return crud.list_deleted_conversations(db)
 
 
+@router.delete("/conversations/deleted", response_model=PurgeDeletedConversationsResponse)
+def purge_deleted_conversations(db: Session = Depends(get_db)):
+    """Vacía la papelera: borrado definitivo de todas las conversaciones soft-deleted."""
+    ids = crud.purge_deleted_conversations(db)
+    for conversation_id in ids:
+        rag.delete_conversation_documents(conversation_id)
+    return PurgeDeletedConversationsResponse(deleted=len(ids), ids=ids)
+
+
 def _get_resolved_instructions(conv, db) -> list[dict]:
     """Devuelve system_instructions resueltas: desde instruction_ids (prioridad) o desde system_instructions legado."""
     ids = _parse_instruction_ids(getattr(conv, "instruction_ids", None))
@@ -427,22 +437,63 @@ def restore_conversation(conversation_id: str, db: Session = Depends(get_db)):
     return _conversation_out(conv, db, messages=crud.get_messages(db, conversation_id))
 
 
+@router.delete("/conversations/{conversation_id}/permanent", status_code=204)
+def permanently_delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
+    """Elimina de forma definitiva una conversación que ya está en la papelera."""
+    ok = crud.hard_delete_conversation(db, conversation_id)
+    if not ok:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversación no encontrada en la papelera",
+        )
+    rag.delete_conversation_documents(conversation_id)
+    return None
+
+
 @router.delete("/conversations/{conversation_id}/messages/last", status_code=204)
 def delete_last_message(conversation_id: str, db: Session = Depends(get_db)):
     """Elimina el último mensaje de la conversación (para cancelar envío o deshacer)."""
+    from app.services.image_illustration.content_ops import extract_illustrated_filenames
+    from app.services.image_illustration.orphan_files import delete_unreferenced_illustrated_files
+
+    conv = crud.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="No hay mensajes en la conversación")
+    leaf_id = getattr(conv, "active_leaf_message_id", None)
+    target = None
+    if leaf_id:
+        target = crud.get_message(db, conversation_id, leaf_id)
+    if target is None:
+        msgs = crud.get_messages(db, conversation_id)
+        target = msgs[-1] if msgs else None
+    if target is None:
+        raise HTTPException(status_code=404, detail="No hay mensajes en la conversación")
+    filenames = extract_illustrated_filenames(target.content or "")
+    message_id = target.id
     ok = crud.delete_last_message(db, conversation_id)
     if not ok:
         raise HTTPException(status_code=404, detail="No hay mensajes en la conversación")
+    if filenames:
+        delete_unreferenced_illustrated_files(db, filenames)
+    rag.delete_message_document(conversation_id, message_id)
     return None
 
 
 @router.delete("/conversations/{conversation_id}/messages", status_code=204)
 def clear_conversation_messages(conversation_id: str, db: Session = Depends(get_db)):
     """Elimina todos los mensajes de una conversación (limpia el historial)."""
+    from app.services.image_illustration.content_ops import extract_illustrated_filenames
+    from app.services.image_illustration.orphan_files import delete_unreferenced_illustrated_files
+
     conv = crud.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    filenames: list[str] = []
+    for msg in crud.get_messages(db, conversation_id):
+        filenames.extend(extract_illustrated_filenames(msg.content or ""))
     crud.clear_conversation_messages(db, conversation_id)
+    if filenames:
+        delete_unreferenced_illustrated_files(db, filenames)
     rag.delete_conversation_documents(conversation_id)
     return None
 
@@ -450,9 +501,18 @@ def clear_conversation_messages(conversation_id: str, db: Session = Depends(get_
 @router.delete("/conversations/{conversation_id}/messages/{message_id}", status_code=204)
 def delete_message(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
     """Elimina un mensaje del historial de la conversación."""
+    from app.services.image_illustration.content_ops import extract_illustrated_filenames
+    from app.services.image_illustration.orphan_files import delete_unreferenced_illustrated_files
+
+    msg = crud.get_message(db, conversation_id, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    filenames = extract_illustrated_filenames(msg.content or "")
     ok = crud.delete_message(db, conversation_id, message_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    if filenames:
+        delete_unreferenced_illustrated_files(db, filenames)
     rag.delete_message_document(conversation_id, message_id)
     return None
 

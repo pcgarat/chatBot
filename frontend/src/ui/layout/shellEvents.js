@@ -1,15 +1,5 @@
 import { updateLayout, layoutStore } from "../../store/layout.js";
-import {
-  setLeftCollapsed,
-  setComposerCollapsed,
-  toggleDarkMode,
-  toggleChatFullscreen,
-  nudgeFont,
-  applySideResize,
-  beginSideResize,
-} from "./LayoutEffects.jsx";
-import { setLeftHistoryMode } from "../../app/historyActions.js";
-import { historyStore } from "../../store/history.js";
+import { setLeftCollapsed, setComposerCollapsed, toggleDarkMode, toggleChatFullscreen, nudgeFont, applySideResize, beginSideResize } from "./LayoutEffects.jsx";
 import { newConversation, newPromptGeneratorConversation, saveConversationMeta, resetSession } from "../../app/sessionActions.js";
 import * as conversationsApi from "../../api/conversations.js";
 import { sessionStore } from "../../store/session.js";
@@ -128,11 +118,6 @@ export async function onAppClick(e) {
     case "btn-prompt-generator":
       newPromptGeneratorConversation();
       break;
-    case "btn-history-messages": {
-      const mode = historyStore.get().mode === "messages" ? "conversations" : "messages";
-      setLeftHistoryMode(mode);
-      break;
-    }
     case "btn-center-chat":
       updateLayout({ centerChatVisible: !layoutStore.get().centerChatVisible });
       break;
@@ -345,6 +330,14 @@ export async function onAppClick(e) {
       }
     }
   }
+}
+
+export function onAppKeyDown(e) {
+  const t = e.target;
+  if (!t || t.id !== "message-input") return;
+  if (e.key !== "Enter" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
+  e.preventDefault();
+  onComposerPrimaryClick();
 }
 
 export function onAppChange(e) {

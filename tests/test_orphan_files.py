@@ -98,6 +98,27 @@ def test_purge_orphans_skips_recent_unreferenced_files(db_session, tmp_path, mon
     assert collect_orphan_filenames(db_session, grace_seconds=0) == [fresh]
 
 
+def test_hard_delete_from_trash_removes_embedded_photo_files(db_session, tmp_path, monkeypatch):
+    """Vaciar/borrar definitivo de papelera elimina fotos incrustadas en disco."""
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    name = storage.save_illustrated_image("gone", PNG)
+    conv = crud.create_conversation(db_session, title="papelera", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", _embedded(name))
+    crud.save_illustrated_image_meta(
+        db_session,
+        message_id=msg.id,
+        filename=name,
+        scene_id="gone",
+        mode="txt2img",
+        params={"prompt": "x"},
+    )
+    crud.delete_conversation(db_session, conv.id)
+
+    assert crud.hard_delete_conversation(db_session, conv.id) is True
+    assert storage.resolve_illustrated_path(name) is None
+    assert crud.get_illustrated_image_meta(db_session, name) is None
+
+
 def test_orphans_api_purge(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
     keep = storage.save_illustrated_image("keep", PNG)

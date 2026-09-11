@@ -19,7 +19,6 @@ import {
 } from "./rulesActions.js";
 import { refreshWorkspaceProfiles, refreshPlannerRulePresets } from "./profilesActions.js";
 import { loadPlannerContract, ensureImagesPromptSelects, hydratePlannerRulesFromImagesPrefs } from "./imagesPanel.js";
-import { isMessagesHistoryMode } from "../store/history.js";
 
 export async function bootApp() {
   hydratePlannerRulesFromImagesPrefs();
@@ -40,13 +39,11 @@ export async function bootApp() {
   await loadParamsForProvider(settingsStore.get().currentProvider);
   await loadModelContract({ applyParamDefaults: true });
   await refreshLeftHistory();
-  if (!isMessagesHistoryMode()) {
-    const storedId = readLastConversationId();
-    if (storedId) {
-      try {
-        await openConversation(storedId);
-      } catch (_) {}
-    }
+  const storedId = readLastConversationId();
+  if (storedId) {
+    try {
+      await openConversation(storedId);
+    } catch (_) {}
   }
   loadLibraryRules().then(() => hydrateChatRulesFromLibrary());
   loadPlannerLibraryRules().then(() => hydratePlannerRulesFromLibrary());

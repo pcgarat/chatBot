@@ -268,6 +268,27 @@ class MessageHistoryListResponse(BaseModel):
     search_in: Optional[Literal["title", "content"]] = None
 
 
+class MessageTreeNode(BaseModel):
+    id: str
+    conversation_id: str
+    conversation_title: str
+    content_preview: str
+    created_at: datetime
+    parent_message_id: Optional[str] = None
+    is_fork_edge: bool = False
+    has_children: bool = False
+    sibling_index: Optional[int] = None
+    sibling_count: Optional[int] = None
+    active_leaf_message_id: Optional[str] = None
+
+
+class MessageTreeListResponse(BaseModel):
+    items: list[MessageTreeNode]
+    total: int
+    limit: int
+    offset: int
+
+
 class ForgePanelParamFields(BaseModel):
     """steps/width/height/seed opcionales del panel Imágenes (None = replay del último gen)."""
 
@@ -622,6 +643,11 @@ class IllustratedImageOrphansResponse(BaseModel):
 class IllustratedImageOrphansPurgeResponse(BaseModel):
     deleted_files: int = 0
     deleted_meta: int = 0
+
+
+class PurgeDeletedConversationsResponse(BaseModel):
+    deleted: int = 0
+    ids: list[str] = Field(default_factory=list)
 
 
 class WorkspaceImagesSnapshot(ForgePanelParamFields):
