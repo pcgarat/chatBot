@@ -108,6 +108,7 @@ def test_images_stacked_fields_use_param_option():
         "images-per-response",
         "images-forge-steps",
         "images-reactor-model",
+        "images-scene-selection-strategy",
     ):
         around = images.split(f'id="{control_id}"')[0][-280:]
         assert "param-option" in around, f"{control_id} debe usar sidebar-option param-option"

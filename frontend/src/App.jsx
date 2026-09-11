@@ -406,11 +406,19 @@ export default function App() {
                     <button type="button" className="accordion-header" aria-expanded="false" aria-controls="accordion-images-planner" id="accordion-images-planner-btn">
                       <div>
                         <span className="accordion-title" id="images-planner-heading">Planificador LLM</span>
-                        <span className="accordion-caption">Quién describe cada escena</span>
+                        <span className="accordion-caption">Cómo se eligen y describen las escenas</span>
                       </div>
                       <svg className="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
                     <div className="accordion-content" id="accordion-images-planner" role="region" aria-labelledby="accordion-images-planner-btn">
+                      <div className="sidebar-option param-option">
+                        <label className="param-label" htmlFor="images-scene-selection-strategy">Selección de escenas</label>
+                        <select id="images-scene-selection-strategy" className="param-control" aria-label="Estrategia de selección de escenas" defaultValue="distributed">
+                          <option value="distributed">Distribuida (huecos)</option>
+                          <option value="llm_erotic_story">Narrativa erótica (LLM)</option>
+                        </select>
+                        <p className="param-note">Cómo se eligen los párrafos a ilustrar. Se pueden añadir más estrategias.</p>
+                      </div>
                       <label className="pref-row fluent-toggle-row" title="Usar el mismo proveedor, modelo, reglas del chat y parámetros. Las reglas del planificador se aplican igual.">
                         <span className="pref-row-copy">
                           <span className="pref-row-label">Usar configuración del chat</span>

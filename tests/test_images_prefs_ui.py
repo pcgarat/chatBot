@@ -112,3 +112,23 @@ def test_images_panel_has_visual_consistency_toggle():
     assert "visual_consistency: isVisualConsistencyEnabled()" in illustrate
     at = js.split("async function illustrateAtParagraph")[1].split("async function runIllustrationStream")[0]
     assert "visual_consistency: isVisualConsistencyEnabled()" in at
+
+
+def test_images_panel_has_scene_selection_strategy_select():
+    html = frontend_markup()
+    images = html.split('id="tab-imagenes"')[1].split('id="tab-preferencias"')[0]
+    planner = images.split('data-accordion-section="images-planner"')[1].split(
+        'data-accordion-section="images-planner-rules"'
+    )[0]
+    assert 'id="images-scene-selection-strategy"' in planner
+    assert 'value="distributed"' in planner
+    assert 'value="llm_erotic_story"' in planner
+    js = _js()
+    collect = js.split("function collectImagesSnapshot")[1].split("function fillImagesPanelFromPrefs")[0]
+    assert "readSceneSelectionStrategy()" in collect
+    assert "scene_selection_strategy" in collect
+    fill = js.split("function fillImagesPanelFromPrefs")[1].split("function syncImagesChatConfigDisabled")[0]
+    assert "normalizeSceneSelectionStrategy" in fill
+    assert "scene_selection_strategy" in fill
+    assert "scene_selection_strategy: readSceneSelectionStrategy()" in js
+    assert 'id === "images-scene-selection-strategy"' in js or "images-scene-selection-strategy" in js

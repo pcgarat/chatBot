@@ -64,6 +64,27 @@ export function isVisualConsistencyEnabled() {
   return imagesStore.get().prefs.visual_consistency !== false;
 }
 
+export const SCENE_SELECTION_STRATEGIES = [
+  { id: "distributed", label: "Distribuida (huecos)" },
+  { id: "llm_erotic_story", label: "Narrativa erótica (LLM)" },
+];
+
+export const DEFAULT_SCENE_SELECTION_STRATEGY = "distributed";
+
+export function normalizeSceneSelectionStrategy(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (SCENE_SELECTION_STRATEGIES.some((s) => s.id === raw)) return raw;
+  return DEFAULT_SCENE_SELECTION_STRATEGY;
+}
+
+export function readSceneSelectionStrategy() {
+  const el = document.getElementById("images-scene-selection-strategy");
+  if (el) return normalizeSceneSelectionStrategy(el.value);
+  return normalizeSceneSelectionStrategy(
+    imagesStore.get().prefs.scene_selection_strategy
+  );
+}
+
 export function readReactorPanelSettings() {
   const enabled = document.getElementById("images-reactor-enabled");
   const femaleOn = document.getElementById("images-reactor-female-enabled");
@@ -184,6 +205,7 @@ export function collectImagesSnapshot() {
     enabled: enabled ? !!enabled.checked : !!prefs.enabled,
     use_chat_config: useChatConfig ? !!useChatConfig.checked : !!prefs.use_chat_config,
     visual_consistency: isVisualConsistencyEnabled(),
+    scene_selection_strategy: readSceneSelectionStrategy(),
     images_per_response: per ? parseInt(per.value, 10) || 2 : parseInt(prefs.images_per_response, 10) || 2,
     batch_size: batchSize ? parseInt(batchSize.value, 10) || 10 : parseInt(prefs.batch_size, 10) || 10,
     retries: retries ? parseInt(retries.value, 10) || 0 : parseInt(prefs.retries, 10) || 0,
@@ -219,6 +241,7 @@ export function fillImagesPanelFromPrefs(prefs) {
   const enabled = document.getElementById("images-enabled");
   const useChatConfig = document.getElementById("images-use-chat-config");
   const visualConsistency = document.getElementById("images-visual-consistency");
+  const sceneStrategy = document.getElementById("images-scene-selection-strategy");
   const per = document.getElementById("images-per-response");
   const batchSize = document.getElementById("images-batch-size");
   const retries = document.getElementById("images-retries");
@@ -226,6 +249,9 @@ export function fillImagesPanelFromPrefs(prefs) {
   if (enabled) enabled.checked = !!prefs.enabled;
   if (useChatConfig) useChatConfig.checked = !!prefs.use_chat_config;
   if (visualConsistency) visualConsistency.checked = prefs.visual_consistency !== false;
+  if (sceneStrategy) {
+    sceneStrategy.value = normalizeSceneSelectionStrategy(prefs.scene_selection_strategy);
+  }
   if (per && prefs.images_per_response != null) per.value = prefs.images_per_response;
   if (batchSize && prefs.batch_size != null) batchSize.value = prefs.batch_size;
   if (retries && prefs.retries != null) retries.value = prefs.retries;

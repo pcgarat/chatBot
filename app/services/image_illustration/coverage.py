@@ -296,10 +296,18 @@ def format_coverage_block(
     if not coverage.paragraphs:
         return ""
     lines = [
-        f"El relato tiene {len(coverage.paragraphs)} párrafos. "
-        "Las nuevas escenas se colocan en el punto medio de los huecos más grandes "
-        "entre imágenes ya existentes (no en el vacío más cercano).",
+        f"El relato tiene {len(coverage.paragraphs)} párrafos.",
     ]
+    if suggested:
+        lines.append(
+            "Las nuevas escenas de este lote van a los paragraph_index sugeridos "
+            "(puntos medios de los huecos más grandes entre imágenes existentes)."
+        )
+    else:
+        lines.append(
+            "Mapa de cobertura para elegir paragraph_index según la estrategia indicada. "
+            "Prefiere párrafos sin imagen salvo que la estrategia diga lo contrario."
+        )
     for para in coverage.paragraphs:
         flag = (
             f"{para.illustration_count} imagen(es)"

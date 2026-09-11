@@ -17,11 +17,11 @@ from app.services.image_illustration.anchors import (
 )
 from app.services.image_illustration.content_ops import extract_existing_illustration_prompts
 from app.services.image_illustration.coverage import (
+    align_scenes_to_coverage,
     analyze_coverage,
     bind_scenes_to_paragraphs,
     format_coverage_block,
     occupied_scenes_from_coverage,
-    suggest_distributed_targets,
 )
 from app.services.image_illustration.models import (
     ForgeParamOverrides,
@@ -34,6 +34,10 @@ from app.services.image_illustration.generation_params import build_stored_gener
 from app.services.image_illustration.ports import ForgeGenerationPort, LastPayloadSource, ScenePlannerPort
 from app.services.image_illustration.reactor import apply_reactor_if_configured
 from app.services.image_illustration.run_context import IllustrationRunContext
+from app.services.image_illustration.scene_selection import (
+    DEFAULT_SCENE_SELECTION_STRATEGY,
+    resolve_scene_selection_strategy,
+)
 from app.services.image_illustration import status_codes as st
 
 
@@ -308,12 +312,18 @@ class ImageIllustrationOrchestrator:
         forge_overrides: ForgeParamOverrides | None = None,
         run_context: IllustrationRunContext | None = None,
         visual_consistency: bool = True,
+        scene_selection_strategy: str = DEFAULT_SCENE_SELECTION_STRATEGY,
     ) -> Iterator[IllustrationEvent]:
         yield st.status_event(st.IMAGES_STARTING, "Iniciando ilustración")
         batch_n = max(1, int(batch_size))
+        strategy = resolve_scene_selection_strategy(scene_selection_strategy)
         yield IllustrationEvent(
             type="log",
-            message=f"Planificando escenas (max={max_images}, lote={batch_n})",
+            message=(
+                f"Planificando escenas (max={max_images}, lote={batch_n}, "
+                f"estrategia={strategy.id})"
+            ),
+            data={"scene_selection_strategy": strategy.id},
         )
         plan_text = strip_illustration_artifacts(text)
         content = strip_transient_illustration_artifacts(text)
@@ -333,7 +343,7 @@ class ImageIllustrationOrchestrator:
                 seen_prompts.add(p)
                 known_prompts.append(p)
         # Solo evita duplicar párrafo dentro de esta ejecución; la cobertura
-        # existente se prioriza vía huecos entre imágenes (punto medio).
+        # existente se prioriza vía la estrategia (huecos o LLM).
         reserved_paragraphs: set[int] = set()
         payload: LastGenerationPayload | None = None
         batch_idx = 0
@@ -342,15 +352,11 @@ class ImageIllustrationOrchestrator:
         while remaining_quota > 0:
             requested = min(batch_n, remaining_quota)
             batch_idx += 1
-            suggested = suggest_distributed_targets(
+            batch = strategy.prepare_batch(
                 coverage, requested, also_avoid=reserved_paragraphs
             )
-            assigned = [
-                coverage.paragraphs[i]
-                for i in suggested
-                if 0 <= i < len(coverage.paragraphs)
-            ]
-            if not assigned:
+            assigned = list(batch.assigned_paragraphs)
+            if batch.max_scenes <= 0 or (batch.binds_to_assigned and not assigned):
                 if not any_batch:
                     yield st.status_event(st.IMAGES_SKIPPED, "Ilustración no aplicable")
                     yield IllustrationEvent(
@@ -359,58 +365,80 @@ class ImageIllustrationOrchestrator:
                     return
                 break
 
-            coverage_block = format_coverage_block(
-                coverage, suggested=[p.index for p in assigned]
-            )
+            suggested = [p.index for p in assigned] if assigned else None
+            coverage_block = format_coverage_block(coverage, suggested=suggested)
             yield st.status_event(
                 st.IMAGES_PLANNING,
                 f"Planificando prompts (lote {batch_idx})",
                 index=batch_idx,
                 total=None,
                 batch=batch_idx,
-                batch_size=len(assigned),
+                batch_size=batch.max_scenes,
             )
-            yield IllustrationEvent(
-                type="log",
-                message=(
+            if batch.binds_to_assigned:
+                log_msg = (
                     f"Lote {batch_idx}: párrafos asignados "
                     f"{[p.index for p in assigned]} → pidiendo prompts al LLM"
-                ),
+                )
+            else:
+                log_msg = (
+                    f"Lote {batch_idx}: estrategia={batch.strategy_id} "
+                    f"pide hasta {batch.max_scenes} escenas al LLM"
+                )
+            yield IllustrationEvent(
+                type="log",
+                message=log_msg,
                 data={
                     "batch": batch_idx,
                     "assigned_paragraphs": [p.index for p in assigned],
+                    "scene_selection_strategy": batch.strategy_id,
+                    "binds_to_assigned": batch.binds_to_assigned,
                 },
             )
             plan = self.planner.plan(
                 plan_text,
-                len(assigned),
+                batch.max_scenes,
                 already_planned=already_planned or None,
                 coverage_block=coverage_block,
-                assigned_paragraphs=assigned,
+                assigned_paragraphs=assigned or None,
                 existing_prompts=known_prompts or None,
                 visual_consistency=visual_consistency,
+                selection_instructions=batch.selection_instructions or None,
             )
             if plan.illustrate and plan.scenes:
-                bound = bind_scenes_to_paragraphs(plan.scenes, assigned)
-                plan = ScenePlan(
-                    illustrate=bool(bound),
-                    reason=plan.reason,
-                    scenes=bound,
-                )
+                if batch.binds_to_assigned:
+                    bound = bind_scenes_to_paragraphs(plan.scenes, assigned)
+                    plan = ScenePlan(
+                        illustrate=bool(bound),
+                        reason=plan.reason,
+                        scenes=bound,
+                    )
+                else:
+                    aligned = align_scenes_to_coverage(
+                        plan.scenes,
+                        coverage,
+                        reserved_paragraphs=reserved_paragraphs,
+                    )
+                    plan = ScenePlan(
+                        illustrate=bool(aligned),
+                        reason=plan.reason,
+                        scenes=aligned,
+                    )
             yield IllustrationEvent(
                 type="log",
                 message=(
                     f"Lote {batch_idx}: illustrate={plan.illustrate} "
                     f"reason={plan.reason} scenes={len(plan.scenes)} "
-                    f"(asignados={len(assigned)})"
+                    f"(pedidos={batch.max_scenes})"
                 ),
                 data={
                     "illustrate": plan.illustrate,
                     "reason": plan.reason,
                     "batch": batch_idx,
-                    "requested": len(assigned),
+                    "requested": batch.max_scenes,
                     "scenes": len(plan.scenes),
                     "assigned_paragraphs": [p.index for p in assigned],
+                    "scene_selection_strategy": batch.strategy_id,
                 },
             )
 
@@ -527,8 +555,8 @@ class ImageIllustrationOrchestrator:
             any_batch = True
             # Recalcular cobertura sobre el content ya anclado (placeholders cuentan).
             coverage = analyze_coverage(content)
-            # Si el LLM no cubrió todos los párrafos asignados, no forzar más lotes.
-            if len(plan.scenes) < len(assigned):
+            # Si el LLM no cubrió lo pedido, no forzar más lotes.
+            if len(plan.scenes) < batch.max_scenes:
                 break
 
         done_msg = (

@@ -365,6 +365,9 @@ export function onAppChange(e) {
     renderPlannerRecipes();
   }
   if (t.id === "images-visual-consistency") updateImagesPref({ visual_consistency: t.checked });
+  if (t.id === "images-scene-selection-strategy") {
+    updateImagesPref({ scene_selection_strategy: t.value });
+  }
   if (t.id === "images-per-response") updateImagesPref({ images_per_response: Number(t.value) || 2 });
   if (t.id === "images-batch-size") updateImagesPref({ batch_size: Number(t.value) || 10 });
   if (t.id === "images-retries") updateImagesPref({ retries: Number(t.value) || 0 });

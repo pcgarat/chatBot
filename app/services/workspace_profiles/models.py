@@ -22,6 +22,7 @@ class ImagesSnapshot:
     enabled: bool = False
     use_chat_config: bool = False
     visual_consistency: bool = True
+    scene_selection_strategy: str = "distributed"
     images_per_response: int = 2
     batch_size: int = 10
     retries: int = 1
@@ -41,6 +42,7 @@ class ImagesSnapshot:
             "enabled": self.enabled,
             "use_chat_config": self.use_chat_config,
             "visual_consistency": self.visual_consistency,
+            "scene_selection_strategy": self.scene_selection_strategy,
             "images_per_response": self.images_per_response,
             "batch_size": self.batch_size,
             "retries": self.retries,
