@@ -416,6 +416,7 @@ export default function App() {
                         <select id="images-scene-selection-strategy" className="param-control" aria-label="Estrategia de selección de escenas" defaultValue="distributed">
                           <option value="distributed">Distribuida (huecos)</option>
                           <option value="llm_erotic_story">Narrativa erótica (LLM)</option>
+                          <option value="llm_pornographic_peaks">Picos pornográficos (LLM)</option>
                         </select>
                         <p className="param-note">Cómo se eligen los párrafos a ilustrar. Se pueden añadir más estrategias.</p>
                       </div>

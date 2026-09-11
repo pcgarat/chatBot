@@ -20,6 +20,7 @@ from app.services.image_illustration.coverage import (
 class SceneSelectionStrategyId(str, Enum):
     DISTRIBUTED = "distributed"
     LLM_EROTIC_STORY = "llm_erotic_story"
+    LLM_PORNOGRAPHIC_PEAKS = "llm_pornographic_peaks"
 
 
 DEFAULT_SCENE_SELECTION_STRATEGY = SceneSelectionStrategyId.DISTRIBUTED.value
@@ -64,6 +65,39 @@ Reparte las escenas a lo largo del arco (no todas al inicio ni en el mismo párr
 Evita párrafos ya ilustrados (ver ubicaciones existentes).
 Cada scene debe llevar paragraph_index del párrafo elegido y un prompt en inglés explícito, sensual/erótico y anclado a ese momento.
 """
+
+_LLM_PORNOGRAPHIC_PEAKS_INSTRUCTIONS = """\
+Estrategia de selección: picos pornográficos (LLM).
+Elige hasta max_images los momentos MÁS pornográficos y explícitos del relato (acto sexual gráfico, anatomía, fluidos, penetración, oral, etc.).
+No priorices romanticismo, tensión suave ni aftercare: prioriza la máxima carga pornográfica.
+Si hay varios picos, elige los más explícitos y visuales; evita párrafos ya ilustrados.
+Cada scene debe llevar paragraph_index del párrafo elegido y un prompt en inglés muy explícito, pornográfico y anclado a ese momento (sin eufemismos).
+"""
+
+
+def _llm_free_selection_batch(
+    *,
+    strategy_id: str,
+    coverage: CoverageMap,
+    count: int,
+    instructions: str,
+) -> SceneSelectionBatch:
+    """Lote sin párrafos preasignados: el LLM elige ubicación."""
+    if not coverage.paragraphs or count <= 0:
+        return SceneSelectionBatch(
+            strategy_id=strategy_id,
+            max_scenes=0,
+            assigned_paragraphs=[],
+            selection_instructions=instructions,
+            binds_to_assigned=False,
+        )
+    return SceneSelectionBatch(
+        strategy_id=strategy_id,
+        max_scenes=count,
+        assigned_paragraphs=[],
+        selection_instructions=instructions,
+        binds_to_assigned=False,
+    )
 
 
 class DistributedSceneSelectionStrategy:
@@ -137,27 +171,55 @@ class LlmEroticStorySceneSelectionStrategy:
         *,
         also_avoid: set[int] | None = None,
     ) -> SceneSelectionBatch:
-        del also_avoid  # el LLM evita ocupados vía already_planned / cobertura
-        if not coverage.paragraphs or count <= 0:
-            return SceneSelectionBatch(
-                strategy_id=self.id,
-                max_scenes=0,
-                assigned_paragraphs=[],
-                selection_instructions=_LLM_EROTIC_STORY_INSTRUCTIONS,
-                binds_to_assigned=False,
-            )
-        return SceneSelectionBatch(
+        del also_avoid
+        return _llm_free_selection_batch(
             strategy_id=self.id,
-            max_scenes=count,
-            assigned_paragraphs=[],
-            selection_instructions=_LLM_EROTIC_STORY_INSTRUCTIONS,
-            binds_to_assigned=False,
+            coverage=coverage,
+            count=count,
+            instructions=_LLM_EROTIC_STORY_INSTRUCTIONS,
+        )
+
+
+class LlmPornographicPeaksSceneSelectionStrategy:
+    """El LLM elige solo los momentos más pornográficos y explícitos."""
+
+    @property
+    def id(self) -> str:
+        return SceneSelectionStrategyId.LLM_PORNOGRAPHIC_PEAKS.value
+
+    @property
+    def label(self) -> str:
+        return "Picos pornográficos (LLM)"
+
+    @property
+    def description(self) -> str:
+        return (
+            "El planificador elige los momentos más pornográficos "
+            "y explícitos del relato."
+        )
+
+    def prepare_batch(
+        self,
+        coverage: CoverageMap,
+        count: int,
+        *,
+        also_avoid: set[int] | None = None,
+    ) -> SceneSelectionBatch:
+        del also_avoid
+        return _llm_free_selection_batch(
+            strategy_id=self.id,
+            coverage=coverage,
+            count=count,
+            instructions=_LLM_PORNOGRAPHIC_PEAKS_INSTRUCTIONS,
         )
 
 
 _REGISTRY: dict[str, SceneSelectionStrategy] = {
     SceneSelectionStrategyId.DISTRIBUTED.value: DistributedSceneSelectionStrategy(),
     SceneSelectionStrategyId.LLM_EROTIC_STORY.value: LlmEroticStorySceneSelectionStrategy(),
+    SceneSelectionStrategyId.LLM_PORNOGRAPHIC_PEAKS.value: (
+        LlmPornographicPeaksSceneSelectionStrategy()
+    ),
 }
 
 

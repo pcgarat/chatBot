@@ -27,6 +27,10 @@ def test_normalize_unknown_falls_back_to_distributed():
         normalize_scene_selection_strategy_id("LLM_EROTIC_STORY")
         == SceneSelectionStrategyId.LLM_EROTIC_STORY.value
     )
+    assert (
+        normalize_scene_selection_strategy_id("llm_pornographic_peaks")
+        == SceneSelectionStrategyId.LLM_PORNOGRAPHIC_PEAKS.value
+    )
 
 
 def test_registry_lists_both_strategies():
@@ -35,6 +39,7 @@ def test_registry_lists_both_strategies():
     assert ids == [
         SceneSelectionStrategyId.DISTRIBUTED.value,
         SceneSelectionStrategyId.LLM_EROTIC_STORY.value,
+        SceneSelectionStrategyId.LLM_PORNOGRAPHIC_PEAKS.value,
     ]
     assert all(item["label"] and item["description"] for item in catalog)
 
@@ -61,6 +66,66 @@ def test_llm_erotic_strategy_does_not_preassign():
     assert "erótic" in batch.selection_instructions.lower()
     assert "historia" in batch.selection_instructions.lower()
 
+
+def test_llm_pornographic_peaks_strategy_targets_explicit_moments():
+    from app.services.image_illustration.scene_selection import (
+        LlmPornographicPeaksSceneSelectionStrategy,
+    )
+
+    text = "\n\n".join([f"Párrafo {i}." for i in range(4)])
+    cov = analyze_coverage(text)
+    batch = LlmPornographicPeaksSceneSelectionStrategy().prepare_batch(cov, 2)
+    assert batch.strategy_id == "llm_pornographic_peaks"
+    assert batch.binds_to_assigned is False
+    assert batch.assigned_paragraphs == []
+    assert batch.max_scenes == 2
+    assert "pornográf" in batch.selection_instructions.lower()
+    assert "explícit" in batch.selection_instructions.lower()
+
+
+def test_orchestrator_pornographic_strategy_forwards_instructions():
+    text = "\n\n".join(
+        [
+            "Se desnudaron sin rodeos.",
+            "El acto fue gráfico y salvaje.",
+            "Gemidos y fluidos por toda la cama.",
+            "Al final se separaron sin hablar.",
+        ]
+    )
+    plan = ScenePlan(
+        illustrate=True,
+        reason="picos explícitos",
+        scenes=[
+            SceneSpec(id="s1", prompt="explicit sex act", paragraph_index=1),
+            SceneSpec(id="s2", prompt="graphic climax fluids", paragraph_index=2),
+        ],
+    )
+    planner = FakePlanner(plan)
+    orch = ImageIllustrationOrchestrator(
+        planner=planner,
+        payload_source=FakePayloadSource(
+            LastGenerationPayload(mode=ForgeMode.TXT2IMG, body={"prompt": "x"})
+        ),
+        forge=FakeForge(b"png"),
+        save_image=lambda sid, data: f"{sid}.png",
+    )
+    events = list(
+        orch.run(
+            text,
+            max_images=2,
+            retries=0,
+            scene_selection_strategy="llm_pornographic_peaks",
+        )
+    )
+    assert planner.last_assigned_paragraphs in (None, [])
+    assert planner.last_selection_instructions
+    assert "pornográf" in planner.last_selection_instructions.lower()
+    assert any(
+        e.type == "log"
+        and e.data.get("scene_selection_strategy") == "llm_pornographic_peaks"
+        for e in events
+        if e.type == "log"
+    )
 
 def test_orchestrator_llm_strategy_forwards_instructions_without_assigned():
     text = "\n\n".join(
