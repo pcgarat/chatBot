@@ -30,6 +30,7 @@ export const imagesStore = createStore({
     mode: "",
     seed: "",
     promptQ: "",
+    batchIds: [],
   },
   galleryFilterOptions: {
     promptModel: [],
@@ -39,6 +40,7 @@ export const imagesStore = createStore({
     size: [],
     mode: [],
     seed: [],
+    batches: [],
   },
   galleryScopeAll: true,
   galleryUserChoseAll: false,

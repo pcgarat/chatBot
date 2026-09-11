@@ -5,7 +5,18 @@ export function getIllustratedMeta(filename) {
 }
 
 export function matchingFilenames(params) {
-  const search = new URLSearchParams(params || {});
+  const search = new URLSearchParams();
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v == null || v === "") return;
+    if (Array.isArray(v)) {
+      v.forEach(function (item) {
+        if (item == null || item === "") return;
+        search.append(k, String(item));
+      });
+      return;
+    }
+    search.set(k, String(v));
+  });
   return fetchJson(`${API}/illustrated-images/matching-filenames?${search}`);
 }
 
@@ -32,6 +43,13 @@ export function listIllustratedImages(params) {
   const search = new URLSearchParams();
   Object.entries(params || {}).forEach(([k, v]) => {
     if (v == null || v === "") return;
+    if (Array.isArray(v)) {
+      v.forEach(function (item) {
+        if (item == null || item === "") return;
+        search.append(k, String(item));
+      });
+      return;
+    }
     search.set(k, String(v));
   });
   return fetchJson(`${API}/illustrated-images?${search}`);

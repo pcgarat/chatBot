@@ -47,6 +47,7 @@ function emptyFilters() {
     mode: "",
     seed: "",
     promptQ: "",
+    batchIds: [],
   };
 }
 
@@ -67,6 +68,21 @@ function galleryFilterValue(id) {
   return map[id] || "";
 }
 
+function selectedBatchIdsFromDom() {
+  const sel = document.getElementById("gallery-filter-batch-ids");
+  if (sel) {
+    return [].filter
+      .call(sel.selectedOptions || [], function (opt) {
+        return Boolean(opt && opt.value);
+      })
+      .map(function (opt) {
+        return String(opt.value);
+      });
+  }
+  const f = imagesStore.get().galleryFilters || emptyFilters();
+  return Array.isArray(f.batchIds) ? f.batchIds.filter(Boolean) : [];
+}
+
 function syncGalleryFiltersFromDom() {
   imagesStore.set({
     galleryFilters: {
@@ -78,6 +94,7 @@ function syncGalleryFiltersFromDom() {
       mode: galleryFilterValue("gallery-filter-mode"),
       seed: galleryFilterValue("gallery-filter-seed"),
       promptQ: galleryFilterValue("gallery-filter-prompt-q"),
+      batchIds: selectedBatchIdsFromDom(),
     },
   });
 }
@@ -101,6 +118,8 @@ export function appendGalleryToolbarFilters(params) {
   if (seed) params.seed = seed;
   const q = galleryFilterValue("gallery-filter-prompt-q").trim();
   if (q) params.prompt_q = q;
+  const batchIds = selectedBatchIdsFromDom();
+  if (batchIds.length) params.batch_id = batchIds;
   return params;
 }
 
@@ -124,6 +143,7 @@ export function hasActiveGalleryToolbarFilters() {
   ) {
     return true;
   }
+  if (selectedBatchIdsFromDom().length) return true;
   return Boolean(galleryFilterValue("gallery-filter-prompt-q").trim());
 }
 
@@ -134,6 +154,12 @@ export function clearGalleryToolbarFilters() {
   });
   const promptQ = document.getElementById("gallery-filter-prompt-q");
   if (promptQ) promptQ.value = "";
+  const batchSel = document.getElementById("gallery-filter-batch-ids");
+  if (batchSel) {
+    [].forEach.call(batchSel.options || [], function (opt) {
+      opt.selected = false;
+    });
+  }
   if (galleryPromptTimer) {
     window.clearTimeout(galleryPromptTimer);
     galleryPromptTimer = null;
@@ -299,6 +325,64 @@ function renderGalleryMessageChips(items) {
   wrap.innerHTML = chips.join("");
 }
 
+function shortBatchLabel(batchId) {
+  const id = String(batchId || "");
+  if (id.length <= 8) return id;
+  return id.slice(0, 8);
+}
+
+export function fillGalleryBatchSelect(batches) {
+  const wrap = document.getElementById("image-gallery-families");
+  const sel = document.getElementById("gallery-filter-batch-ids");
+  if (!wrap || !sel) return;
+  const galleryMessageId = imagesStore.get().galleryMessageId;
+  const list = Array.isArray(batches)
+    ? batches.filter(function (b) {
+        return b && b.batch_id;
+      })
+    : [];
+  if (!galleryMessageId || !list.length) {
+    wrap.hidden = true;
+    sel.innerHTML = "";
+    return;
+  }
+  wrap.hidden = false;
+  const filters = imagesStore.get().galleryFilters || emptyFilters();
+  const selected = new Set(
+    Array.isArray(filters.batchIds) ? filters.batchIds.filter(Boolean) : []
+  );
+  const validSelected = [];
+  sel.innerHTML = "";
+  list.forEach(function (item, index) {
+    const id = String(item.batch_id);
+    const count = item.image_count != null ? item.image_count : 0;
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = "Lote " + String(index + 1) + " · " + shortBatchLabel(id) + " (" + String(count) + ")";
+    opt.title = id;
+    if (selected.has(id)) {
+      opt.selected = true;
+      validSelected.push(id);
+    }
+    sel.appendChild(opt);
+  });
+  if (validSelected.length !== selected.size) {
+    imagesStore.set(function (s) {
+      return {
+        ...s,
+        galleryFilters: { ...(s.galleryFilters || emptyFilters()), batchIds: validSelected },
+      };
+    });
+  }
+}
+
+function onGalleryBatchFilterChange() {
+  syncGalleryFiltersFromDom();
+  imagesStore.set({ galleryOffset: 0 });
+  if (isGalleryPanelVisible()) loadGalleryPage();
+  refreshConversationImageFilter();
+}
+
 async function loadGalleryMessageChips() {
   const convId = galleryScopedConversationId();
   if (!convId) {
@@ -350,6 +434,24 @@ async function loadGalleryFacets() {
     fillGallerySelect("gallery-filter-size", data.sizes, "");
     fillGallerySelect("gallery-filter-mode", data.modes, "");
     fillGallerySelect("gallery-filter-seed", data.seeds, "");
+    const batches = data.batches || [];
+    const selected = selectedBatchIdsFromDom();
+    const validIds = new Set(
+      batches.map(function (b) {
+        return b && b.batch_id;
+      }).filter(Boolean)
+    );
+    const stillValid = selected.filter(function (id) {
+      return validIds.has(id);
+    });
+    if (stillValid.length !== selected.length) {
+      imagesStore.set(function (s) {
+        return {
+          ...s,
+          galleryFilters: { ...(s.galleryFilters || emptyFilters()), batchIds: stillValid },
+        };
+      });
+    }
     imagesStore.set({
       galleryFilterOptions: {
         promptModel: data.prompt_models || [],
@@ -359,8 +461,10 @@ async function loadGalleryFacets() {
         size: data.sizes || [],
         mode: data.modes || [],
         seed: data.seeds || [],
+        batches: batches,
       },
     });
+    fillGalleryBatchSelect(batches);
   } catch (err) {
     showError("No se pudieron cargar los filtros de la galería: " + err.message);
   }
@@ -723,11 +827,18 @@ export function setGalleryFilter(patch) {
 }
 
 export function setGalleryScopeAll(all) {
-  imagesStore.set({
-    galleryScopeAll: !!all,
-    galleryUserChoseAll: !!all,
-    galleryMessageId: all ? null : imagesStore.get().galleryMessageId,
-    galleryOffset: 0,
+  imagesStore.set(function (s) {
+    return {
+      ...s,
+      galleryScopeAll: !!all,
+      galleryUserChoseAll: !!all,
+      galleryMessageId: all ? null : s.galleryMessageId,
+      galleryOffset: 0,
+      galleryFilters: {
+        ...(s.galleryFilters || emptyFilters()),
+        batchIds: all ? [] : (s.galleryFilters && s.galleryFilters.batchIds) || [],
+      },
+    };
   });
   refreshGalleryAfterScopeChange();
 }
@@ -814,6 +925,13 @@ export function galleryQueryString() {
   const search = new URLSearchParams();
   Object.entries(p).forEach(([k, v]) => {
     if (v == null || v === "") return;
+    if (Array.isArray(v)) {
+      v.forEach(function (item) {
+        if (item == null || item === "") return;
+        search.append(k, String(item));
+      });
+      return;
+    }
     search.set(k, String(v));
   });
   return search.toString();
@@ -832,12 +950,20 @@ export function initImageGallery() {
   if (messagesContainer) {
     messagesContainer.addEventListener("click", function (e) {
       if (!isGalleryPanelVisible()) return;
-      if (e.target.closest("button, a, textarea, input")) return;
+      if (e.target.closest("button, a, textarea, input, select")) return;
       const row = e.target.closest(".message-row");
       if (!row || !messagesContainer.contains(row)) return;
       const msgId = row.getAttribute("data-msg-id");
       if (!msgId) return;
-      imagesStore.set({ galleryScopeAll: false, galleryMessageId: msgId, galleryOffset: 0 });
+      imagesStore.set(function (s) {
+        return {
+          ...s,
+          galleryScopeAll: false,
+          galleryMessageId: msgId,
+          galleryOffset: 0,
+          galleryFilters: { ...(s.galleryFilters || emptyFilters()), batchIds: [] },
+        };
+      });
       refreshGalleryAfterScopeChange();
     });
   }
@@ -864,9 +990,20 @@ export function initImageGallery() {
       const btn = e.target.closest("[data-gallery-message]");
       if (!btn || !msgWrap.contains(btn)) return;
       const next = btn.getAttribute("data-gallery-message") || "";
-      imagesStore.set({ galleryMessageId: next || null, galleryOffset: 0 });
+      imagesStore.set(function (s) {
+        return {
+          ...s,
+          galleryMessageId: next || null,
+          galleryOffset: 0,
+          galleryFilters: { ...(s.galleryFilters || emptyFilters()), batchIds: [] },
+        };
+      });
       refreshGalleryAfterScopeChange();
     });
+  }
+  const batchSel = document.getElementById("gallery-filter-batch-ids");
+  if (batchSel) {
+    batchSel.addEventListener("change", onGalleryBatchFilterChange);
   }
   const promptQ = document.getElementById("gallery-filter-prompt-q");
   if (promptQ) {

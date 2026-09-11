@@ -35,6 +35,7 @@ def test_job_processor_applies_reactor_before_save(db_session, monkeypatch, tmp_
             "reactor_enabled": True,
             "reactor": {"enabled": True},
         },
+        batch_id="batch-reactor-1",
     )
 
     claimed = crud.claim_next_image_generation_job(db_session)
@@ -75,6 +76,7 @@ def test_job_processor_applies_reactor_before_save(db_session, monkeypatch, tmp_
     assert meta is not None
     params = json.loads(meta.params_json or "{}")
     assert params.get("reactor_applied") is True
+    assert params.get("batch_id") == "batch-reactor-1"
 
 
 def test_job_processor_discards_file_when_job_cancelled(db_session, monkeypatch, tmp_path):

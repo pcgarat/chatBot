@@ -571,6 +571,7 @@ class IllustratedImageListItem(BaseModel):
     forge_model: Optional[str] = None
     prompt_model: Optional[str] = None
     prompt_provider: Optional[str] = None
+    batch_id: Optional[str] = None
     conversation_id: str
     conversation_title: str
     message_id: str
@@ -585,6 +586,12 @@ class IllustratedImageListResponse(BaseModel):
     offset: int
 
 
+class IllustratedImageBatchFacet(BaseModel):
+    batch_id: str
+    image_count: int = 0
+    created_at: Optional[str] = None
+
+
 class IllustratedImageFacetsResponse(BaseModel):
     prompt_providers: list[str] = Field(default_factory=list)
     prompt_models: list[str] = Field(default_factory=list)
@@ -593,6 +600,7 @@ class IllustratedImageFacetsResponse(BaseModel):
     seeds: list[int] = Field(default_factory=list)
     sizes: list[str] = Field(default_factory=list)
     modes: list[str] = Field(default_factory=list)
+    batches: list[IllustratedImageBatchFacet] = Field(default_factory=list)
     has_missing_prompt_llm: bool = False
 
 

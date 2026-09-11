@@ -813,6 +813,7 @@ def _apply_illustrated_gallery_filters(
     prompt_q: str | None,
     conversation_id: str | None = None,
     message_id: str | None = None,
+    batch_ids: list[str] | None = None,
 ):
     if conversation_id:
         scoped_ids = gallery_visible_message_ids(db, conversation_id)
@@ -822,6 +823,10 @@ def _apply_illustrated_gallery_filters(
             q = q.filter(IllustratedImage.message_id.in_(scoped_ids))
     if message_id:
         q = q.filter(IllustratedImage.message_id == message_id)
+    if batch_ids:
+        q = q.filter(
+            func.json_extract(IllustratedImage.params_json, "$.batch_id").in_(batch_ids)
+        )
     if prompt_provider is not None:
         if prompt_provider == "":
             q = q.filter(
@@ -888,6 +893,7 @@ def list_illustrated_images(
     prompt_q: str | None = None,
     conversation_id: str | None = None,
     message_id: str | None = None,
+    batch_ids: list[str] | None = None,
     limit: int = 24,
     offset: int = 0,
 ) -> tuple[list[tuple[IllustratedImage, Message, Conversation]], int]:
@@ -906,6 +912,7 @@ def list_illustrated_images(
         prompt_q=prompt_q,
         conversation_id=conversation_id,
         message_id=message_id,
+        batch_ids=batch_ids,
     )
     total = q.count()
     rows = (
@@ -931,6 +938,7 @@ def list_illustrated_image_filenames(
     prompt_q: str | None = None,
     conversation_id: str | None = None,
     message_id: str | None = None,
+    batch_ids: list[str] | None = None,
 ) -> list[str]:
     """Filenames que pasan los mismos filtros que la galería, sin paginar."""
     q = _apply_illustrated_gallery_filters(
@@ -947,6 +955,7 @@ def list_illustrated_image_filenames(
         prompt_q=prompt_q,
         conversation_id=conversation_id,
         message_id=message_id,
+        batch_ids=batch_ids,
     )
     return [
         filename
@@ -993,6 +1002,7 @@ def illustrated_image_facets(
     seeds_vals: set[int] = set()
     sizes: set[str] = set()
     modes: set[str] = set()
+    batches: dict[str, dict] = {}
     missing_llm = False
     for row in rows:
         if (row.prompt_provider or "").strip():
@@ -1028,6 +1038,25 @@ def illustrated_image_facets(
                 sizes.add(f"{int(w)}x{int(h)}")
             except (TypeError, ValueError):
                 pass
+        batch = str(params.get("batch_id") or "").strip()
+        if batch:
+            entry = batches.get(batch)
+            created = row.created_at.isoformat() if row.created_at else None
+            if entry is None:
+                batches[batch] = {
+                    "batch_id": batch,
+                    "image_count": 1,
+                    "created_at": created,
+                }
+            else:
+                entry["image_count"] = int(entry["image_count"]) + 1
+                if created and (not entry.get("created_at") or created > entry["created_at"]):
+                    entry["created_at"] = created
+    batch_list = sorted(
+        batches.values(),
+        key=lambda b: (b.get("created_at") or "", b["batch_id"]),
+        reverse=True,
+    )
     return {
         "prompt_providers": sorted(providers),
         "prompt_models": sorted(models),
@@ -1036,6 +1065,7 @@ def illustrated_image_facets(
         "seeds": sorted(seeds_vals),
         "sizes": sorted(sizes, key=lambda s: [int(p) for p in s.split("x")]),
         "modes": sorted(modes),
+        "batches": batch_list,
         "has_missing_prompt_llm": missing_llm,
     }
 

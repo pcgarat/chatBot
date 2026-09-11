@@ -105,6 +105,8 @@ def process_image_generation_job(
             generation_time_ms=generation_time_ms,
         )
         stored_params.update(reactor_meta)
+        if job.batch_id:
+            stored_params["batch_id"] = job.batch_id
         crud.save_illustrated_image_meta(
             db,
             message_id=message_id,

@@ -687,6 +687,7 @@ def _prompt_llm_fields(row, params: dict) -> tuple[str | None, str | None]:
 def _list_item(row, msg, conv) -> IllustratedImageListItem:
     params = _params_dict(row.params_json)
     prompt_provider, prompt_model = _prompt_llm_fields(row, params)
+    batch = str(params.get("batch_id") or "").strip() or None
     return IllustratedImageListItem(
         filename=row.filename,
         url=f"/api/illustrated-images/{row.filename}",
@@ -701,12 +702,28 @@ def _list_item(row, msg, conv) -> IllustratedImageListItem:
         forge_model=(str(params["model"]).strip() if params.get("model") else None) or None,
         prompt_model=prompt_model,
         prompt_provider=prompt_provider,
+        batch_id=batch,
         conversation_id=conv.id,
         conversation_title=conv.title or "",
         message_id=msg.id,
         created_at=row.created_at.isoformat() if row.created_at else None,
         params=params,
     )
+
+
+def _normalize_batch_ids(values: list[str] | None) -> list[str] | None:
+    if not values:
+        return None
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        for part in str(raw or "").split(","):
+            bid = part.strip()
+            if not bid or bid in seen:
+                continue
+            seen.add(bid)
+            out.append(bid)
+    return out or None
 
 
 def _gallery_filter_kwargs(
@@ -720,6 +737,10 @@ def _gallery_filter_kwargs(
     seed: int | None = Query(default=None),
     conversation_id: str | None = Query(default=None),
     message_id: str | None = Query(default=None),
+    batch_id: list[str] | None = Query(
+        default=None,
+        description="Uno o más batch_id (repetir el query param o separar por comas)",
+    ),
 ) -> dict:
     """Query params compartidos por listado, facets de chat y filenames coincidentes."""
     width, height = _parse_size_query(size)
@@ -735,6 +756,7 @@ def _gallery_filter_kwargs(
         "prompt_q": (prompt_q or "").strip() or None,
         "conversation_id": (conversation_id or "").strip() or None,
         "message_id": (message_id or "").strip() or None,
+        "batch_ids": _normalize_batch_ids(batch_id),
     }
 
 

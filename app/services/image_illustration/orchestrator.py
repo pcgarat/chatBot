@@ -240,6 +240,8 @@ def _run_pass(
                 generation_time_ms=generation_time_ms,
             )
             stored_params.update(reactor_meta)
+            if run_context and run_context.batch_id:
+                stored_params["batch_id"] = run_context.batch_id
             yield st.status_event(
                 st.IMAGES_IMAGE_READY,
                 f"Imagen recibida ({index}/{total})",
