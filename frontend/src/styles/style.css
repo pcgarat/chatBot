@@ -3041,7 +3041,7 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   min-height: 40px;
   max-height: 100px;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-md);
   background: transparent;
   padding: 4px 0;
   font-size: 0.75rem;
@@ -3049,7 +3049,8 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   resize: vertical;
 }
 
-.composer-textarea:focus {
+.composer-textarea:focus,
+.composer-textarea:focus-visible {
   outline: none;
   box-shadow: none;
 }
@@ -4026,7 +4027,7 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
 .composer-panel #message-input {
   background: transparent;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-md);
 }
 
 #message-input:focus {
@@ -4034,7 +4035,9 @@ html[data-chat-fullscreen="on"] .composer-expand-btn,
   border-color: var(--accent);
 }
 
-.composer-panel #message-input:focus {
+.composer-panel #message-input:focus,
+.composer-panel #message-input:focus-visible {
+  outline: none;
   border-color: transparent;
   box-shadow: none;
 }
@@ -9184,14 +9187,18 @@ button:focus-visible,
 .model-select-input:focus-visible,
 .conversation-title-input:focus-visible,
 .inline-input:focus-visible,
-.composer-textarea:focus-visible,
-.composer-panel #message-input:focus-visible,
 .composer-panel #instruction-override:focus-visible,
 input:not([type="checkbox"]):not([type="radio"]):focus-visible,
 textarea:focus-visible,
 select:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+.composer-textarea:focus-visible,
+.composer-panel #message-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 /* Mensajes: fondo blanco, sin borde ni elevación */
