@@ -104,3 +104,7 @@ def test_css_profile_bar_is_identity_strip():
     assert "color-mix(in srgb, var(--accent)" in css.split(".workspace-profile-bar")[1].split("}")[0]
     assert ".workspace-profile-icon-btn" in css
     assert ".workspace-profile-select" in css
+    icon_btn = css.split(".workspace-profile-bar .workspace-profile-icon-btn {")[1].split("}")[0]
+    assert "color-mix(in srgb, var(--bg-input, var(--input)) 70%, transparent)" in icon_btn
+    select = css.split(".workspace-profile-select {")[1].split("}")[0]
+    assert "color-mix(in srgb, var(--bg-input, var(--input)) 70%, transparent)" in select

@@ -11,10 +11,16 @@ def test_sidebar_has_txt2img_button_under_new():
     html = frontend_markup()
     assert 'id="btn-new-chat"' in html
     assert 'id="btn-prompt-generator"' in html
-    assert ">txt2img<" in html or "txt2img</span>" in html
+    assert "Nueva conversación" in html
+    assert "Generador de prompts" in html
+    assert ">txt2img<" not in html
     new_i = html.index('id="btn-new-chat"')
     pg_i = html.index('id="btn-prompt-generator"')
     assert new_i < pg_i
+    new_block = html[new_i:pg_i]
+    assert "<svg" not in new_block
+    pg_end = html.index("</button>", pg_i)
+    assert "<svg" not in html[pg_i:pg_end]
 
 
 def test_composer_has_generate_prompt_button():

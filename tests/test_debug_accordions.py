@@ -42,6 +42,10 @@ def test_debug_dock_replaces_footer_toggles():
     assert 'id="images-debug-stop"' in dock
     assert 'id="debug-chat-body"' in dock
     assert 'id="debug-images-body"' in dock
+    images_body = dock.split('id="debug-images-body"', 1)[1]
+    assert images_body.index('id="images-debug-stop"') < images_body.index('id="images-debug-log"')
+    images_heading = dock.split('id="debug-accordion-images"', 1)[1].split('id="debug-images-body"', 1)[0]
+    assert 'id="images-debug-stop"' not in images_heading
 
 
 def test_debug_accordions_are_at_bottom_of_right_panel():
@@ -123,6 +127,19 @@ def test_generated_image_debug_entry_is_a_conversation_link():
     html = _html()
     assert "debug-image-link" in _js()
     assert 'id="images-debug-log"' in html
+
+
+def test_images_debug_stop_floats_inside_panel_body():
+    css = _css()
+    assert "#debug-images-body {" in css
+    body = css.split("#debug-images-body {")[1].split("}")[0]
+    assert "position: relative" in body
+    stop = css.split("#debug-images-body #images-debug-stop {")[1].split("}")[0]
+    assert "position: absolute" in stop
+    assert "top: 6px" in stop
+    assert "right: var(--rp-pad-x, 12px)" in stop
+    log = css.split("#debug-images-body .debug-log {")[1].split("}")[0]
+    assert "padding-top: 36px" in log
 
 
 def test_preferences_interfaz_hosts_debug_log_size():
