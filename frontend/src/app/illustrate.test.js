@@ -2,8 +2,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { imagesStore } from "../store/images.js";
 import { sessionStore } from "../store/session.js";
 import { debugStore, setDebugPanelOpen, clearDebugLogs } from "../store/debug.js";
-import { maybeIllustrateAssistantMessage } from "./illustrate.js";
+import { maybeIllustrateAssistantMessage, clearMessagePhotos, pruneOrphanAnchors } from "./illustrate.js";
 import { readReactorPanelSettings } from "./imagesPanel.js";
+import { layoutStore } from "../store/layout.js";
+
+vi.mock("./galleryActions.js", () => ({
+  refreshGalleryAfterScopeChange: vi.fn().mockResolvedValue(undefined),
+}));
+
 
 function emptyStreamResponse() {
   return ndjsonStream([]);
@@ -256,6 +262,63 @@ describe("readReactorPanelSettings", () => {
     imagesStore.set({ prefs: { reactor: {} } });
     const reactor = readReactorPanelSettings();
     expect(reactor).not.toHaveProperty("codeformer_weight");
+  });
+});
+
+describe("clearMessagePhotos y pruneOrphanAnchors", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    sessionStore.set({
+      conversationId: "conv-1",
+      allMessages: [{ id: "msg-1", role: "assistant", content: "foto <img>" }],
+      messages: [{ id: "msg-1", role: "assistant", content: "foto <img>" }],
+    });
+    layoutStore.set({ centerGalleryVisible: false });
+  });
+
+  it("clear-photos pide confirmación, POST y actualiza el content", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "msg-1", content: "texto limpio", deleted_files: 2 }),
+      })
+    );
+    await clearMessagePhotos("msg-1");
+    expect(window.confirm).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/conversations/conv-1/messages/msg-1/illustrations/clear-photos",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(sessionStore.get().messages[0].content).toBe("texto limpio");
+    expect(document.querySelector(".notice-toast")?.textContent).toBe("Borradas 2 imagen(es).");
+  });
+
+  it("clear-photos no llama API si se cancela el confirm", async () => {
+    window.confirm.mockReturnValue(false);
+    vi.stubGlobal("fetch", vi.fn());
+    await clearMessagePhotos("msg-1");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("prune-orphans POST y actualiza el content", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "msg-1", content: "sin anclas", deleted_files: 0 }),
+      })
+    );
+    await pruneOrphanAnchors("msg-1");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/conversations/conv-1/messages/msg-1/illustrations/prune-orphans",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(sessionStore.get().messages[0].content).toBe("sin anclas");
+    expect(document.querySelector(".notice-toast")?.textContent).toBe("Anclas huérfanas eliminadas.");
   });
 });
 

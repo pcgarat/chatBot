@@ -29,6 +29,7 @@ from app.schemas import (
     IllustratedImageListResponse,
     IllustratedImageMessageListResponse,
     IllustratedImageMetaResponse,
+    ImageGenerationBatchProgress,
     ImageGenerationJobDeleteRequest,
     ImageGenerationJobDeleteResponse,
     ImageGenerationJobListItem,
@@ -929,6 +930,7 @@ def list_image_generation_queue(
         offset=offset,
     )
     active_count = crud.count_active_image_generation_jobs(db)
+    batch_progress = crud.summarize_active_image_generation_batches(db)
     return ImageGenerationJobListResponse(
         items=[ImageGenerationJobListItem(**item) for item in items],
         total=total,
@@ -936,6 +938,7 @@ def list_image_generation_queue(
         offset=offset,
         active_count=active_count,
         paused=is_image_generation_queue_paused(),
+        batch_progress=[ImageGenerationBatchProgress(**row) for row in batch_progress],
     )
 
 

@@ -1,4 +1,5 @@
 import { API } from "../api/client.js";
+import * as imagesApi from "../api/images.js";
 import { imagesStore } from "../store/images.js";
 import { sessionStore } from "../store/session.js";
 import { appStatus, showError, showNotice } from "../store/ui.js";
@@ -7,6 +8,7 @@ import { buildModelParams } from "../lib/params.js";
 import { collectImagesSnapshot, readForgePanelParams, isVisualConsistencyEnabled } from "./imagesPanel.js";
 import { getPlannerRulesTextForSystem } from "./rulesActions.js";
 import { startImageQueuePoll, loadImageQueuePage } from "./queueActions.js";
+import { refreshGalleryAfterScopeChange } from "./galleryActions.js";
 import { layoutStore } from "../store/layout.js";
 
 const illustrating = new Set();
@@ -243,6 +245,49 @@ export async function generateRemainingImages(messageId) {
     doneNotice: "Imágenes restantes terminadas.",
     errorPrefix: "Imágenes restantes: ",
   });
+}
+
+function applyMessageContentUpdate(messageId, content) {
+  sessionStore.set((s) => ({
+    ...s,
+    allMessages: s.allMessages.map((m) => (m.id === messageId ? { ...m, content } : m)),
+    messages: s.messages.map((m) => (m.id === messageId ? { ...m, content } : m)),
+  }));
+}
+
+export async function clearMessagePhotos(messageId) {
+  const { conversationId } = sessionStore.get();
+  if (!conversationId || !messageId) return;
+  if (
+    !window.confirm(
+      "¿Borrar todas las imágenes de esta respuesta? Se eliminarán los archivos del disco."
+    )
+  ) {
+    return;
+  }
+  try {
+    const result = await imagesApi.clearMessagePhotos(conversationId, messageId);
+    applyMessageContentUpdate(messageId, result.content || "");
+    const n = (result && result.deleted_files) || 0;
+    showNotice(n ? `Borradas ${n} imagen(es).` : "No había imágenes que borrar.");
+    if (layoutStore.get().centerGalleryVisible) {
+      await refreshGalleryAfterScopeChange();
+    }
+  } catch (e) {
+    showError("No se pudieron borrar las imágenes: " + (e.message || e));
+  }
+}
+
+export async function pruneOrphanAnchors(messageId) {
+  const { conversationId } = sessionStore.get();
+  if (!conversationId || !messageId) return;
+  try {
+    const result = await imagesApi.pruneOrphanAnchors(conversationId, messageId);
+    applyMessageContentUpdate(messageId, result.content || "");
+    showNotice("Anclas huérfanas eliminadas.");
+  } catch (e) {
+    showError("No se pudieron borrar las anclas huérfanas: " + (e.message || e));
+  }
 }
 
 export async function illustrateAtParagraph(messageId, paragraphIndex, excerpt) {

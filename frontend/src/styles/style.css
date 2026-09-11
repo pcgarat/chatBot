@@ -5428,6 +5428,33 @@ textarea:focus:not(:focus-visible) {
   font-family: var(--font-family-mono);
 }
 
+.image-batch-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.image-batch-progress[hidden] {
+  display: none !important;
+}
+
+.image-batch-progress-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25em;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
 .status-bar-provider:not(:empty)::after {
   content: "·";
   margin-left: 6px;

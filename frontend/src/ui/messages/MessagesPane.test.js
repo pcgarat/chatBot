@@ -4,6 +4,8 @@ import { fireEvent } from "@testing-library/react";
 vi.mock("../../app/illustrate.js", () => ({
   maybeIllustrateAssistantMessage: vi.fn(),
   generateRemainingImages: vi.fn(),
+  clearMessagePhotos: vi.fn(),
+  pruneOrphanAnchors: vi.fn(),
   illustrateAtParagraph: vi.fn(),
 }));
 
