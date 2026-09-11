@@ -1,5 +1,7 @@
 """Tests del dominio model_contract: tipos, thinking, overlays y contrato vacío."""
 
+import json
+
 from app.services.model_contract import overlays as overlays_mod
 from app.services.model_contract.models import (
     ModelCapabilities,
@@ -7,7 +9,7 @@ from app.services.model_contract.models import (
     ThinkingCapability,
     empty_model_contract,
 )
-from app.services.model_contract.overlays import load_overlays
+from app.services.model_contract.overlays import load_overlays, save_overlays
 from app.services.model_contract.resolve import resolve_model_contract
 from app.services.model_contract.history_quirks import apply_history_quirks
 from app.services.model_contract.thinking import normalize_think_value
@@ -114,6 +116,92 @@ def test_empty_contract_capabilities_defaults():
 def test_load_overlays_archivo_inexistente():
     _clear_overlay_cache("provider_inexistente_xyz")
     assert load_overlays("provider_inexistente_xyz") == {}
+
+
+def test_save_overlays_preserva_formato_compacto_de_entradas_intactas(tmp_path):
+    """Al añadir un modelo no debe expandir arrays/objetos cortos de los demás."""
+    existing = """{
+  "modelo-a": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["low", "high"],
+        "can_disable": false,
+        "default": "high"
+      }
+    },
+    "params": {
+      "temperature": { "default": 0.3 },
+      "num_ctx": { "default": 32768, "max": 131072 }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "low", "temperature": 0.3 } }
+    ],
+    "quirks": []
+  }
+}
+"""
+    path = tmp_path / "ollama.json"
+    path.write_text(existing, encoding="utf-8")
+    data = json.loads(existing)
+    data["modelo-b"] = {
+        "capabilities": {
+            "vision": False,
+            "tools": True,
+            "thinking": {"kind": "boolean", "can_disable": True, "default": True},
+        },
+        "params": {"num_ctx": {"max": 262144}},
+        "recipes": [],
+        "quirks": [],
+    }
+    save_overlays("ollama", data, path=path)
+    text = path.read_text(encoding="utf-8")
+    assert '"values": ["low", "high"]' in text
+    assert '"temperature": { "default": 0.3 }' in text
+    assert '{ "id": "fast", "label": "Rápido", "params": { "think": "low", "temperature": 0.3 } }' in text
+    assert '"modelo-b"' in text
+    assert json.loads(text)["modelo-b"]["params"]["num_ctx"]["max"] == 262144
+
+
+def test_save_overlays_no_reescribe_entrada_igual(tmp_path):
+    path = tmp_path / "ollama.json"
+    existing = '{\n  "solo": { "quirks": [] }\n}\n'
+    path.write_text(existing, encoding="utf-8")
+    data = {"solo": {"quirks": []}, "nuevo": {"recipes": [], "quirks": []}}
+    save_overlays("ollama", data, path=path)
+    text = path.read_text(encoding="utf-8")
+    assert '  "solo": { "quirks": [] }' in text
+    assert json.loads(text)["nuevo"] == {"recipes": [], "quirks": []}
+
+
+def test_save_overlays_preserva_estilo_expanded(tmp_path):
+    existing = """{
+  "modelo-a": {
+    "capabilities": {
+      "thinking": {
+        "kind": "levels",
+        "values": [
+          "low",
+          "high"
+        ],
+        "default": "high"
+      }
+    },
+    "recipes": [],
+    "quirks": []
+  }
+}
+"""
+    path = tmp_path / "openai.json"
+    path.write_text(existing, encoding="utf-8")
+    data = json.loads(existing)
+    data["modelo-b"] = {"recipes": [], "quirks": []}
+    save_overlays("openai", data, path=path)
+    text = path.read_text(encoding="utf-8")
+    assert '"values": [\n          "low",\n          "high"\n        ]' in text
+    assert json.loads(text)["modelo-b"] == {"recipes": [], "quirks": []}
 
 
 def test_load_overlays_json_invalido(tmp_path):
