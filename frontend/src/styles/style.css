@@ -6698,7 +6698,7 @@ body {
   min-height: 28px;
   border-radius: var(--radius-md);
   background: var(--accent-light-strong);
-  color: var(--accent);
+  color: var(--text-secondary);
   border: none;
   justify-content: center;
   transition: background var(--fluent-duration) var(--fluent-ease),
@@ -9225,14 +9225,14 @@ select:focus-visible {
   box-shadow: var(--focus-ring) !important;
 }
 
-/* Crear conversación / generador: mismo look que side-tab activo */
+/* Crear conversación / generador: fondo activo, texto como side-tab inactivo */
 .column-left .sidebar-add-btn,
 .column-left .sidebar-add-btn:hover,
 .column-left .sidebar-add-btn:active {
   border: none !important;
   border-color: transparent !important;
   background: var(--accent-light-strong) !important;
-  color: var(--accent) !important;
+  color: var(--text-secondary) !important;
   box-shadow: none !important;
   font-weight: 600 !important;
   justify-content: center;

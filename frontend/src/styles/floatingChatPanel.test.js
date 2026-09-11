@@ -87,7 +87,7 @@ describe("layout: conversación flotante sobre lienzo unificado", () => {
     expect(section).toMatch(/color\s*:\s*var\(--muted-foreground\)\s*!important/);
     expect(section).toMatch(/\[aria-pressed="true"\][\s\S]{0,120}color\s*:\s*var\(--accent\)\s*!important/);
     expect(section).toMatch(/\.chat-session-actions \.chat-delete-btn\.icon-btn-danger[\s\S]{0,200}color\s*:\s*var\(--muted-foreground\)\s*!important/);
-    expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}color\s*:\s*var\(--accent\)\s*!important/);
+    expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}color\s*:\s*var\(--text-secondary\)\s*!important/);
     expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}background\s*:\s*var\(--accent-light-strong\)\s*!important/);
     expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}border\s*:\s*none\s*!important/);
     expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}border-radius\s*:\s*var\(--radius-md\)\s*!important/);
