@@ -199,7 +199,9 @@ def _build_orchestrator(
             _chat_rules_text(conv, db),
             body.prompt_system_instructions,
         )
-        model_params = _parse_model_params(getattr(conv, "model_params", None))
+        # Params vivos del request (UI) ganan; si van vacíos, fallback a BD.
+        live = body.prompt_model_params if isinstance(body.prompt_model_params, dict) else None
+        model_params = live if live else _parse_model_params(getattr(conv, "model_params", None))
         extra_body = build_extra_body(provider_name, model_params, model_id=model) or None
     else:
         provider_name = body.prompt_provider

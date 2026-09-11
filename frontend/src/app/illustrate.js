@@ -2,7 +2,8 @@ import { API } from "../api/client.js";
 import { imagesStore } from "../store/images.js";
 import { sessionStore } from "../store/session.js";
 import { appStatus, showError, showNotice } from "../store/ui.js";
-import { debugStore, createDebugLogBuffer, getStoredDebugLogSize, pushImagesDebugEntry, appendImagesDebugLog } from "../store/debug.js";
+import { pushChatDebugEntry, appendImagesDebugLog, ingestPlannerLlmDebug, updateChatDebugEntry } from "../store/debug.js";
+import { buildModelParams } from "../lib/params.js";
 import { collectImagesSnapshot, readForgePanelParams, isVisualConsistencyEnabled } from "./imagesPanel.js";
 import { getPlannerRulesTextForSystem } from "./rulesActions.js";
 import { startImageQueuePoll, loadImageQueuePage } from "./queueActions.js";
@@ -11,29 +12,82 @@ import { layoutStore } from "../store/layout.js";
 const illustrating = new Set();
 const abortControllers = new Set();
 
+function apiErrorMessage(err, fallback) {
+  const detail = err && err.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (!item || !item.msg) return "";
+        const loc = Array.isArray(item.loc)
+          ? item.loc.filter((part) => part !== "body").join(".")
+          : "";
+        return loc ? `${loc}: ${item.msg}` : item.msg;
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  return fallback;
+}
+
+function assignOptionalNumber(body, key, value) {
+  if (typeof value === "number" && Number.isFinite(value)) body[key] = value;
+}
+
+function reactorForIllustration(reactor) {
+  if (!reactor || !reactor.enabled) return null;
+  const out = { enabled: true };
+  if (reactor.female_enabled) {
+    out.female_enabled = true;
+    if (reactor.female_face_model) out.female_face_model = reactor.female_face_model;
+  }
+  if (reactor.male_enabled) {
+    out.male_enabled = true;
+    if (reactor.male_face_model) out.male_face_model = reactor.male_face_model;
+  }
+  if (typeof reactor.codeformer_weight === "number" && Number.isFinite(reactor.codeformer_weight)) {
+    out.codeformer_weight = reactor.codeformer_weight;
+  }
+  return out;
+}
+
 function snapshotBody(extra = {}) {
   const snap = collectImagesSnapshot();
   const forge = readForgePanelParams();
-  return {
+  const body = {
     images_per_response: snap.images_per_response,
     batch_size: snap.batch_size,
     prompt_provider: snap.prompt_provider || "ollama",
     prompt_model: snap.prompt_model || "",
     retries: snap.retries,
     prompt: snap.prompt || "",
-    prompt_system_instructions: getPlannerRulesTextForSystem() || snap.prompt_system_instructions,
+    prompt_system_instructions: getPlannerRulesTextForSystem(),
     use_chat_config: snap.use_chat_config,
     visual_consistency: isVisualConsistencyEnabled(),
-    prompt_model_params: snap.use_chat_config ? {} : snap.prompt_model_params || {},
+    prompt_model_params: snap.use_chat_config
+      ? buildModelParams()
+      : snap.prompt_model_params || {},
     include_prompt_debug: true,
     debug: true,
-    reactor: snap.reactor || {},
-    steps: forge.steps != null ? forge.steps : snap.steps,
-    width: forge.width != null ? forge.width : snap.width,
-    height: forge.height != null ? forge.height : snap.height,
-    seed: forge.seed != null ? forge.seed : snap.seed,
-    ...extra,
   };
+  const reactor = reactorForIllustration(snap.reactor);
+  if (reactor) body.reactor = reactor;
+  assignOptionalNumber(body, "steps", forge.steps);
+  assignOptionalNumber(body, "width", forge.width);
+  assignOptionalNumber(body, "height", forge.height);
+  assignOptionalNumber(body, "seed", forge.seed);
+  const forgeKeys = new Set(["steps", "width", "height", "seed"]);
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === undefined) continue;
+    if (forgeKeys.has(key)) {
+      if (value === "" || value == null) delete body[key];
+      else assignOptionalNumber(body, key, value);
+      continue;
+    }
+    body[key] = value;
+  }
+  return body;
 }
 
 export async function runIllustrationStream(opts) {
@@ -45,6 +99,7 @@ export async function runIllustrationStream(opts) {
   const imgStatusId = appStatus.push("images", "images.starting");
   appendImagesDebugLog(opts.debugLabel || `Iniciando stream message=${messageId}`);
   let queuedAny = false;
+  let plannerDebugEntry = null;
   try {
     const res = await fetch(opts.url, {
       method: "POST",
@@ -54,7 +109,7 @@ export async function runIllustrationStream(opts) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || res.statusText);
+      throw new Error(apiErrorMessage(err, res.statusText) || res.statusText);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -74,6 +129,17 @@ export async function runIllustrationStream(opts) {
           continue;
         }
         if (data.status) appStatus.update(imgStatusId, data.status, data.message, data);
+        if (data.type === "status" && data.data && data.data.code === "images.planning") {
+          plannerDebugEntry = pushChatDebugEntry({
+            title: "Petición al LLM de planificador",
+            status: "sending",
+            details: {
+              batch: data.data.batch ?? null,
+              paragraph_index: data.data.paragraph_index ?? null,
+              message_id: messageId,
+            },
+          });
+        }
         if (data.content != null && data.message_id) {
           sessionStore.set((s) => ({
             ...s,
@@ -89,7 +155,8 @@ export async function runIllustrationStream(opts) {
           appendImagesDebugLog(data.message || JSON.stringify(data));
         }
         if (data.type === "llm_debug") {
-          pushImagesDebugEntry({ title: "llm_debug", details: data });
+          ingestPlannerLlmDebug(data, plannerDebugEntry && plannerDebugEntry.id);
+          plannerDebugEntry = null;
         }
       }
     }
@@ -104,9 +171,21 @@ export async function runIllustrationStream(opts) {
     if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) {
       appStatus.update(imgStatusId, "images.cancelled");
       appendImagesDebugLog(`Stream abortado message=${messageId}`);
+      if (plannerDebugEntry) {
+        updateChatDebugEntry(plannerDebugEntry.id, {
+          status: "cancelled",
+          details: e.message || e.name,
+        });
+      }
     } else {
       appStatus.update(imgStatusId, "images.error", e.message || "");
       appendImagesDebugLog("Error: " + e.message);
+      if (plannerDebugEntry) {
+        updateChatDebugEntry(plannerDebugEntry.id, {
+          status: "error",
+          details: e.message || e.name,
+        });
+      }
       showError((opts.errorPrefix || "Ilustración: ") + e.message);
     }
   } finally {
@@ -116,8 +195,6 @@ export async function runIllustrationStream(opts) {
     appStatus.pop(imgStatusId);
   }
 }
-
-void "(function initDarkMode";
 
 export async function maybeIllustrateAssistantMessage(messageId, options = {}) {
   const force = !!options.force;
@@ -136,7 +213,6 @@ export async function maybeIllustrateAssistantMessage(messageId, options = {}) {
     url: `${API}/conversations/${conversationId}/messages/${messageId}/illustrate`,
     body: snapshotBody({
       visual_consistency: isVisualConsistencyEnabled(),
-      prompt_model_params: snap.prompt_model_params,
       prompt_system_instructions: getPlannerRulesTextForSystem(),
       steps: forge.steps,
       width: forge.width,
@@ -161,7 +237,6 @@ export async function generateRemainingImages(messageId) {
       retries: snap.retries,
       batch_size: snap.batch_size,
       visual_consistency: isVisualConsistencyEnabled(),
-      prompt_model_params: snap.prompt_model_params,
       steps: forge.steps,
     }),
     debugLabel: `Iniciando generate-remaining message=${messageId}`,
@@ -192,7 +267,6 @@ export async function illustrateAtParagraph(messageId, paragraphIndex, excerpt) 
       paragraph_index: idx,
       selected_excerpt: excerpt ? String(excerpt).trim() : "",
       visual_consistency: isVisualConsistencyEnabled(),
-      prompt_model_params: snap.prompt_model_params,
       steps: forge.steps,
     }),
     debugLabel: `Iniciando illustrate-at message=${messageId} párrafo=${idx}`,

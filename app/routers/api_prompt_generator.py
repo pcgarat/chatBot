@@ -3,7 +3,7 @@
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -17,6 +17,19 @@ router = APIRouter(prefix="/api", tags=["prompt-generator"])
 class PromptGeneratorTurnIn(BaseModel):
     message: Optional[str] = None
     force: bool = False
+    model_params: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Params de generación vivos de la UI (prioridad sobre los de la conversación).",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_content_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("message") is None and data.get("content") is not None:
+            out = dict(data)
+            out["message"] = out.get("content")
+            return out
+        return data
 
 
 class PromptGeneratorTurnOut(BaseModel):
@@ -43,6 +56,7 @@ def prompt_generator_turn(
             conversation_id,
             message=body.message,
             force=body.force,
+            model_params=body.model_params,
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")

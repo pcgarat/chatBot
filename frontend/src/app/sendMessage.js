@@ -2,34 +2,14 @@ import { streamUrl, promptGeneratorTurn, deleteLastMessage } from "../api/conver
 import { sessionStore } from "../store/session.js";
 import { settingsStore } from "../store/settings.js";
 import { appStatus, showError, showNotice } from "../store/ui.js";
-import { debugStore, createDebugLogBuffer, getStoredDebugLogSize } from "../store/debug.js";
+import { pushChatDebugEntry, updateChatDebugEntry } from "../store/debug.js";
 import { buildModelParams } from "../lib/params.js";
 import { visibleMessages } from "../lib/tree.js";
 import { newConversation } from "./sessionActions.js";
 import { refreshLeftHistory } from "./historyActions.js";
 import { createStreamBuffer } from "./stream.js";
 import { maybeIllustrateAssistantMessage } from "./illustrate.js";
-
-const chatBuffer = createDebugLogBuffer(getStoredDebugLogSize);
-
-function pushChatDebugEntry(partial) {
-  const id = chatBuffer.push(partial);
-  debugStore.set({ chatLog: chatBuffer.list() });
-  return { id };
-}
-
-function updateChatDebugEntry(id, patch) {
-  chatBuffer.update(id, patch);
-  debugStore.set({ chatLog: chatBuffer.list() });
-}
-
-function getRulesTextForSystem() {
-  const rules = sessionStore.get().rules || [];
-  return rules
-    .map((r) => (r && r.content ? String(r.content).trim() : ""))
-    .filter(Boolean)
-    .join(" ");
-}
+import { getChatRulesTextForSystem } from "./rulesActions.js";
 
 function applyTreeToStore(allMessages, activeLeafId, extra = {}) {
   const ephemerals = (sessionStore.get().messages || []).filter((m) => m.ephemeral_debug);
@@ -61,8 +41,8 @@ export async function sendPromptGeneratorTurn({ force = false } = {}) {
   const statusId = appStatus.push("chat", "chat.sending");
   try {
     await promptGeneratorTurn(conversationId, {
-      content,
-      instruction_override: (session.instructionOverride || "").trim() || null,
+      message: content,
+      force,
       model_params: buildModelParams(),
     });
     sessionStore.set({ composerDraft: "" });
@@ -133,7 +113,7 @@ export async function sendMessage() {
     const bodyPayload = {
       content,
       instruction_override: instructionOverride,
-      system_instruction_global: getRulesTextForSystem(),
+      system_instruction_global: getChatRulesTextForSystem(),
       save_to_chromadb: settingsStore.get().saveToChromadb || "user",
     };
     if (parentId) bodyPayload.parent_message_id = parentId;
