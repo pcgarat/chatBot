@@ -53,6 +53,7 @@ def test_distributed_strategy_assigns_midpoint_paragraphs():
     assert [p.index for p in batch.assigned_paragraphs] == [2, 4] or len(
         batch.assigned_paragraphs
     ) == 2
+    assert batch.selection_policy == ""
     assert batch.selection_instructions == ""
 
 
@@ -63,8 +64,9 @@ def test_llm_erotic_strategy_does_not_preassign():
     assert batch.binds_to_assigned is False
     assert batch.assigned_paragraphs == []
     assert batch.max_scenes == 3
-    assert "erótic" in batch.selection_instructions.lower()
-    assert "historia" in batch.selection_instructions.lower()
+    assert "erótic" in batch.selection_policy.lower()
+    assert "historia" in batch.selection_policy.lower()
+    assert "MANDA" in batch.selection_policy
 
 
 def test_llm_pornographic_peaks_strategy_targets_explicit_moments():
@@ -79,8 +81,10 @@ def test_llm_pornographic_peaks_strategy_targets_explicit_moments():
     assert batch.binds_to_assigned is False
     assert batch.assigned_paragraphs == []
     assert batch.max_scenes == 2
-    assert "pornográf" in batch.selection_instructions.lower()
-    assert "explícit" in batch.selection_instructions.lower()
+    assert "pornográf" in batch.selection_policy.lower()
+    assert "explícit" in batch.selection_policy.lower()
+    assert "ANULA el reparto uniforme" in batch.selection_policy
+    assert "concentrar" in batch.selection_policy.lower()
 
 
 def test_orchestrator_pornographic_strategy_forwards_instructions():
@@ -118,8 +122,8 @@ def test_orchestrator_pornographic_strategy_forwards_instructions():
         )
     )
     assert planner.last_assigned_paragraphs in (None, [])
-    assert planner.last_selection_instructions
-    assert "pornográf" in planner.last_selection_instructions.lower()
+    assert planner.last_selection_policy
+    assert "pornográf" in planner.last_selection_policy.lower()
     assert any(
         e.type == "log"
         and e.data.get("scene_selection_strategy") == "llm_pornographic_peaks"
@@ -162,8 +166,8 @@ def test_orchestrator_llm_strategy_forwards_instructions_without_assigned():
         )
     )
     assert planner.last_assigned_paragraphs in (None, [])
-    assert planner.last_selection_instructions
-    assert "erótic" in planner.last_selection_instructions.lower()
+    assert planner.last_selection_policy
+    assert "erótic" in planner.last_selection_policy.lower()
     assert any(
         e.type == "log" and e.data.get("scene_selection_strategy") == "llm_erotic_story"
         for e in events
@@ -198,5 +202,5 @@ def test_orchestrator_distributed_still_assigns_paragraphs():
         )
     )
     assert planner.last_assigned_paragraphs
-    assert planner.last_selection_instructions in (None, "")
+    assert planner.last_selection_policy in (None, "")
     assert resolve_scene_selection_strategy("distributed").id == "distributed"

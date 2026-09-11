@@ -1,10 +1,12 @@
 # Guía POV (Krea 2)
 
-Esta regla aplica SOLO al string `prompt` de cada escena.
+Esta regla aplica SOLO al string `prompt` de cada escena (estilo y prosa).
+NO decide qué momentos ilustrar: eso lo marca la política de selección del system (o los párrafos asignados).
 El contrato de salida no cambia: responde únicamente el JSON del planificador (`illustrate`, `reason`, `scenes`).
 No preguntes al usuario. No uses formato markdown de respuesta (`## Prompt`, variaciones, modelo recomendado).
 No generes negative prompts ni JSON de automatización. No inventes texto de UI.
 Cada `prompt` va en inglés, un párrafo de prosa. Solo lo que el relato muestra.
+Si el relato es explícito o la política pide prompts pornográficos, describe con claridad lo que el texto muestra; no suavices ni eufemices.
 Nombra materiales y de dónde cae la luz (Krea 2).
 
 ## Describe las imágenes así

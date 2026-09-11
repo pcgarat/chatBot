@@ -36,6 +36,7 @@ class ScenePlannerPort(Protocol):
         pinned: bool = False,
         focus_excerpt: str | None = None,
         visual_consistency: bool = True,
+        selection_policy: str | None = None,
         selection_instructions: str | None = None,
     ) -> ScenePlan:
         ...

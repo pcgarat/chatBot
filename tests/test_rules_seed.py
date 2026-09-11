@@ -31,7 +31,11 @@ def _assert_planner_prompt_contract(text: str) -> None:
 
 
 def test_seed_file_is_planner_contract_not_raw_download():
-    _assert_planner_prompt_contract(_SEED.read_text(encoding="utf-8"))
+    text = _SEED.read_text(encoding="utf-8")
+    _assert_planner_prompt_contract(text)
+    assert "NO decide qué momentos ilustrar" in text
+    assert "no suavices ni eufemices" in text
+    assert "salvo que el relato" in text
 
 
 def test_krea2_pov_seed_file_is_planner_contract():
