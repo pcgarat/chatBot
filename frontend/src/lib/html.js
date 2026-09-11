@@ -1,3 +1,6 @@
+import { layoutStore } from "../store/layout.js";
+import { renderMarkdownHtml } from "./markdown.js";
+
 export function escapeHtml(s) {
   if (s == null) return "";
   const div = document.createElement("div");
@@ -5,9 +8,19 @@ export function escapeHtml(s) {
   return div.innerHTML;
 }
 
+function wantsMarkdown(options) {
+  if (options && typeof options.markdown === "boolean") return options.markdown;
+  try {
+    return !!layoutStore.get().renderMarkdown;
+  } catch (_) {
+    return true;
+  }
+}
+
 /** Escapa texto pero conserva img/placeholder/error de ilustración y marcadores. */
-export function formatMessageHtml(content, paragraphStart) {
+export function formatMessageHtml(content, paragraphStart, options) {
   const startIndex = paragraphStart == null ? 0 : paragraphStart;
+  const markdown = wantsMarkdown(options);
   const raw = content == null ? "" : String(content);
   const tokens = [];
   const pattern =
@@ -31,9 +44,9 @@ export function formatMessageHtml(content, paragraphStart) {
   trimIllustrationAdjacentWhitespace(tokens);
   if (!tokens.some((tok) => tok.t === "html")) {
     const plain = tokens.map((tok) => tok.v).join("");
-    return wrapNarrativeParagraphs(plain, startIndex);
+    return wrapNarrativeParagraphs(plain, startIndex, markdown);
   }
-  return layoutIllustratedHtml(tokens, startIndex);
+  return layoutIllustratedHtml(tokens, startIndex, markdown);
 }
 
 export function stripIllustrationArtifactsClient(text) {
@@ -50,22 +63,26 @@ export function countNarrativeParagraphs(content) {
   return splitIllustrationParagraphs(stripIllustrationArtifactsClient(content)).length;
 }
 
-export function narrativeParagraphHtml(text, index, className) {
+export function narrativeParagraphHtml(text, index, className, markdown = false) {
+  const inner = markdown
+    ? renderMarkdownHtml(text)
+    : escapeHtml(text).replace(/\n/g, "<br>");
+  const mdClass = markdown ? " message-md" : "";
   return (
-    `<div class="${className} chat-paragraph" data-paragraph-index="${index}">` +
-    `${escapeHtml(text).replace(/\n/g, "<br>")}</div>`
+    `<div class="${className} chat-paragraph${mdClass}" data-paragraph-index="${index}">` +
+    `${inner}</div>`
   );
 }
 
-export function wrapNarrativeParagraphs(text, startIndex) {
+export function wrapNarrativeParagraphs(text, startIndex, markdown = false) {
   const paras = splitIllustrationParagraphs(text);
   if (!paras.length) {
     const raw = String(text || "");
     if (!raw.trim()) return "";
-    return narrativeParagraphHtml(raw, startIndex, "illustration-lead");
+    return narrativeParagraphHtml(raw, startIndex, "illustration-lead", markdown);
   }
   return paras
-    .map((p, i) => narrativeParagraphHtml(p, startIndex + i, "illustration-lead"))
+    .map((p, i) => narrativeParagraphHtml(p, startIndex + i, "illustration-lead", markdown))
     .join("");
 }
 
@@ -74,6 +91,15 @@ export function splitIllustrationParagraphs(text) {
     .split(/\n\s*\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
+}
+
+export function wrapIllustrationMarkup(html) {
+  const s = String(html || "");
+  if (s.includes("chat-illustration-frame")) return s;
+  if (/<img\b[^>]*chat-illustration/i.test(s)) {
+    return `<span class="chat-illustration-frame">${s}</span>`;
+  }
+  return s;
 }
 
 export function isWrapIllustrationHtml(html) {
@@ -87,7 +113,7 @@ export function isWrapIllustrationHtml(html) {
  * Lo que sigue envuelve a la derecha; el previo a la siguiente imagen
  * queda fuera de esa unidad para no meterse en el hueco que sobre.
  */
-export function layoutIllustratedHtml(tokens, paragraphStart) {
+export function layoutIllustratedHtml(tokens, paragraphStart, markdown = false) {
   const startIndex = paragraphStart == null ? 0 : paragraphStart;
   const items = [];
   tokens.forEach((tok) => {
@@ -109,7 +135,7 @@ export function layoutIllustratedHtml(tokens, paragraphStart) {
   while (i < items.length) {
     const item = items[i];
     if (item.kind === "para") {
-      out.push(narrativeParagraphHtml(item.v, paraIndex, "illustration-lead"));
+      out.push(narrativeParagraphHtml(item.v, paraIndex, "illustration-lead", markdown));
       paraIndex += 1;
       i += 1;
       continue;
@@ -141,13 +167,13 @@ export function layoutIllustratedHtml(tokens, paragraphStart) {
     const ownerIndex = paraIndex > 0 ? paraIndex - 1 : Math.max(0, startIndex - 1);
     const wrapHtml = wrapParas
       .map((p) => {
-        const html = narrativeParagraphHtml(p.v, paraIndex, "illustration-wrap");
+        const html = narrativeParagraphHtml(p.v, paraIndex, "illustration-wrap", markdown);
         paraIndex += 1;
         return html;
       })
       .join("");
     out.push(
-      `<div class="illustration-unit" data-owner-paragraph-index="${ownerIndex}">${item.v}${wrapHtml}</div>`
+      `<div class="illustration-unit" data-owner-paragraph-index="${ownerIndex}">${wrapIllustrationMarkup(item.v)}${wrapHtml}</div>`
     );
     i += 1 + wrapParas.length;
   }
@@ -192,16 +218,16 @@ export function messageCollapseKey(m, idx) {
   return m && m.id ? String(m.id) : `idx:${idx}`;
 }
 
-export function buildCollapsibleMessageHtml(content, key, collapsed) {
+export function buildCollapsibleMessageHtml(content, key, collapsed, options) {
   const parts = splitFirstParagraph(content);
   if (!parts.collapsible) {
-    return `<div class="message-content">${formatMessageHtml(content || "", 0)}</div>`;
+    return `<div class="message-content">${formatMessageHtml(content || "", 0, options)}</div>`;
   }
   const toggleLabel = collapsed ? "Show more" : "Show less";
   const restOffset = countNarrativeParagraphs(parts.first);
   return `<div class="message-body-collapsible${collapsed ? " is-collapsed" : ""}" data-collapse-key="${escapeHtml(key)}">
-    <div class="message-content-preview">${formatMessageHtml(parts.first, 0)}</div>
-    <div class="message-content-rest">${formatMessageHtml(parts.rest, restOffset)}</div>
+    <div class="message-content-preview">${formatMessageHtml(parts.first, 0, options)}</div>
+    <div class="message-content-rest">${formatMessageHtml(parts.rest, restOffset, options)}</div>
     <button type="button" class="msg-collapse-toggle" aria-expanded="${collapsed ? "false" : "true"}">${toggleLabel}</button>
   </div>`;
 }

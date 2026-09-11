@@ -1,4 +1,284 @@
 {
+  "gpt-6-astra": {
+    "context_length": {
+      "max": 1050000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.6": {
+    "context_length": {
+      "max": 1050000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.6-sol": {
+    "context_length": {
+      "max": 1050000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.6-terra": {
+    "context_length": {
+      "max": 1050000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.6-luna": {
+    "context_length": {
+      "max": 400000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.4": {
+    "context_length": {
+      "max": 1050000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.4-pro": {
+    "context_length": {
+      "max": 1050000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.4-mini": {
+    "context_length": {
+      "max": 1050000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.4-nano": {
+    "context_length": {
+      "max": 400000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
+  "gpt-5.3-codex": {
+    "context_length": {
+      "max": 400000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 4096,
+      "min": 1,
+      "max": 128000
+    },
+    "tags": [
+      "Assistants",
+      "Batch",
+      "Chat Completions",
+      "Code interpreter",
+      "File search",
+      "Function calling",
+      "Image",
+      "MCP",
+      "Realtime",
+      "Responses",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search"
+    ]
+  },
   "gpt-5.2": {
     "context_length": {
       "max": 400000

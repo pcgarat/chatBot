@@ -9,6 +9,7 @@ import { RulesList } from "./ui/rules/RulesList.jsx";
 import { RuleEditModal } from "./ui/rules/RuleEditModal.jsx";
 import { bootApp } from "./app/boot.js";
 import { StoreDomSync } from "./ui/layout/StoreDomSync.jsx";
+import { PrefPercentValue, PrefDebugLogValue } from "./ui/layout/PreferenceValues.jsx";
 
 export default function App() {
   useEffect(() => { bootApp(); }, []);
@@ -739,7 +740,7 @@ export default function App() {
                           <button type="button" id="pref-font-base-decrease" className="icon-btn font-size-btn" title="Reducir tamaño de texto base" aria-label="Reducir tamaño de texto base">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-font-base-value" className="pref-font-value" aria-live="polite">100%</span>
+                          <PrefPercentValue id="pref-font-base-value" field="uiBaseFontScale" />
                           <button type="button" id="pref-font-base-increase" className="icon-btn font-size-btn" title="Aumentar tamaño de texto base" aria-label="Aumentar tamaño de texto base">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -754,7 +755,7 @@ export default function App() {
                           <button type="button" id="pref-font-decrease" className="icon-btn font-size-btn" title="Reducir tamaño del texto" aria-label="Reducir tamaño del texto">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-font-value" className="pref-font-value" aria-live="polite">80%</span>
+                          <PrefPercentValue id="pref-font-value" field="conversationFontRem" />
                           <button type="button" id="pref-font-increase" className="icon-btn font-size-btn" title="Aumentar tamaño del texto" aria-label="Aumentar tamaño del texto">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -769,7 +770,7 @@ export default function App() {
                           <button type="button" id="pref-font-left-decrease" className="icon-btn font-size-btn" title="Reducir texto del historial" aria-label="Reducir texto del panel izquierdo">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-font-left-value" className="pref-font-value" aria-live="polite">100%</span>
+                          <PrefPercentValue id="pref-font-left-value" field="sidebarLeftFontScale" />
                           <button type="button" id="pref-font-left-increase" className="icon-btn font-size-btn" title="Aumentar texto del historial" aria-label="Aumentar texto del panel izquierdo">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -784,7 +785,7 @@ export default function App() {
                           <button type="button" id="pref-font-right-decrease" className="icon-btn font-size-btn" title="Reducir texto de reglas y ajustes" aria-label="Reducir texto del panel derecho">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-font-right-value" className="pref-font-value" aria-live="polite">100%</span>
+                          <PrefPercentValue id="pref-font-right-value" field="sidebarRightFontScale" />
                           <button type="button" id="pref-font-right-increase" className="icon-btn font-size-btn" title="Aumentar texto de reglas y ajustes" aria-label="Aumentar texto del panel derecho">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -799,7 +800,7 @@ export default function App() {
                           <button type="button" id="pref-image-decrease" className="icon-btn font-size-btn" title="Reducir tamaño de las ilustraciones" aria-label="Reducir tamaño de las ilustraciones">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-image-value" className="pref-font-value" aria-live="polite">100%</span>
+                          <PrefPercentValue id="pref-image-value" field="imageSizeFactor" />
                           <button type="button" id="pref-image-increase" className="icon-btn font-size-btn" title="Aumentar tamaño de las ilustraciones" aria-label="Aumentar tamaño de las ilustraciones">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -814,7 +815,7 @@ export default function App() {
                           <button type="button" id="pref-debug-log-decrease" className="icon-btn font-size-btn" title="Reducir historial de debug" aria-label="Reducir historial de debug">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
-                          <span id="pref-debug-log-value" className="pref-font-value" aria-live="polite">100</span>
+                          <PrefDebugLogValue id="pref-debug-log-value" />
                           <button type="button" id="pref-debug-log-increase" className="icon-btn font-size-btn" title="Aumentar historial de debug" aria-label="Aumentar historial de debug">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -826,6 +827,14 @@ export default function App() {
                           <span className="pref-row-hint">Fondo y paneles</span>
                         </span>
                         <input type="checkbox" id="dark-mode-toggle" className="fluent-switch-input" aria-label="Tema oscuro" />
+                        <span className="fluent-switch-track" aria-hidden="true"><span className="fluent-switch-thumb"></span></span>
+                      </label>
+                      <label className="pref-row fluent-toggle-row" title="Interpretar Markdown en los mensajes del panel de conversación">
+                        <span className="pref-row-copy">
+                          <span className="pref-row-label">Markdown en conversación</span>
+                          <span className="pref-row-hint">Títulos, negrita, listas y el resto del formato</span>
+                        </span>
+                        <input type="checkbox" id="render-markdown-toggle" className="fluent-switch-input" defaultChecked aria-label="Markdown en conversación" />
                         <span className="fluent-switch-track" aria-hidden="true"><span className="fluent-switch-thumb"></span></span>
                       </label>
                       <label className="pref-row fluent-toggle-row" title="Durante la generación, hacer scroll al último contenido">

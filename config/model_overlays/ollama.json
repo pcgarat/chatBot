@@ -96,9 +96,10 @@
       "structured_output": true,
       "thinking": {
         "kind": "levels",
-        "values": ["false", "true", "low", "medium", "high", "max"],
-        "can_disable": true,
-        "default": "medium"
+        "values": ["low", "high", "max"],
+        "can_disable": false,
+        "true_maps_to": "high",
+        "default": "high"
       }
     },
     "params": {
@@ -107,13 +108,43 @@
       "think": {
         "api_key": "think",
         "type": "enum",
-        "values": ["false", "true", "low", "medium", "high", "max"],
-        "default": "medium"
+        "values": ["low", "high", "max"],
+        "default": "high"
       }
     },
     "recipes": [
       { "id": "fast", "label": "Rápido", "params": { "think": "low", "temperature": 0.3, "num_ctx": 32768 } },
       { "id": "coding", "label": "Coding", "params": { "think": "high", "temperature": 0.3, "num_ctx": 131072 } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.2, "num_ctx": 131072 } }
+    ],
+    "quirks": []
+  },
+  "glm-5.3:cloud": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["low", "high", "max"],
+        "can_disable": false,
+        "true_maps_to": "max",
+        "default": "max"
+      }
+    },
+    "params": {
+      "temperature": { "default": 0.3 },
+      "num_ctx": { "default": 32768, "max": 1048576 },
+      "think": {
+        "api_key": "think",
+        "type": "enum",
+        "values": ["low", "high", "max"],
+        "default": "max"
+      }
+    },
+    "recipes": [
+      { "id": "chat", "label": "Chat", "params": { "think": "low", "temperature": 0.5, "num_ctx": 32768 } },
+      { "id": "coding", "label": "Coding", "params": { "think": "high", "temperature": 0.3, "num_ctx": 262144 } },
       { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.2, "num_ctx": 131072 } }
     ],
     "quirks": []
@@ -125,8 +156,9 @@
       "structured_output": true,
       "thinking": {
         "kind": "levels",
-        "values": ["false", "true", "low", "medium", "high", "max"],
-        "can_disable": true,
+        "values": ["high", "max"],
+        "can_disable": false,
+        "true_maps_to": "high",
         "default": "high"
       }
     },
@@ -136,12 +168,12 @@
       "think": {
         "api_key": "think",
         "type": "enum",
-        "values": ["false", "true", "low", "medium", "high", "max"],
+        "values": ["high", "max"],
         "default": "high"
       }
     },
     "recipes": [
-      { "id": "chat", "label": "Chat", "params": { "think": "medium", "temperature": 0.6, "num_ctx": 32768 } },
+      { "id": "chat", "label": "Chat", "params": { "think": "high", "temperature": 0.6, "num_ctx": 32768 } },
       { "id": "coding", "label": "Coding", "params": { "think": "high", "temperature": 0.3, "num_ctx": 262144 } },
       { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.2, "num_ctx": 131072 } }
     ],
@@ -183,9 +215,10 @@
       "structured_output": true,
       "thinking": {
         "kind": "levels",
-        "values": ["false", "true", "low", "medium", "high", "max"],
-        "can_disable": true,
-        "default": "high"
+        "values": ["low", "high", "max"],
+        "can_disable": false,
+        "true_maps_to": "max",
+        "default": "max"
       }
     },
     "params": {
@@ -194,8 +227,8 @@
       "think": {
         "api_key": "think",
         "type": "enum",
-        "values": ["false", "true", "low", "medium", "high", "max"],
-        "default": "high"
+        "values": ["low", "high", "max"],
+        "default": "max"
       }
     },
     "recipes": [

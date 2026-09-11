@@ -3,6 +3,12 @@ import { sessionStore } from "../store/session.js";
 import { settingsStore } from "../store/settings.js";
 import { showError, showNotice } from "../store/ui.js";
 
+let persistPlannerRulesFn = () => {};
+
+export function registerPlannerRulesPersister(fn) {
+  persistPlannerRulesFn = typeof fn === "function" ? fn : () => {};
+}
+
 export async function loadLibraryRules() {
   try {
     const list = await rulesApi.listRules("chat");
@@ -33,15 +39,37 @@ export function serializeRuleItems(rules) {
   return serializeRules(rules);
 }
 
-export function concatRuleContents(rules) {
+function ruleRefId(rule) {
+  return rule && (rule.rule_id || rule.id);
+}
+
+function libraryRulesForScope(scope) {
+  const settings = settingsStore.get();
+  return scope === "planner" ? settings.plannerLibraryRules || [] : settings.libraryRules || [];
+}
+
+export function resolveRuleContent(rule, scope = "chat") {
+  const own = rule && rule.content ? String(rule.content).trim() : "";
+  if (own) return own;
+  const id = ruleRefId(rule);
+  if (!id) return "";
+  const lib = libraryRulesForScope(scope).find((r) => String(r.id) === String(id));
+  return lib && lib.content ? String(lib.content).trim() : "";
+}
+
+export function concatRuleContents(rules, scope = "chat") {
   return (rules || [])
-    .map((r) => (r && r.content ? String(r.content).trim() : ""))
+    .map((r) => resolveRuleContent(r, scope))
     .filter(Boolean)
     .join(" ");
 }
 
+export function getChatRulesTextForSystem() {
+  return concatRuleContents(sessionStore.get().rules, "chat");
+}
+
 export function getPlannerRulesTextForSystem() {
-  return concatRuleContents(sessionStore.get().plannerRules);
+  return concatRuleContents(sessionStore.get().plannerRules, "planner");
 }
 
 export function normalizePlannerRulesFromPrefs(value) {
@@ -56,14 +84,16 @@ export function normalizePlannerRulesFromPrefs(value) {
   return [];
 }
 
-export function hydratePlannerRulesFromLibrary() {
-  const plannerLibraryRules = settingsStore.get().plannerLibraryRules || [];
-  if (!Array.isArray(plannerLibraryRules) || !plannerLibraryRules.length) return false;
+function hydrateRulesFromLibrary(scope) {
+  const key = scope === "planner" ? "plannerRules" : "rules";
+  const library = libraryRulesForScope(scope);
+  if (!Array.isArray(library) || !library.length) return false;
   let changed = false;
-  const plannerRules = (sessionStore.get().plannerRules || []).map(function (item) {
-    if (!item || !item.rule_id) return item;
-    const lib = plannerLibraryRules.find(function (r) {
-      return r.id === item.rule_id;
+  const next = (sessionStore.get()[key] || []).map(function (item) {
+    const id = ruleRefId(item);
+    if (!id) return item;
+    const lib = library.find(function (r) {
+      return String(r.id) === String(id);
     });
     if (!lib) return item;
     const title = lib.title || "";
@@ -72,15 +102,61 @@ export function hydratePlannerRulesFromLibrary() {
     changed = true;
     return Object.assign({}, item, { title: title, content: content });
   });
-  if (changed) sessionStore.set({ plannerRules });
+  if (changed) sessionStore.set({ [key]: next });
   return changed;
+}
+
+export function hydratePlannerRulesFromLibrary() {
+  return hydrateRulesFromLibrary("planner");
+}
+
+export function hydrateChatRulesFromLibrary() {
+  return hydrateRulesFromLibrary("chat");
 }
 
 export async function persistSessionRules() {
   const { conversationId, rules } = sessionStore.get();
   if (!conversationId) return;
   const { patchConversation } = await import("../api/conversations.js");
-  patchConversation(conversationId, { rules: serializeRules(rules) }).catch(() => {});
+  patchConversation(conversationId, { system_instructions: serializeRules(rules) }).catch(() => {});
+}
+
+function persistActiveRules(scope) {
+  if (scope === "planner") {
+    persistPlannerRulesFn();
+    return;
+  }
+  persistSessionRules();
+}
+
+export function moveRuleItem(list, from, to) {
+  const fromIdx = Number(from);
+  const toIdx = Number(to);
+  if (
+    !Array.isArray(list) ||
+    !Number.isInteger(fromIdx) ||
+    !Number.isInteger(toIdx) ||
+    fromIdx === toIdx ||
+    fromIdx < 0 ||
+    toIdx < 0 ||
+    fromIdx >= list.length ||
+    toIdx >= list.length
+  ) {
+    return list;
+  }
+  const next = list.slice();
+  const [item] = next.splice(fromIdx, 1);
+  next.splice(Math.min(toIdx, next.length), 0, item);
+  return next;
+}
+
+export function reorderActiveRules(from, to, scope = "chat") {
+  const key = scope === "planner" ? "plannerRules" : "rules";
+  const current = sessionStore.get()[key];
+  const next = moveRuleItem(current, from, to);
+  if (next === current) return;
+  sessionStore.set({ [key]: next });
+  persistActiveRules(scope);
 }
 
 export async function addLibraryRule(ruleId, scope = "chat") {
@@ -91,8 +167,8 @@ export async function addLibraryRule(ruleId, scope = "chat") {
     sessionStore.set((s) => ({ ...s, plannerRules: s.plannerRules.concat([rule]) }));
   } else {
     sessionStore.set((s) => ({ ...s, rules: s.rules.concat([rule]) }));
-    persistSessionRules();
   }
+  persistActiveRules(scope);
 }
 
 export async function createAndAddRule({ title, content, scope = "chat" }) {
@@ -104,8 +180,8 @@ export async function createAndAddRule({ title, content, scope = "chat" }) {
     } else {
       sessionStore.set((s) => ({ ...s, rules: s.rules.concat([newRule]) }));
       await loadLibraryRules();
-      persistSessionRules();
     }
+    persistActiveRules(scope);
     showNotice("Regla creada.");
     return newRule;
   } catch (e) {
@@ -123,13 +199,14 @@ export async function saveEditedRule(rule, { asNew = false } = {}) {
         scope: rule.scope || "chat",
       });
       replaceRuleInSession(rule.id || rule.rule_id, created, rule.scope);
+      persistActiveRules(rule.scope || "chat");
       showNotice("Nueva regla guardada.");
       return created;
     }
     const id = rule.rule_id || rule.id;
     const updated = await rulesApi.updateRule(id, { title: rule.title, content: rule.content });
     replaceRuleInSession(id, updated || { ...rule, id }, rule.scope);
-    persistSessionRules();
+    persistActiveRules(rule.scope || "chat");
     showNotice("Regla guardada.");
     return updated;
   } catch (e) {
@@ -156,7 +233,7 @@ export async function deleteRuleFromSession(rule, scope = "chat") {
     ...s,
     [key]: s[key].filter((r) => String(r.id || r.rule_id) !== String(id)),
   }));
-  if (scope !== "planner") persistSessionRules();
+  persistActiveRules(scope);
   showNotice("Regla eliminada.");
 }
 
@@ -166,5 +243,5 @@ export function removeActiveRule(id, scope = "chat") {
     ...s,
     [key]: s[key].filter((r) => String(r.id || r.rule_id) !== String(id)),
   }));
-  if (scope !== "planner") persistSessionRules();
+  persistActiveRules(scope);
 }

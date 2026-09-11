@@ -11,12 +11,18 @@ import {
 import { settingsStore } from "../store/settings.js";
 import { refreshLeftHistory, applyConsultaChrome } from "./historyActions.js";
 import { openConversation } from "./sessionActions.js";
-import { loadLibraryRules, loadPlannerLibraryRules } from "./rulesActions.js";
+import {
+  loadLibraryRules,
+  loadPlannerLibraryRules,
+  hydrateChatRulesFromLibrary,
+  hydratePlannerRulesFromLibrary,
+} from "./rulesActions.js";
 import { refreshWorkspaceProfiles, refreshPlannerRulePresets } from "./profilesActions.js";
-import { loadImagesPromptModels, loadPlannerContract } from "./imagesPanel.js";
+import { loadPlannerContract, ensureImagesPromptSelects, hydratePlannerRulesFromImagesPrefs } from "./imagesPanel.js";
 import { isMessagesHistoryMode } from "../store/history.js";
 
 export async function bootApp() {
+  hydratePlannerRulesFromImagesPrefs();
   applyDocumentLayout(layoutStore.get());
   applyConsultaChrome();
   await loadProviders();
@@ -42,11 +48,11 @@ export async function bootApp() {
       } catch (_) {}
     }
   }
-  loadLibraryRules();
-  loadPlannerLibraryRules();
+  loadLibraryRules().then(() => hydrateChatRulesFromLibrary());
+  loadPlannerLibraryRules().then(() => hydratePlannerRulesFromLibrary());
   refreshWorkspaceProfiles();
   refreshPlannerRulePresets();
-  loadImagesPromptModels();
-  loadPlannerContract();
+  await ensureImagesPromptSelects();
+  await loadPlannerContract();
   historyStore.subscribe(() => applyConsultaChrome());
 }

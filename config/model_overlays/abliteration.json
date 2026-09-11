@@ -1,0 +1,87 @@
+{
+  "abliterated-model": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+        "can_disable": true,
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 4096, "max": 262134 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "none" } },
+      { "id": "visual", "label": "Multimodal", "params": { "think": "high" } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+    ],
+    "quirks": []
+  },
+  "abliterated-model-large": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["none", "high", "max"],
+        "can_disable": true,
+        "default": "high"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 8192, "max": 999990 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["none", "high", "max"],
+        "default": "high"
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "none" } },
+      { "id": "coding", "label": "Coding", "params": { "think": "high" } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+    ],
+    "quirks": []
+  },
+  "abliterated-model-large-v2": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["low", "high", "max"],
+        "can_disable": false,
+        "true_maps_to": "high",
+        "default": "max"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 8192, "max": 999990 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["low", "high", "max"],
+        "default": "max"
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "low" } },
+      { "id": "coding", "label": "Coding", "params": { "think": "high" } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+    ],
+    "quirks": []
+  }
+}

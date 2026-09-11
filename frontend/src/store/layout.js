@@ -75,6 +75,7 @@ export const layoutStore = createStore({
   imageSizeFactor: readNumber("chatbot_conversation_image_size", 1, 0.4, 1),
   readingWidthPx: readInt("chatbot_reading_mode_width_px", 832, 320, 2400),
   autoScrollDuringGeneration: localStorage.getItem("autoScrollDuringGeneration") !== "false",
+  renderMarkdown: localStorage.getItem("renderMarkdown") !== "false",
   sidebarTab: (() => {
     try {
       const v = localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY);
@@ -102,6 +103,10 @@ export const LAYOUT_KEYS = {
   SHARE_MIN,
   SHARE_MAX,
 };
+
+export function formatFontSizeLabel(rem) {
+  return Math.round(rem * 100) + "%";
+}
 
 export function applyDocumentLayout(state = layoutStore.get()) {
   const root = document.documentElement;
@@ -161,6 +166,7 @@ export function persistLayout(patch) {
   if ("autoScrollDuringGeneration" in patch) {
     persist("autoScrollDuringGeneration", patch.autoScrollDuringGeneration);
   }
+  if ("renderMarkdown" in patch) persist("renderMarkdown", patch.renderMarkdown);
   if ("sidebarTab" in patch) {
     try {
       localStorage.setItem(SIDEBAR_TAB_STORAGE_KEY, String(patch.sidebarTab));
@@ -314,10 +320,23 @@ export function initCenterPanelSplit() {
   applyDocumentLayout();
 }
 
+export function applySidebarTab(tabId = layoutStore.get().sidebarTab) {
+  document.querySelectorAll(".sidebar-tab-panel").forEach((panel) => {
+    const on = panel.dataset.sidebarPanel === tabId;
+    panel.hidden = !on;
+    panel.classList.toggle("is-active", on);
+  });
+  document.querySelectorAll(".sidebar-tab-rail [role='tab']").forEach((tab) => {
+    const on = tab.dataset.sidebarTab === tabId;
+    tab.classList.toggle("is-active", on);
+    tab.setAttribute("aria-selected", on ? "true" : "false");
+    tab.tabIndex = on ? 0 : -1;
+  });
+}
+
 export function setSidebarTab(tabId) {
   updateLayout({ sidebarTab: tabId });
-  const reglasPanel = document.getElementById("tab-reglas");
-  if (reglasPanel) reglasPanel.hidden = tabId !== "reglas";
+  applySidebarTab(tabId);
 }
 
 export function initSidebarTabs() {

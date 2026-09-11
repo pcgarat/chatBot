@@ -124,10 +124,12 @@ export async function deleteWorkspaceProfile(profileId) {
 export async function refreshPlannerRulePresets() {
   try {
     plannerPresetsCache = await profilesApi.listPlannerRulePresets();
+    settingsStore.set({ plannerRulePresets: plannerPresetsCache });
     return plannerPresetsCache;
   } catch (e) {
     showError("No se pudieron cargar los presets de reglas: " + (e.message || e));
     plannerPresetsCache = [];
+    settingsStore.set({ plannerRulePresets: [] });
     return [];
   }
 }
@@ -170,14 +172,15 @@ export function promptWorkspaceProfileName(current) {
 }
 
 export function getPlannerRulePresets() {
-  return plannerPresetsCache;
+  const fromStore = settingsStore.get().plannerRulePresets;
+  return Array.isArray(fromStore) && fromStore.length ? fromStore : plannerPresetsCache;
 }
 
 export async function savePlannerRulePreset({ asNew = false, name, presetId } = {}) {
-  const snapshot = { rules: sessionStore.get().plannerRules };
+  const snapshot = collectPlannerRulePresetSnapshot();
   try {
     const saved = presetId && !asNew
-      ? await profilesApi.createPlannerRulePreset({ name, snapshot })
+      ? await profilesApi.updatePlannerRulePreset(presetId, { name, snapshot })
       : await profilesApi.createPlannerRulePreset({ name, snapshot });
     await refreshPlannerRulePresets();
     showNotice("Preset de reglas guardado.");
@@ -189,10 +192,9 @@ export async function savePlannerRulePreset({ asNew = false, name, presetId } = 
 }
 
 export async function applyPlannerRulePreset(presetId) {
-  const preset = plannerPresetsCache.find((p) => p.id === presetId);
+  const preset = getPlannerRulePresets().find((p) => p.id === presetId);
   if (!preset) return;
-  const rules = (preset.snapshot && preset.snapshot.rules) || [];
-  sessionStore.set({ plannerRules: rules });
+  applyPlannerRulePresetSnapshot(preset.snapshot || {});
   showNotice("Preset «" + preset.name + "» cargado.");
 }
 

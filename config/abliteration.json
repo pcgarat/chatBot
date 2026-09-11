@@ -44,5 +44,27 @@
       "Web search",
       "Uncensored"
     ]
+  },
+  "abliterated-model-large-v2": {
+    "context_length": {
+      "max": 1000000
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 8192,
+      "min": 1,
+      "max": 999990
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Reasoning",
+      "Streaming",
+      "Structured outputs",
+      "Text",
+      "Web search",
+      "Uncensored"
+    ]
   }
 }

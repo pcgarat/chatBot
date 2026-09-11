@@ -73,6 +73,10 @@ def test_scroll_nav_js_wires_visibility_and_message_targets():
     assert "scrollMessageEndIntoView" in js
     assert "pointerOverNav" in js
     assert "IDLE_HIDE_MS" in js
+    start = js.index("function initConversationScrollNav")
+    body = js[start : start + 2200]
+    assert "mouseenter" in body
+    assert "clearTimeout" in body
 
 
 def test_index_serves_scroll_nav_markup(client):

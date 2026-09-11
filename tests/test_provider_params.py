@@ -157,6 +157,26 @@ def test_build_extra_body_think_gpt_oss_coerce_false():
     assert extra.get("think") == "medium"
 
 
+def test_build_extra_body_openai_reasoning_effort():
+    extra = build_extra_body(
+        "openai",
+        {"think": "high", "temperature": 0.4},
+        model_id="gpt-5.6-sol",
+    )
+    assert extra.get("reasoning_effort") == "high"
+    assert extra.get("temperature") == 0.4
+    assert "think" not in extra
+
+
+def test_build_extra_body_glm_53_flash_coerce_false_a_high():
+    extra = build_extra_body(
+        "ollama",
+        {"think": False},
+        model_id="glm-5.3-flash:cloud",
+    )
+    assert extra.get("think") == "high"
+
+
 def test_build_extra_body_sin_model_id_ignora_think():
     extra = build_extra_body("ollama", {"think": "max", "temperature": 0.5})
     assert "think" not in extra
@@ -187,3 +207,26 @@ def test_get_context_length_max_sin_num_ctx(mock_get_presets):
     """Si el preset no tiene num_ctx.max, devuelve None."""
     mock_get_presets.return_value = {"m1": {"temperature": {"default": 0.8}}}
     assert get_context_length_max("ollama", "m1") is None
+
+
+def test_openai_presets_cubren_flagships_actuales():
+    """La barra de contexto lee presets, no overlays: GPT-6 / 5.6 / 5.4 deben tener ctx."""
+    _clear_presets_cache("openai")
+    presets = get_presets("openai")
+    assert get_context_length_max("openai", "gpt-6-astra") == 1_050_000
+    assert get_context_length_max("openai", "gpt-5.6-sol") == 1_050_000
+    assert get_context_length_max("openai", "gpt-5.6-terra") == 1_050_000
+    assert get_context_length_max("openai", "gpt-5.6-luna") == 400_000
+    assert get_context_length_max("openai", "gpt-5.4") == 1_050_000
+    assert get_context_length_max("openai", "gpt-5.4-pro") == 1_050_000
+    assert presets["gpt-6-astra"]["max_tokens"]["max"] == 128000
+    assert "Image" in presets["gpt-5.6-sol"]["tags"]
+
+
+def test_abliteration_presets_incluyen_large_v2():
+    _clear_presets_cache("abliteration")
+    presets = get_presets("abliteration")
+    assert "abliterated-model-large-v2" in presets
+    assert get_context_length_max("abliteration", "abliterated-model-large-v2") == 1_000_000
+    assert presets["abliterated-model-large-v2"]["max_tokens"]["max"] == 999990
+    assert "Image" not in presets["abliterated-model-large-v2"]["tags"]

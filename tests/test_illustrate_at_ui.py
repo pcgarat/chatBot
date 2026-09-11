@@ -41,7 +41,7 @@ def test_plain_messages_wrap_paragraphs_for_click_targets():
         "function saveLastConversationId"
     )[0]
     assert "countNarrativeParagraphs(parts.first)" in collapsible
-    assert "formatMessageHtml(parts.rest, restOffset)" in collapsible
+    assert "formatMessageHtml(parts.rest, restOffset" in collapsible
 
 
 def test_text_context_menu_css_is_fixed():
@@ -49,3 +49,14 @@ def test_text_context_menu_css_is_fixed():
     assert ".msg-text-context-menu" in css
     block = css.split(".msg-text-context-menu {")[1].split("}")[0]
     assert "position: fixed" in block
+
+
+def test_text_context_menu_is_positioned_and_handles_clicks():
+    js = frontend_source()
+    bind = js.split("function bindMessageTextContextMenu")[1].split(
+        "export function getPartiallyVisibleMessageRows"
+    )[0]
+    assert "clientX" in bind
+    assert "clientY" in bind
+    assert "illustrateAtParagraph" in bind
+    assert "data-msg-id" in bind

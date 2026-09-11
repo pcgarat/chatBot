@@ -24,6 +24,7 @@ export const sessionStore = createStore({
   lastUsage: null,
   contextLength: null,
   imageFilterNotice: false,
+  pendingReveal: null,
 });
 
 export function saveLastConversationId(id) {
@@ -57,6 +58,7 @@ export function resetSession() {
     streamingText: "",
     streamingStatus: null,
     abortController: null,
+    pendingReveal: null,
   });
   saveLastConversationId(null);
 }

@@ -60,11 +60,18 @@ def test_interfaz_accordion_hosts_interface_controls():
     assert "Imágenes de la conversación" in prefs
     assert "Tamaño de las ilustraciones en los mensajes" in prefs
     assert 'id="dark-mode-toggle"' in prefs
+    assert 'id="render-markdown-toggle"' in prefs
+    assert "Markdown en conversación" in prefs
     assert 'id="auto-scroll-during-generation"' in prefs
     assert 'id="pref-collapse-all-messages"' in prefs
     assert "Colapsar" in prefs
     assert prefs.count('id="dark-mode-toggle"') == 1
+    assert prefs.count('id="render-markdown-toggle"') == 1
     assert prefs.count('id="auto-scroll-during-generation"') == 1
+    dark_row = prefs.index('id="dark-mode-toggle"')
+    md_row = prefs.index('id="render-markdown-toggle"')
+    auto_row = prefs.index('id="auto-scroll-during-generation"')
+    assert dark_row < md_row < auto_row
 
 
 def test_chat_header_keeps_font_and_collapse_shortcuts():
@@ -103,6 +110,8 @@ def test_preferences_js_shares_handlers_without_duplicate_logic():
     assert "chatbot_conversation_image_size" in js
     assert "setDebugLogSize" in js
     assert "chatbot_debug_log_size" in js
+    assert "render-markdown-toggle" in js
+    assert "renderMarkdown" in js
     start = js.index("const SIDEBAR_MAIN_SECTION_IDS")
     ids = js[start : start + 160]
     assert "preferencias" in ids
@@ -116,6 +125,7 @@ def test_preferences_css_docks_tab_and_lays_out_rows():
     assert ".pref-row" in css
     assert ".pref-font-stepper" in css
     assert ".pref-font-value" in css
+    assert ".message-md .md-h" in css
     assert "--sidebar-left-font-scale" in css
     assert "--sidebar-right-font-scale" in css
     assert "calc(0.6875rem * var(--sidebar-left-font-scale, 1))" in css
@@ -123,7 +133,11 @@ def test_preferences_css_docks_tab_and_lays_out_rows():
     chat_rule = css.split(".chat-illustration-frame {")[1].split("}")[0]
     gallery_rule = css.split(".image-gallery-card img {")[1].split("}")[0]
     assert "--chat-image-max-width" in chat_rule
+    assert "--chat-image-size" in chat_rule
+    assert "width: fit-content" not in chat_rule
     assert "--chat-image-max-width" not in gallery_rule
+    unframed = css.split(".illustration-unit > img.chat-illustration {")[1].split("}")[0]
+    assert "--chat-image-size" in unframed
 
 
 def test_index_serves_preferences_tab(client):

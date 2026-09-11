@@ -621,6 +621,7 @@ def test_e2e_abliteration_models(client, abliteration_available):
     names = {m["name"] for m in models}
     assert "abliterated-model" in names
     assert "abliterated-model-large" in names
+    assert "abliterated-model-large-v2" in names
     for m in models:
         assert m.get("provider") == "abliteration"
 

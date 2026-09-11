@@ -15,8 +15,9 @@ Con Make (recomendado):
 
 ```bash
 cd chatBot
-make up      # crea el entorno virtual, instala dependencias e inicia la aplicación
-make help    # ver todos los comandos
+make up      # venv + deps + API (SPA publicado)
+make up-dev  # API con reload + Vite (http://localhost:5173)
+make help
 ```
 
 Manual:
@@ -32,20 +33,19 @@ pip install -r requirements.txt
 
 | Comando    | Descripción                                                         |
 |------------|---------------------------------------------------------------------|
-| `make up`    | Crear entorno virtual, instalar dependencias e iniciar la aplicación |
-| `make down`  | Detener la aplicación y eliminar el entorno virtual                 |
-| `make start` | Iniciar el servidor (puerto 8000)                                    |
-| `make stop`  | Detener el servidor                                                 |
-| `make reload`| make down + make up (reinicio completo)                             |
-| `make test`  | Ejecutar los tests                                                  |
-| `make status`| Ver estado del entorno y del servidor                               |
-| `make chroma-up`  | Levantar ChromaDB con Docker (puerto 8001); datos en `./data/chroma` |
-| `make chroma-down`| Bajar el contenedor de ChromaDB (los datos se conservan)            |
-| `make clean`      | Parar app y Chroma y borrar datos de Chroma y PID                   |
-| `make frontend-build` | Compilar el SPA React a `app/static/` |
-| `make frontend-dev`   | Vite en :5173 con proxy `/api` → :8000 |
-| `make frontend-test`  | Tests de Vitest del frontend |
-| `make help`  | Mostrar ayuda                                                      |
+| `make up`    | venv + deps + API (sirve el SPA publicado) |
+| `make up-dev`| API `--reload` + Vite HMR. Ctrl+C para ambos |
+| `make down`  | Detener procesos y borrar el venv |
+| `make start` | Solo API. `VERBOSE=1` para logs de LLM/Forge |
+| `make stop`  | Detener API y Vite |
+| `make reload`| `down` + `up` |
+| `make test`  | Tests sin e2e (pytest + vitest) |
+| `make status`| Estado de venv, API y Vite |
+| `make chroma-up`  | Levantar ChromaDB (puerto 8001) |
+| `make chroma-down`| Bajar Chroma (los datos se conservan) |
+| `make clean`      | Parar la app (no toca Docker ni Chroma) |
+| `make frontend-build` | Publicar el SPA React en `app/static/` |
+| `make help`  | Mostrar ayuda |
 
 ## Configuración (opcional)
 
@@ -56,35 +56,29 @@ Copia `.env.example` a `.env` y ajusta si lo necesitas:
 - **RAG:** `OPENAI_API_KEY` (clave API de OpenAI para embeddings) y `CHROMA_HOST` (por defecto `http://localhost:8001`). Para usar el RAG:
   1. Levanta Chroma: `make chroma-up` (crea `./data/chroma` y deja los datos ahí para no perderlos).
   2. Luego inicia la app: `make start`. La app conecta a Chroma por HTTP y guarda/consulta el historial por conversación.
-  Para apagar Chroma sin borrar datos: `make chroma-down`. Para parar todo y borrar también los datos de Chroma: `make clean`.
+  Para apagar Chroma sin borrar datos: `make chroma-down`. Para borrar también los datos: `make chroma-clean`.
 
 ## Ejecución
 
-`make up` ya inicia la aplicación. Si el entorno existe y solo quieres arrancar el servidor:
+`make up` inicia la API y sirve el SPA ya compilado en `app/static/`. Para desarrollar el front:
+
+```bash
+make up-dev
+```
+
+Abre **http://localhost:5173** (Vite con HMR; proxy `/api` → :8000). `http://localhost:8000` sigue sirviendo el build estático, no los cambios en caliente. Ctrl+C para el backend y Vite. Chroma no se arranca: `make chroma-up` si lo necesitas.
+
+Si el entorno existe y solo quieres la API (sin Vite):
 
 ```bash
 make start
 ```
 
-Abre en el navegador: http://localhost:8000. Para detener: `make stop`. Para reinicio completo (borrar venv y volver a subir): `make reload`.
+Para detener API (y Vite si quedó de `up-dev`): `make stop`. Reinicio completo (borrar venv): `make reload`.
 
-El UI es un SPA React (`frontend/`). Tras cambiar JSX, CSS o `frontend/src/app.js`, regenera el estático:
+Para publicar el SPA en FastAPI (`make up` / :8000): `make frontend-build`.
 
-```bash
-make frontend-build
-```
-
-En desarrollo del front, `make frontend-dev` (Vite) y `make start` (API) a la vez: el dev server hace proxy de `/api` al backend.
-
-**Modo verbose (-v):** para ver en la terminal todo lo que se envía a Ollama (modelo + mensajes, tal cual):
-
-```bash
-python run.py -v
-# o
-make start-verbose
-# o
-VERBOSE=1 make start
-```
+**Logs LLM/Forge:** `make up-dev` ya va en verbose. Sin Vite: `VERBOSE=1 make start`.
 
 ## Uso
 

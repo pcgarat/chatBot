@@ -60,7 +60,9 @@ def test_gallery_entry_and_panel_exist_in_html():
     assert 'id="gallery-purge-orphans"' in html
     assert 'scroll-y-reveal' in html
     assert 'id="messages-container"' in html
-    assert 'data-queue-status="pending"' in html
+    assert 'status: "pending"' in html
+    assert "Pendientes" in html
+    assert "setQueueFilter" in html
 
 
 def test_gallery_js_loads_list_and_opens_lightbox():
@@ -94,7 +96,8 @@ def test_gallery_js_loads_list_and_opens_lightbox():
     assert "illustrated-images/orphans/purge" in js
     assert "gallery-purge-orphans" in js
     assert "gallery-open-message" in js
-    assert "stayHere" in js
+    assert "openConversationAtIllustration" in js
+    assert "highlightIllustrationInConversation" in js
     assert "initCenterPanelSplit" in js
     assert "centerChatGalleryShare" in js
     assert "applyCenterPanelShare" in js
@@ -256,3 +259,53 @@ def test_gallery_toolbar_filters_apply_to_conversation_images():
     assert "conversation-image-filter-notice-dismiss" in js
     assert "setGalleryPanelVisible(true)" in js
     assert "chat-image-filter-notice-open" in js
+
+
+def test_gallery_lightbox_goes_to_the_photo_in_the_message():
+    """Ir al mensaje del visor debe anclar la foto, no el inicio del mensaje."""
+    from tests.frontend_source import frontend_file
+
+    gallery = frontend_file("app/galleryActions.js")
+    lightbox = gallery.split("export function renderGalleryLightbox")[1].split(
+        "export function openGalleryLightbox"
+    )[0]
+    assert "closeGalleryLightbox()" in lightbox
+    assert "goToConversationTarget" in lightbox
+    assert "item.filename" in lightbox
+    assert "item.scene_id" in lightbox
+    assert "openConversationAtMessage(" not in lightbox
+    assert "pendingReveal" not in lightbox
+
+    session = frontend_file("app/sessionActions.js")
+    assert "findMessageWithIllustration" in session
+    assert "goToConversationTarget" in session
+    go_photo = session.split("export async function openConversationAtIllustration")[1].split(
+        "export async function deleteMessageFromHistory"
+    )[0]
+    assert "queueRevealInMessages(conversationId, messageId, options)" in go_photo
+    assert "revealMessageInConversation(conversationId, messageId, options)" in go_photo
+    queue_fn = session.split("function queueRevealInMessages")[1].split(
+        "export async function goToConversationTarget"
+    )[0]
+    assert "filename" in queue_fn
+    assert "sceneId" in queue_fn
+    assert "conversationId" in queue_fn
+    pane = frontend_file("ui/messages/MessagesPane.jsx")
+    reveal = pane.split("export function applyRevealInMessages")[1].split(
+        "function illustrationRevealIsStable"
+    )[0]
+    assert "highlightIllustrationInConversation" in reveal
+    assert "findMessageWithIllustration" in reveal
+    assert "pending.conversationId" in reveal
+    locate = frontend_file("lib/illustrationLocate.js")
+    assert 'alt="escena ' in locate
+    assert "findChatIllustration" in locate
+    set_fn = session.split("export async function setCurrentConversation")[1].split(
+        "let saveRulesDebounceTimer"
+    )[0]
+    assert "skipScroll" in set_fn
+
+    queue = frontend_file("app/queueActions.js")
+    assert "goToConversationTarget" in queue
+    assert 'data-filename="' in queue
+    assert "openConversationAtMessage(convId" not in queue

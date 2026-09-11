@@ -2,12 +2,17 @@ import { useEffect } from "react";
 import { useStore } from "../../hooks/useStore.js";
 import { settingsStore } from "../../store/settings.js";
 import { sessionStore } from "../../store/session.js";
-import { debugStore } from "../../store/debug.js";
+import { debugStore, renderChatDebugLog, renderImagesDebugLog, syncDebugPanelDom } from "../../store/debug.js";
 import { uiStore, currentStatus } from "../../store/ui.js";
 import { historyStore } from "../../store/history.js";
 import { getWorkspaceProfiles } from "../../app/profilesActions.js";
 import { onMessageHistorySearchInput } from "../../app/historyActions.js";
 import { renderContextUsageBar } from "../status/StatusBarInfo.js";
+import { applyThinkAndRecipesFromContract, syncSettingsPresetsMirrors } from "../../app/settingsActions.js";
+import { applyParamsConfigToDom } from "../../lib/contractUi.js";
+import { renderPlannerRecipes } from "../../app/imagesPanel.js";
+import { imagesStore } from "../../store/images.js";
+import { bindModelSelectCombobox, syncModelSelectFromStore } from "../../app/modelSelectUi.js";
 
 function fillSelect(id, values, current) {
   const el = document.getElementById(id);
@@ -31,6 +36,7 @@ export function StoreDomSync() {
   const model = useStore(settingsStore, (s) => s.currentModel);
   const library = useStore(settingsStore, (s) => s.libraryRules);
   const plannerLib = useStore(settingsStore, (s) => s.plannerLibraryRules);
+  const plannerPresets = useStore(settingsStore, (s) => s.plannerRulePresets);
   const title = useStore(sessionStore, (s) => s.title);
   const autoTitle = useStore(sessionStore, (s) => s.autoTitle);
   const draft = useStore(sessionStore, (s) => s.composerDraft);
@@ -42,20 +48,29 @@ export function StoreDomSync() {
   const chatOpen = useStore(debugStore, (s) => s.chatOpen);
   const imagesOpen = useStore(debugStore, (s) => s.imagesOpen);
   const mode = useStore(historyStore, (s) => s.mode);
+  const contract = useStore(settingsStore, (s) => s.contract);
+  const paramsConfig = useStore(settingsStore, (s) => s.paramsConfig);
+  const paramsValues = useStore(settingsStore, (s) => s.paramsValues);
+  const plannerContract = useStore(imagesStore, (s) => s.plannerContract);
+  const useChatConfig = useStore(imagesStore, (s) => s.prefs.use_chat_config);
   useStore(uiStore);
 
   useEffect(() => {
     fillSelect("provider-select", providers, provider);
     const headerP = document.getElementById("header-provider-name");
     if (headerP) headerP.textContent = provider || "";
+    fillSelect("images-prompt-provider", providers, imagesStore.get().prefs.prompt_provider || provider);
   }, [providers, provider]);
+
+  useEffect(() => {
+    bindModelSelectCombobox();
+  }, []);
 
   useEffect(() => {
     fillSelect("model-select", models, model);
     const headerM = document.getElementById("header-model-name");
     if (headerM) headerM.textContent = model || "";
-    const input = document.getElementById("model-select-input");
-    if (input && model) input.value = model;
+    syncModelSelectFromStore();
   }, [models, model]);
 
   useEffect(() => {
@@ -75,6 +90,17 @@ export function StoreDomSync() {
         plannerLib.map((r) => `<option value="${r.id}">${(r.title || "").replace(/</g, "")}</option>`).join("");
     }
   }, [plannerLib]);
+
+  useEffect(() => {
+    const sel = document.getElementById("planner-rule-preset-select");
+    if (!sel) return;
+    const list = plannerPresets || [];
+    const current = sel.value;
+    sel.innerHTML =
+      '<option value="">Elegir preset</option>' +
+      list.map((p) => `<option value="${p.id}">${(p.name || "").replace(/</g, "")}</option>`).join("");
+    if (current) sel.value = current;
+  }, [plannerPresets]);
 
   useEffect(() => {
     const t = document.getElementById("conversation-title");
@@ -111,32 +137,14 @@ export function StoreDomSync() {
   }, [mode]);
 
   useEffect(() => {
-    const log = document.getElementById("chat-debug-log");
-    if (log) {
-      log.innerHTML = (chatLog || [])
-        .map((e) => `<article class="debug-entry"><header>${e.title || ""}</header><pre>${e.details || e.response || ""}</pre></article>`)
-        .join("");
-    }
-    const column = document.getElementById("column-right");
-    if (column) column.classList.toggle("is-debug-expanded", !!(chatOpen || imagesOpen));
-    const body = document.getElementById("debug-chat-body");
-    const tog = document.getElementById("debug-chat-toggle");
-    if (body) body.hidden = !chatOpen;
-    if (tog) tog.setAttribute("aria-expanded", chatOpen ? "true" : "false");
-  }, [chatLog, chatOpen]);
+    syncDebugPanelDom();
+    renderChatDebugLog();
+  }, [chatLog, chatOpen, imagesOpen]);
 
   useEffect(() => {
-    const log = document.getElementById("images-debug-log");
-    if (log) {
-      log.innerHTML = (imagesLog || [])
-        .map((e) => `<article class="debug-entry"><header>${e.html || e.title || ""}</header></article>`)
-        .join("");
-    }
-    const body = document.getElementById("debug-images-body");
-    const tog = document.getElementById("debug-images-toggle");
-    if (body) body.hidden = !imagesOpen;
-    if (tog) tog.setAttribute("aria-expanded", imagesOpen ? "true" : "false");
-  }, [imagesLog, imagesOpen]);
+    syncDebugPanelDom();
+    renderImagesDebugLog();
+  }, [imagesLog, imagesOpen, chatOpen]);
 
   useEffect(() => {
     const st = currentStatus();
@@ -151,6 +159,19 @@ export function StoreDomSync() {
     if (bar) bar.classList.toggle("is-busy", st.busy);
     renderContextUsageBar();
   });
+
+  useEffect(() => {
+    applyThinkAndRecipesFromContract({ applyParamDefaults: false });
+  }, [contract]);
+
+  useEffect(() => {
+    applyParamsConfigToDom(paramsConfig, paramsValues);
+    syncSettingsPresetsMirrors();
+  }, [paramsConfig, paramsValues]);
+
+  useEffect(() => {
+    renderPlannerRecipes();
+  }, [plannerContract, useChatConfig]);
 
   useEffect(() => {
     const sel = document.getElementById("workspace-profile-select");

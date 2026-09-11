@@ -96,5 +96,6 @@ def test_js_switches_sidebar_tabs_and_persists():
     assert "ensureExclusiveMainAccordion" not in js
     assert "migrateSidebarTabToAccordionState" not in js
     assert "ArrowDown" in js
-    assert "getElementById(\"tab-reglas\")" in js
-    assert "reglasPanel.hidden" in js or "!reglasPanel.hidden" in js
+    assert "querySelectorAll(\".sidebar-tab-panel\")" in js
+    assert "panel.hidden = !on" in js
+    assert "dataset.sidebarPanel" in js

@@ -1,24 +1,15 @@
-import { useEffect } from "react";
-import { layoutStore, applyDocumentLayout, updateLayout, LAYOUT_KEYS, captureLayoutSnapshot, restoreLayoutSnapshot } from "../../store/layout.js";
+import { useEffect, useLayoutEffect } from "react";
+import { layoutStore, applyDocumentLayout, applySidebarTab, updateLayout, LAYOUT_KEYS, captureLayoutSnapshot, restoreLayoutSnapshot, initSidePanelResize, initAccordionState, initSidebarTabs, formatFontSizeLabel } from "../../store/layout.js";
 import { useStore } from "../../hooks/useStore.js";
-import { initImagesPanel } from "../../app/imagesPanel.js";
+import { initImagesPanel, initImageGallery } from "../../app/imagesPanel.js";
+import { initImageQueuePanel } from "../../app/queueActions.js";
 import { initConversationScrollNav, bindMessageTextContextMenu } from "../messages/MessagesPane.jsx";
-import { initSidePanelResize, initAccordionState, initSidebarTabs } from "../../store/layout.js";
 
 export function LayoutEffects() {
   const layout = useStore(layoutStore);
-  useEffect(() => {
+  useLayoutEffect(() => {
     applyDocumentLayout(layout);
-    document.querySelectorAll(".sidebar-tab-rail [role='tab']").forEach((tab) => {
-      const on = tab.dataset.sidebarTab === layout.sidebarTab;
-      tab.classList.toggle("is-active", on);
-      tab.setAttribute("aria-selected", on ? "true" : "false");
-      tab.tabIndex = on ? 0 : -1;
-    });
-    document.querySelectorAll(".sidebar-tab-panel").forEach((panel) => {
-      const on = panel.dataset.sidebarPanel === layout.sidebarTab;
-      panel.classList.toggle("is-active", on);
-    });
+    applySidebarTab(layout.sidebarTab);
     const chatCol = document.getElementById("chat-column");
     const galleryPanel = document.getElementById("image-gallery-panel");
     const queuePanel = document.getElementById("image-queue-panel");
@@ -38,6 +29,12 @@ export function LayoutEffects() {
     if (chatBtn) chatBtn.setAttribute("aria-pressed", chatOn ? "true" : "false");
     if (galBtn) galBtn.setAttribute("aria-pressed", galleryOn ? "true" : "false");
     if (queueBtn) queueBtn.setAttribute("aria-pressed", queueOn ? "true" : "false");
+    const darkToggle = document.getElementById("dark-mode-toggle");
+    if (darkToggle) darkToggle.checked = !!layout.darkMode;
+    const mdToggle = document.getElementById("render-markdown-toggle");
+    if (mdToggle) mdToggle.checked = layout.renderMarkdown !== false;
+    const autoScrollToggle = document.getElementById("auto-scroll-during-generation");
+    if (autoScrollToggle) autoScrollToggle.checked = layout.autoScrollDuringGeneration !== false;
     const expandLeft = document.getElementById("btn-expand-left");
     if (expandLeft) expandLeft.hidden = !layout.leftSidebarCollapsed;
     const expandComposer = document.getElementById("btn-expand-composer");
@@ -45,6 +42,8 @@ export function LayoutEffects() {
   }, [layout]);
   useEffect(() => {
     initImagesPanel();
+    initImageGallery();
+    initImageQueuePanel();
     initConversationScrollNav();
     bindMessageTextContextMenu();
     initSidePanelResize();
@@ -73,9 +72,7 @@ export function LayoutEffects() {
   return null;
 }
 
-export function formatFontSizeLabel(rem) {
-  return Math.round(rem * 100) + "%";
-}
+export { formatFontSizeLabel };
 
 /** initDarkMode */
 export function toggleDarkMode(on) {

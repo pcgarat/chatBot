@@ -10,7 +10,12 @@ import { persistImagesPanel, applyImagesSnapshot, imagesSnapshotForConversation 
 import { applyConversationTree } from "../lib/tree.js";
 import { getDefaultConversationTitle } from "../lib/dates.js";
 import { buildModelParams } from "../lib/params.js";
+import {
+  illustrationNeedleInContent as contentHasIllustration,
+  contentHasExactFilename,
+} from "../lib/illustrationLocate.js";
 import { applyConsultaChrome, refreshLeftHistory, setLeftHistoryMode } from "./historyActions.js";
+import { serializeRuleItems, hydrateChatRulesFromLibrary } from "./rulesActions.js";
 import { loadModelContract, loadModels, loadParamsForProvider, applyConversationParams } from "./settingsActions.js";
 
 export { resetSession };
@@ -22,7 +27,9 @@ const el = {
 };
 
 export function scheduleScrollMessagesToBottom() {
+  if (sessionStore.get().pendingReveal) return;
   requestAnimationFrame(() => {
+    if (sessionStore.get().pendingReveal) return;
     const node = document.getElementById("messages-container");
     if (node) node.scrollTop = node.scrollHeight;
   });
@@ -84,12 +91,17 @@ export async function setCurrentConversation(conv, options = {}) {
     title: conv.title || "",
     autoTitle: Boolean(conv.auto_title),
     instructionOverride: conv.instruction_override || "",
-    rules: Array.isArray(conv.rules) ? conv.rules : [],
+    rules: Array.isArray(conv.system_instructions)
+      ? conv.system_instructions
+      : Array.isArray(conv.rules)
+        ? conv.rules
+        : [],
     ...tree,
     streamingText: "",
     streamingStatus: null,
     collapsedMessageKeys: options.preserveView ? sessionStore.get().collapsedMessageKeys : [],
   });
+  hydrateChatRulesFromLibrary();
   saveLastConversationId(conv.id);
   if (conv.provider) {
     settingsStore.set({ currentProvider: conv.provider });
@@ -107,8 +119,10 @@ export async function setCurrentConversation(conv, options = {}) {
   if (conv.save_to_chromadb) settingsStore.set({ saveToChromadb: conv.save_to_chromadb });
   if (conv.history_turns != null) settingsStore.set({ historyTurns: conv.history_turns });
   applyAutoTitleUi(sessionStore.get().autoTitle);
-  if (options.keepConsulta) scheduleScrollMessagesToTop();
-  else scheduleScrollMessagesToBottom();
+  if (!options.skipScroll) {
+    if (options.keepConsulta) scheduleScrollMessagesToTop();
+    else scheduleScrollMessagesToBottom();
+  }
   void sameId;
 }
 
@@ -153,6 +167,7 @@ export async function newConversation() {
       model_id: settings.currentModel || (settings.models[0] || ""),
       kind: "chat",
       images: imagesSnapshotForConversation(),
+      system_instructions: serializeRuleItems(sessionStore.get().rules),
     });
     await setCurrentConversation(conv);
     await refreshLeftHistory();
@@ -285,13 +300,140 @@ export async function saveConversation() {
   );
 }
 
-export async function openConversationAtMessage(conversationId, messageId) {
-  await openConversation(conversationId, { keepConsulta: true });
-  sessionStore.set({ consultaAssistantId: messageId || sessionStore.get().consultaAssistantId });
+function waitForMessagesPaint() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
 }
 
-export async function openConversationAtIllustration(conversationId, messageId) {
-  await openConversationAtMessage(conversationId, messageId);
+function ensureMessageExpanded(messageId) {
+  if (!messageId) return false;
+  const keys = sessionStore.get().collapsedMessageKeys || [];
+  const id = String(messageId);
+  const next = keys.filter((k) => k !== id);
+  if (next.length === keys.length) return false;
+  sessionStore.set({ collapsedMessageKeys: next });
+  return true;
+}
+
+export function illustrationNeedleInContent(content, filename, sceneId) {
+  return contentHasIllustration(content, filename, sceneId);
+}
+
+export function findMessageWithIllustration(messages, filename, sceneId, preferredMessageId) {
+  if (!Array.isArray(messages)) return null;
+  const preferred = preferredMessageId
+    ? messages.find((m) => m && String(m.id) === String(preferredMessageId)) || null
+    : null;
+  if (preferred) {
+    if (contentHasExactFilename(preferred.content, filename)) return preferred;
+    if (sceneId && illustrationNeedleInContent(preferred.content, null, sceneId)) return preferred;
+  }
+  if (filename) {
+    for (let i = 0; i < messages.length; i++) {
+      if (contentHasExactFilename(messages[i] && messages[i].content, filename)) {
+        return messages[i];
+      }
+    }
+  }
+  if (preferred) return preferred;
+  // Con messageId explícito no "robamos" la misma escena de otro mensaje.
+  if (preferredMessageId) return null;
+  if (!sceneId) return null;
+  for (let i = 0; i < messages.length; i++) {
+    if (illustrationNeedleInContent(messages[i] && messages[i].content, null, sceneId)) {
+      return messages[i];
+    }
+  }
+  return null;
+}
+
+async function revealMessageInConversation(conversationId, messageId, options = {}) {
+  setChatPanelVisible(true);
+  const current = sessionStore.get();
+  if (current.consultaAssistantId) {
+    sessionStore.set({ consultaAssistantId: null });
+    applyConsultaChrome();
+  }
+  const lookingForPhoto = !!(options.filename || options.sceneId);
+  const photoHere = findMessageWithIllustration(current.messages, options.filename, null);
+  const messageHere = !!messageId && (current.messages || []).some((m) => m.id === messageId);
+  const sameConv = !conversationId || conversationId === current.conversationId;
+  const stayHere = !!photoHere || (sameConv && messageHere) || (!lookingForPhoto && messageHere);
+  if (!stayHere) {
+    const targetConv = conversationId || current.conversationId;
+    if (!targetConv) return photoHere;
+    await openConversation(targetConv, { skipScroll: true });
+    const opened = sessionStore.get().messages || [];
+    const photoAfter = findMessageWithIllustration(opened, options.filename, null);
+    const visible = !!photoAfter || opened.some((m) => m.id === messageId);
+    if (!visible && messageId) {
+      await conversationsApi.patchConversation(targetConv, { active_leaf_message_id: messageId });
+      await openConversation(targetConv, { skipScroll: true });
+    }
+  }
+  const resolved = findMessageWithIllustration(
+    sessionStore.get().messages,
+    options.filename,
+    options.sceneId,
+    messageId
+  );
+  const expandId = (resolved && resolved.id) || messageId;
+  if (ensureMessageExpanded(expandId)) await waitForMessagesPaint();
+  return resolved;
+}
+
+function queueRevealInMessages(conversationId, messageId, options = {}) {
+  const found = findMessageWithIllustration(
+    sessionStore.get().messages,
+    options.filename,
+    options.sceneId,
+    messageId
+  );
+  sessionStore.set({
+    pendingReveal: {
+      conversationId: sessionStore.get().conversationId || conversationId || null,
+      messageId: (found && found.id) || messageId || null,
+      filename: options.filename || null,
+      sceneId: options.sceneId || null,
+    },
+  });
+}
+
+/** Punto único para ir a un mensaje/foto desde galería, cola, debug, etc. */
+export async function goToConversationTarget(target = {}) {
+  const conversationId = target.conversationId || "";
+  const messageId = target.messageId || "";
+  const filename = target.filename || "";
+  const sceneId = target.sceneId || "";
+  if (filename || sceneId) {
+    return openConversationAtIllustration(conversationId, messageId, { filename, sceneId });
+  }
+  return openConversationAtMessage(conversationId, messageId);
+}
+
+export async function openConversationAtMessage(conversationId, messageId) {
+  try {
+    await revealMessageInConversation(conversationId, messageId);
+    queueRevealInMessages(conversationId, messageId);
+  } catch (err) {
+    showError("No se pudo abrir el mensaje: " + err.message);
+  }
+}
+
+export async function openConversationAtIllustration(conversationId, messageId, filenameOrOptions, sceneId) {
+  const options =
+    filenameOrOptions && typeof filenameOrOptions === "object"
+      ? filenameOrOptions
+      : { filename: filenameOrOptions || "", sceneId: sceneId || "" };
+  try {
+    await revealMessageInConversation(conversationId, messageId, options);
+    queueRevealInMessages(conversationId, messageId, options);
+  } catch (err) {
+    showError("No se pudo abrir el mensaje: " + err.message);
+  }
 }
 
 export async function deleteMessageFromHistory(conversationId, messageId) {

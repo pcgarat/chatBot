@@ -52,6 +52,11 @@
       if (rightFs >= 0.8 && rightFs <= 5) {
         document.documentElement.style.setProperty("--sidebar-right-font-scale", String(rightFs));
       }
+      var imgFs = parseFloat(localStorage.getItem("chatbot_conversation_image_size") || "");
+      if (imgFs >= 0.4 && imgFs <= 1) {
+        document.documentElement.style.setProperty("--chat-image-size", String(imgFs));
+        document.documentElement.style.setProperty("--chat-image-max-width", Math.round(imgFs * 100) + "%");
+      }
     })();
   </script>
 </head>

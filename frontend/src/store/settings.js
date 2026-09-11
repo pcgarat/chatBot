@@ -13,6 +13,7 @@ export const settingsStore = createStore({
   contract: null,
   libraryRules: [],
   plannerLibraryRules: [],
+  plannerRulePresets: [],
   modelSelectQuery: "",
   modelSelectOpen: false,
   saveToChromadb: "user",

@@ -41,11 +41,13 @@ def test_render_messages_does_not_force_bottom_in_consulta():
     js = _js()
     render_fn = _fn(js, "function renderMessages", "function closeAllMessageContextMenus")
     scroll_block = render_fn[render_fn.rindex("scheduleConversationImageFilter") :]
-    assert "consulta" in scroll_block
-    assert "scrollHeight" in scroll_block
-    consulta_guard = scroll_block.index("consulta")
-    height_assign = scroll_block.index("scrollHeight")
-    assert consulta_guard < height_assign
+    assert "pendingReveal" in scroll_block
+    assert "prevScrollTop" in scroll_block
+    assert "scrollHeight" not in scroll_block
+    pane = _fn(js, "function MessagesPane", "function toggleCollapse")
+    assert "consulta" in pane
+    assert "pendingReveal" in pane
+    assert pane.index("consulta") < pane.index("scrollHeight")
 
 
 def test_open_reading_mode_pins_scroll_to_start_after_layout():
@@ -62,4 +64,11 @@ def test_reading_mode_body_disables_overflow_anchor():
     """Si el contenido inicial cabe, overflow-anchor mantiene el ancla al final al crecer."""
     css = STYLE_CSS.read_text(encoding="utf-8")
     body = _rule_body(css, ".reading-mode-body")
+    assert "overflow-anchor: none" in body
+
+
+def test_chat_stream_disables_overflow_anchor():
+    """El nodo vivo del chat es #messages-container.chat-stream, no .messages-container."""
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    body = _rule_body(css, ".chat-stream")
     assert "overflow-anchor: none" in body

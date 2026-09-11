@@ -134,4 +134,6 @@ def test_js_planner_rule_presets_crud_and_apply():
         "async function savePlannerRulePreset"
     )[0]
     assert "No se pudieron cargar los presets de reglas" in refresh
+    assert "plannerRulePresets" in js
+    assert "btn-planner-rule-preset-apply" in js
 

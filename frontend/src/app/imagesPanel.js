@@ -1,5 +1,6 @@
 import { imagesStore, persistImagesPrefs } from "../store/images.js";
 import { sessionStore } from "../store/session.js";
+import { settingsStore } from "../store/settings.js";
 import * as conversationsApi from "../api/conversations.js";
 import * as modelsApi from "../api/models.js";
 import * as imagesApi from "../api/images.js";
@@ -8,7 +9,20 @@ import {
   normalizePlannerRulesFromPrefs,
   hydratePlannerRulesFromLibrary,
   loadPlannerLibraryRules,
+  registerPlannerRulesPersister,
 } from "./rulesActions.js";
+import {
+  fillRecipeChipHost,
+  fillThinkOptions,
+  paramValuesEqual,
+  RECIPE_PARAM_LABELS,
+  recipeIdsFromContract,
+  recipesFromContract,
+  showThinking,
+  thinkSelectValue,
+  thinkingFromContract,
+} from "../lib/contractUi.js";
+import { normalizeModelsResponse } from "./settingsActions.js";
 
 const GALLERY_PAGE_SIZE = 24;
 
@@ -16,6 +30,12 @@ function readOptionalIntInput(el) {
   if (!el) return undefined;
   const v = parseInt(el.value, 10);
   return Number.isFinite(v) ? v : undefined;
+}
+
+function readOptionalNumber(value) {
+  if (value == null || value === "") return undefined;
+  const n = typeof value === "number" ? value : parseFloat(value);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 export function readForgePanelParams() {
@@ -52,14 +72,18 @@ export function readReactorPanelSettings() {
   const maleModel = document.getElementById("images-reactor-male-face-model");
   const codeformer = document.getElementById("images-reactor-codeformer-weight");
   const stored = imagesStore.get().prefs.reactor || {};
-  return {
+  const reactor = {
     enabled: enabled ? !!enabled.checked : !!stored.enabled,
     female_enabled: femaleOn ? !!femaleOn.checked : !!stored.female_enabled,
     male_enabled: maleOn ? !!maleOn.checked : !!stored.male_enabled,
     female_face_model: femaleModel ? femaleModel.value : stored.female_face_model || "",
     male_face_model: maleModel ? maleModel.value : stored.male_face_model || "",
-    codeformer_weight: codeformer ? codeformer.value : stored.codeformer_weight,
   };
+  const codeformerWeight = readOptionalNumber(
+    codeformer ? codeformer.value : stored.codeformer_weight
+  );
+  if (codeformerWeight != null) reactor.codeformer_weight = codeformerWeight;
+  return reactor;
 }
 
 export function applyReactorPanelSettings(reactor) {
@@ -112,8 +136,36 @@ export function reactorPanelInputNodes() {
   ].filter(Boolean);
 }
 
+function plannerOverlayParamDefaults() {
+  const contract = imagesStore.get().plannerContract;
+  if (!contract) return {};
+  const out = {};
+  if (showThinking(contract)) {
+    const spec = plannerParamSpec("think");
+    const thinking = thinkingFromContract(contract);
+    const def = spec && spec.default !== undefined ? spec.default : thinking && thinking.default;
+    if (def !== undefined && def !== null) out.think = def;
+  }
+  recipeIdsFromContract(contract).forEach((paramId) => {
+    if (paramId === "think") return;
+    const spec = plannerParamSpec(paramId);
+    if (spec && spec.default !== undefined && spec.default !== null) {
+      out[paramId] = spec.default;
+    }
+  });
+  return out;
+}
+
 export function collectPlannerModelParams() {
-  return imagesStore.get().prefs.prompt_model_params || {};
+  const stored = imagesStore.get().prefs.prompt_model_params || {};
+  return {
+    ...plannerOverlayParamDefaults(),
+    ...stored,
+  };
+}
+
+function plannerModelParams() {
+  return collectPlannerModelParams();
 }
 
 export function collectImagesSnapshot() {
@@ -148,6 +200,20 @@ export function collectImagesSnapshot() {
   };
 }
 
+let plannerRulesHydrated = false;
+
+export function resetPlannerRulesHydration() {
+  plannerRulesHydrated = false;
+}
+
+export function hydratePlannerRulesFromImagesPrefs() {
+  const prefs = imagesStore.get().prefs || {};
+  if (prefs.prompt_system_instructions) {
+    sessionStore.set({ plannerRules: normalizePlannerRulesFromPrefs(prefs.prompt_system_instructions) });
+  }
+  plannerRulesHydrated = true;
+}
+
 export function fillImagesPanelFromPrefs(prefs) {
   if (!prefs) return;
   const enabled = document.getElementById("images-enabled");
@@ -167,6 +233,7 @@ export function fillImagesPanelFromPrefs(prefs) {
   if (prefs.prompt_system_instructions) {
     sessionStore.set({ plannerRules: normalizePlannerRulesFromPrefs(prefs.prompt_system_instructions) });
   }
+  plannerRulesHydrated = true;
   applyReactorPanelSettings(prefs.reactor || (prefs.reactor_enabled ? { enabled: true } : {}));
   if (prefs.steps != null || prefs.width != null || prefs.height != null || prefs.seed != null) {
     applyForgePanelParams(prefs);
@@ -214,11 +281,23 @@ export function persistImagesPanel() {
   const prev = imagesStore.get().prefs || {};
   if (!snap.prompt_provider && prev.prompt_provider) snap.prompt_provider = prev.prompt_provider;
   if (!snap.prompt_model && prev.prompt_model) snap.prompt_model = prev.prompt_model;
+  const incomingRules = snap.prompt_system_instructions;
+  const prevRules = prev.prompt_system_instructions;
+  if (
+    !plannerRulesHydrated &&
+    Array.isArray(prevRules) &&
+    prevRules.length &&
+    (!Array.isArray(incomingRules) || incomingRules.length === 0)
+  ) {
+    snap.prompt_system_instructions = prevRules;
+  }
   persistImagesPrefs(snap);
   imagesStore.set((s) => ({ ...s, prefs: { ...s.prefs, ...snap } }));
   syncImagesChatConfigDisabled();
   debouncedPersistImagesToConversation();
 }
+
+registerPlannerRulesPersister(persistImagesPanel);
 
 export function updateImagesPref(patch) {
   imagesStore.set((s) => {
@@ -257,14 +336,13 @@ export async function loadImagesPromptModels() {
   const provider = (providerSel && providerSel.value) || imagesStore.get().prefs.prompt_provider || "ollama";
   try {
     const data = await modelsApi.listModels(provider);
-    const names = Array.isArray(data)
-      ? data.map((m) => (m && m.name) || m).filter(Boolean)
-      : [];
+    const names = normalizeModelsResponse(data);
     const modelSel = document.getElementById("images-prompt-model");
     if (modelSel) {
-      const keep = modelSel.value;
+      const keep = modelSel.value || imagesStore.get().prefs.prompt_model || "";
       modelSel.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join("");
       if (keep && names.includes(keep)) modelSel.value = keep;
+      else if (names[0]) modelSel.value = names[0];
     }
     imagesStore.set((s) => ({
       ...s,
@@ -273,14 +351,225 @@ export async function loadImagesPromptModels() {
   } catch (_) {}
 }
 
+export async function ensureImagesPromptSelects() {
+  const providerSel = document.getElementById("images-prompt-provider");
+  const modelSel = document.getElementById("images-prompt-model");
+  if (!providerSel || !modelSel) return;
+  const prefs = imagesStore.get().prefs || {};
+  let providers = (settingsStore.get().providers || [])
+    .map((p) => (typeof p === "string" ? p : p.name))
+    .filter(Boolean);
+  if (!providers.length) {
+    try {
+      const data = await modelsApi.listProviders();
+      providers = (data || []).map((p) => (typeof p === "string" ? p : p.name)).filter(Boolean);
+      if (providers.length) {
+        const current = settingsStore.get().currentProvider;
+        const next = providers.includes(current) ? current : providers[0];
+        settingsStore.set({ providers, currentProvider: next });
+      }
+    } catch (_) {}
+  }
+  if (providers.length) {
+    providerSel.innerHTML = providers.map((p) => `<option value="${p}">${p}</option>`).join("");
+    const keep = prefs.prompt_provider || settingsStore.get().currentProvider || providers[0];
+    if (keep && providers.includes(keep)) providerSel.value = keep;
+  }
+  await loadImagesPromptModels();
+}
+
+function plannerRecipes() {
+  return recipesFromContract(imagesStore.get().plannerContract);
+}
+
+function plannerParamSpec(paramId) {
+  const contract = imagesStore.get().plannerContract;
+  return (contract && contract.params && contract.params[paramId]) || null;
+}
+
+function plannerPresetsUseChatConfig() {
+  const node = document.getElementById("images-use-chat-config");
+  if (node) return !!node.checked;
+  return !!imagesStore.get().prefs.use_chat_config;
+}
+
+function coercePlannerParamValue(paramId, raw) {
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (paramId === "think") {
+    if (raw === true || raw === "true") return true;
+    if (raw === false || raw === "false") return false;
+    return raw;
+  }
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  const n = Number(raw);
+  if (Number.isFinite(n) && String(raw).trim() !== "") return n;
+  return raw;
+}
+
+function plannerRecipeMatches(recipe) {
+  const params = (recipe && recipe.params) || {};
+  const current = plannerModelParams();
+  return Object.keys(params).every((paramId) => {
+    if (!Object.prototype.hasOwnProperty.call(current, paramId)) return false;
+    return paramValuesEqual(paramId, current[paramId], params[paramId]);
+  });
+}
+
+function plannerParamLabel(paramId) {
+  const spec = plannerParamSpec(paramId);
+  return (spec && spec.label) || RECIPE_PARAM_LABELS[paramId] || paramId;
+}
+
+function syncPlannerRecipeChipSelection() {
+  const recipes = plannerRecipes();
+  const active = recipes.find((recipe) => plannerRecipeMatches(recipe));
+  const activeId = active && active.id;
+  document.querySelectorAll("#planner-recipes .composer-recipe-chip").forEach((btn) => {
+    const on = Boolean(activeId && btn.dataset.recipeId === activeId);
+    btn.classList.toggle("is-active", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  const owned = active && active.params ? Object.keys(active.params) : [];
+  document.querySelectorAll("#planner-recipe-params .settings-recipe-param").forEach((row) => {
+    row.classList.toggle("is-owned", owned.includes(row.dataset.paramId));
+  });
+}
+
+function syncPlannerPresetsVisibility() {
+  const onChat = plannerPresetsUseChatConfig();
+  const hint = document.getElementById("planner-presets-chat-hint");
+  const emptyEl = document.getElementById("planner-presets-empty");
+  const controls = document.getElementById("planner-presets-controls");
+  const inspector = document.getElementById("planner-recipe-params");
+  const wrap = document.getElementById("planner-think-wrap");
+  const thinkEl = document.getElementById("planner-think");
+  if (hint) hint.hidden = !onChat;
+  if (onChat) {
+    if (emptyEl) emptyEl.hidden = true;
+    if (controls) controls.hidden = true;
+    if (inspector) inspector.hidden = true;
+    return;
+  }
+  const recipes = plannerRecipes();
+  const contract = imagesStore.get().plannerContract;
+  const canThink = showThinking(contract);
+  const showRecipes = recipes.length > 0;
+  if (emptyEl) emptyEl.hidden = showRecipes;
+  if (controls) controls.hidden = !canThink && !showRecipes;
+  if (wrap) wrap.hidden = !canThink;
+  if (thinkEl) thinkEl.disabled = !canThink;
+  if (inspector) {
+    const ids = recipeIdsFromContract(contract).filter((id) => id !== "think");
+    inspector.hidden = !ids.length;
+  }
+}
+
+function createPlannerParamControl(paramId, spec) {
+  const control = document.createElement("input");
+  control.type = "number";
+  control.className = "param-control";
+  control.setAttribute("data-planner-param-id", paramId);
+  if (paramId === "temperature" || paramId === "top_p" || paramId === "min_p") {
+    control.step = "0.1";
+    if (!control.min) control.min = "0";
+    if (paramId === "temperature") control.max = "2";
+    if (paramId === "top_p" || paramId === "min_p") control.max = "1";
+  } else {
+    control.step = "1";
+  }
+  if (spec) {
+    if (spec.min != null) control.min = String(spec.min);
+    if (spec.max != null) control.max = String(spec.max);
+    if (spec.step != null) control.step = String(spec.step);
+    if (spec.default != null) control.placeholder = String(spec.default);
+  }
+  if (paramId === "num_ctx" && !control.min) control.min = "512";
+  return control;
+}
+
+function writePlannerParamFromControl(paramId, control) {
+  const value = coercePlannerParamValue(paramId, control.value);
+  const next = { ...plannerModelParams() };
+  if (value === null) delete next[paramId];
+  else next[paramId] = value;
+  updateImagesPref({ prompt_model_params: next });
+  syncPlannerRecipeChipSelection();
+}
+
+function rebuildPlannerRecipeInspector() {
+  const host = document.getElementById("planner-recipe-params");
+  if (!host) return;
+  const contract = imagesStore.get().plannerContract;
+  const ids = recipeIdsFromContract(contract).filter((id) => id !== "think");
+  host.innerHTML = "";
+  if (!ids.length || plannerPresetsUseChatConfig()) {
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+  ids.forEach((paramId) => {
+    const spec = plannerParamSpec(paramId) || {};
+    const row = document.createElement("div");
+    row.className = "settings-recipe-param";
+    row.dataset.paramId = paramId;
+    const label = document.createElement("label");
+    label.className = "settings-recipe-param-label";
+    const controlId = "planner-recipe-param-" + paramId;
+    label.setAttribute("for", controlId);
+    label.textContent = plannerParamLabel(paramId);
+    const control = createPlannerParamControl(paramId, spec);
+    control.id = controlId;
+    const stored = plannerModelParams()[paramId];
+    const display = stored !== undefined && stored !== null ? stored : spec.default;
+    if (display !== undefined && display !== null) control.value = String(display);
+    control.addEventListener("input", () => writePlannerParamFromControl(paramId, control));
+    control.addEventListener("change", () => writePlannerParamFromControl(paramId, control));
+    row.appendChild(label);
+    row.appendChild(control);
+    host.appendChild(row);
+  });
+  syncPlannerRecipeChipSelection();
+}
+
+export function renderPlannerRecipes() {
+  const wrap = document.getElementById("planner-think-wrap");
+  const thinkEl = document.getElementById("planner-think");
+  const recipes = plannerRecipes();
+  const contract = imagesStore.get().plannerContract;
+  const thinking = thinkingFromContract(contract);
+  const canThink = showThinking(contract);
+  if (wrap) wrap.hidden = !canThink;
+  if (thinkEl) {
+    if (canThink) {
+      fillThinkOptions(thinkEl, thinking);
+      thinkEl.disabled = plannerPresetsUseChatConfig();
+      thinkEl.classList.remove("control-disabled");
+      const spec = plannerParamSpec("think");
+      const def = spec && spec.default !== undefined ? spec.default : thinking.default;
+      const current = Object.prototype.hasOwnProperty.call(plannerModelParams(), "think")
+        ? plannerModelParams().think
+        : def;
+      if (current !== undefined && current !== null) thinkEl.value = thinkSelectValue(current);
+    } else {
+      thinkEl.disabled = true;
+      thinkEl.classList.add("control-disabled");
+      thinkEl.innerHTML = "";
+    }
+  }
+  fillRecipeChipHost(document.getElementById("planner-recipes"), recipes, applyPlannerRecipe);
+  rebuildPlannerRecipeInspector();
+  syncPlannerPresetsVisibility();
+  syncPlannerRecipeChipSelection();
+}
+
 export async function loadPlannerContract() {
   const providerSel = document.getElementById("images-prompt-provider");
   const modelSel = document.getElementById("images-prompt-model");
-  const provider = providerSel ? providerSel.value : "";
-  const modelId = modelSel ? modelSel.value : "";
-  const prefs = imagesStore.get().prefs || {};
+  const provider = (providerSel && providerSel.value) || imagesStore.get().prefs.prompt_provider || "";
+  const modelId = (modelSel && modelSel.value) || imagesStore.get().prefs.prompt_model || "";
   if (!provider || !modelId) {
     imagesStore.set({ plannerContract: null });
+    renderPlannerRecipes();
     return;
   }
   try {
@@ -289,16 +578,27 @@ export async function loadPlannerContract() {
   } catch (_) {
     imagesStore.set({ plannerContract: null });
   }
-  void prefs;
+  const latest = imagesStore.get().prefs || {};
+  const sameTarget = latest.prompt_provider === provider && latest.prompt_model === modelId;
+  const previous =
+    sameTarget && latest.prompt_model_params && typeof latest.prompt_model_params === "object"
+      ? latest.prompt_model_params
+      : {};
+  const seeded = { ...plannerOverlayParamDefaults(), ...previous };
+  imagesStore.set((s) => {
+    const prefs = { ...s.prefs, prompt_model_params: seeded };
+    persistImagesPrefs(prefs);
+    return { ...s, prefs };
+  });
+  renderPlannerRecipes();
 }
 
 export async function applyPlannerRecipe(recipe) {
   if (!recipe || typeof recipe !== "object") return;
-  updateImagesPref({ prompt_model_params: { ...(recipe.params || {}) } });
-}
-
-export async function ensureImagesPromptSelects() {
-  await loadImagesPromptModels();
+  updateImagesPref({
+    prompt_model_params: { ...plannerOverlayParamDefaults(), ...(recipe.params || {}) },
+  });
+  renderPlannerRecipes();
 }
 
 export async function reloadForgeParamsFromLastGen(options = {}) {
@@ -326,6 +626,7 @@ export async function fetchForgeLastGenerationParams() {
 }
 
 export async function initImagesPanel() {
+  hydratePlannerRulesFromImagesPrefs();
   const prefs = imagesStore.get().prefs || {};
   fillImagesPanelFromPrefs(prefs);
   await fetchForgeReactorDefaults();
@@ -363,7 +664,13 @@ export async function initImagesPanel() {
         if (node.id === "images-reactor-female-enabled" || node.id === "images-reactor-male-enabled") {
           syncReactorGenderInputs();
         }
-        persistImagesPanel();
+        if (node === providerSel) {
+          loadImagesPromptModels()
+            .then(loadPlannerContract)
+            .then(persistImagesPanel);
+        } else if (node === modelSel) {
+          loadPlannerContract().then(persistImagesPanel);
+        } else persistImagesPanel();
       });
     });
   syncReactorGenderInputs();
@@ -372,6 +679,19 @@ export async function initImagesPanel() {
       reloadForgeParamsFromLastGen({ notify: true }).catch(function () {});
     });
   }
+  const plannerThink = document.getElementById("planner-think");
+  if (plannerThink && !plannerThink.dataset.boundThink) {
+    plannerThink.dataset.boundThink = "1";
+    plannerThink.addEventListener("change", function () {
+      const value = coercePlannerParamValue("think", plannerThink.value);
+      const next = { ...plannerModelParams() };
+      if (value === null) delete next.think;
+      else next.think = value;
+      updateImagesPref({ prompt_model_params: next });
+      renderPlannerRecipes();
+    });
+  }
+  await loadPlannerContract();
   persistImagesPanel();
 }
 

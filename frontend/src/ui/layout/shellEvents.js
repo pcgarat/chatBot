@@ -21,15 +21,20 @@ import { loadImageQueuePage, startImageQueuePoll } from "../../app/queueActions.
 import { onComposerPrimaryClick, sendPromptGeneratorTurn } from "../../app/sendMessage.js";
 import { changeProvider, changeModel, refreshModels, applyModelRecipe } from "../../app/settingsActions.js";
 import { settingsStore } from "../../store/settings.js";
-import { updateImagesPref } from "../../app/imagesPanel.js";
+import { imagesStore } from "../../store/images.js";
+import { updateImagesPref, loadImagesPromptModels, loadPlannerContract, renderPlannerRecipes } from "../../app/imagesPanel.js";
 import { abortAllIllustrations } from "../../app/illustrate.js";
 import {
   applyWorkspaceProfile,
   saveWorkspaceProfile,
   deleteWorkspaceProfile,
   getWorkspaceProfiles,
+  applyPlannerRulePreset,
+  savePlannerRulePreset,
+  deletePlannerRulePreset,
 } from "../../app/profilesActions.js";
-import { debugStore, setStoredDebugLogSize, DEBUG_LOG_SIZE_STEP, DEBUG_LOG_SIZE_MIN, DEBUG_LOG_SIZE_MAX, setDebugPanelOpen, setDebugLogSize } from "../../store/debug.js";
+import { debugStore, setStoredDebugLogSize, DEBUG_LOG_SIZE_STEP, DEBUG_LOG_SIZE_MIN, DEBUG_LOG_SIZE_MAX, setDebugPanelOpen, setDebugLogSize, toggleDebugJsonPath, toggleDebugEntryExpanded } from "../../store/debug.js";
+import { decodeJsonPath } from "../../lib/debugJsonTree.js";
 
 let drag = null;
 
@@ -67,6 +72,37 @@ export function onAppPointerUp() {
 }
 
 export async function onAppClick(e) {
+  const imageLink = e.target.closest(".debug-image-link");
+  if (imageLink) {
+    e.preventDefault();
+    const { goToConversationTarget } = await import("../../app/sessionActions.js");
+    goToConversationTarget({
+      conversationId: imageLink.getAttribute("data-conversation-id") || "",
+      messageId: imageLink.getAttribute("data-message-id") || "",
+      filename: imageLink.getAttribute("data-filename") || "",
+      sceneId: imageLink.getAttribute("data-scene-id") || "",
+    });
+    return;
+  }
+  const jsonToggle = e.target.closest(".json-toggle");
+  if (jsonToggle) {
+    e.preventDefault();
+    e.stopPropagation();
+    const entry = jsonToggle.closest(".debug-entry");
+    const entryId = entry && entry.getAttribute("data-debug-id");
+    const encoded = jsonToggle.getAttribute("data-json-path") || "";
+    if (entryId && encoded) toggleDebugJsonPath(entryId, decodeJsonPath(encoded));
+    return;
+  }
+  const entryToggle = e.target.closest(".debug-entry-toggle");
+  if (entryToggle) {
+    e.preventDefault();
+    e.stopPropagation();
+    const entry = entryToggle.closest(".debug-entry");
+    const entryId = entry && entry.getAttribute("data-debug-id");
+    if (entryId) toggleDebugEntryExpanded(entryId);
+    return;
+  }
   const btn = e.target.closest("button, [role='tab']");
   if (!btn) return;
   const { id } = btn;
@@ -216,6 +252,27 @@ export async function onAppClick(e) {
       if (sel && sel.value) deleteWorkspaceProfile(sel.value);
       break;
     }
+    case "btn-planner-rule-preset-apply": {
+      const sel = document.getElementById("planner-rule-preset-select");
+      if (sel && sel.value) applyPlannerRulePreset(sel.value);
+      break;
+    }
+    case "btn-planner-rule-preset-save": {
+      const sel = document.getElementById("planner-rule-preset-select");
+      const name = window.prompt("Nombre del preset de reglas");
+      if (name) savePlannerRulePreset({ name, presetId: sel && sel.value, asNew: false });
+      break;
+    }
+    case "btn-planner-rule-preset-save-as": {
+      const name = window.prompt("Nombre del preset de reglas");
+      if (name) savePlannerRulePreset({ name, asNew: true });
+      break;
+    }
+    case "btn-planner-rule-preset-delete": {
+      const sel = document.getElementById("planner-rule-preset-select");
+      if (sel && sel.value) deletePlannerRulePreset(sel.value);
+      break;
+    }
     case "btn-add-rule": {
       const title = document.getElementById("rule-new-title");
       const content = document.getElementById("rule-new-input");
@@ -294,6 +351,7 @@ export function onAppChange(e) {
   const t = e.target;
   if (!t) return;
   if (t.id === "dark-mode-toggle") toggleDarkMode(t.checked);
+  if (t.id === "render-markdown-toggle") updateLayout({ renderMarkdown: t.checked });
   if (t.id === "auto-scroll-during-generation") updateLayout({ autoScrollDuringGeneration: t.checked });
   if (t.id === "conversation-auto-title") {
     sessionStore.set({ autoTitle: t.checked });
@@ -309,14 +367,37 @@ export function onAppChange(e) {
   if (t.id === "save-to-chromadb-select") settingsStore.set({ saveToChromadb: t.value });
   if (t.id === "history-turns-input") settingsStore.set({ historyTurns: Number(t.value) || 20 });
   if (t.id === "images-enabled") updateImagesPref({ enabled: t.checked });
-  if (t.id === "images-use-chat-config") updateImagesPref({ use_chat_config: t.checked });
+  if (t.id === "images-use-chat-config") {
+    updateImagesPref({ use_chat_config: t.checked });
+    renderPlannerRecipes();
+  }
   if (t.id === "images-visual-consistency") updateImagesPref({ visual_consistency: t.checked });
   if (t.id === "images-per-response") updateImagesPref({ images_per_response: Number(t.value) || 2 });
   if (t.id === "images-batch-size") updateImagesPref({ batch_size: Number(t.value) || 10 });
   if (t.id === "images-retries") updateImagesPref({ retries: Number(t.value) || 0 });
   if (t.id === "images-prompt") updateImagesPref({ prompt: t.value });
-  if (t.id === "images-prompt-provider") updateImagesPref({ prompt_provider: t.value });
-  if (t.id === "images-prompt-model") updateImagesPref({ prompt_model: t.value });
+  if (t.id === "images-prompt-provider") {
+    updateImagesPref({ prompt_provider: t.value, prompt_model_params: {} });
+    loadImagesPromptModels().then(() => loadPlannerContract());
+  }
+  if (t.id === "images-prompt-model") {
+    updateImagesPref({ prompt_model: t.value, prompt_model_params: {} });
+    loadPlannerContract();
+  }
+  if (t.id === "settings-think") {
+    const canonical = document.getElementById("param-think");
+    if (canonical) {
+      canonical.value = t.value;
+      canonical.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  if (t.id === "planner-think") {
+    const raw = t.value;
+    const think = raw === "true" ? true : raw === "false" ? false : raw;
+    const current = imagesStore.get().prefs.prompt_model_params || {};
+    updateImagesPref({ prompt_model_params: { ...current, think } });
+    renderPlannerRecipes();
+  }
   if (t.dataset.controlId) {
     const id = t.dataset.controlId;
     let value = t.value;

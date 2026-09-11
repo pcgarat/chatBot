@@ -3,9 +3,10 @@ import { layoutStore, updateLayout, setChatPanelVisible, setGalleryPanelVisible,
 import { loadGalleryPage } from "./galleryActions.js";
 import { loadImageQueuePage, maybeStopImageQueuePoll } from "./queueActions.js";
 
-export function bindScrollReveal(el) {
-  if (!el) return;
-  el.classList.toggle("is-scrollbar-visible", el.scrollHeight > el.clientHeight);
+export function bindScrollReveal(el, scrollEl) {
+  const node = scrollEl || el;
+  if (!node) return;
+  node.classList.toggle("is-scrollbar-visible", node.scrollHeight > node.clientHeight);
 }
 
 export function stayHere() {

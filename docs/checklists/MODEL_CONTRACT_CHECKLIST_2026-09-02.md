@@ -1,4 +1,4 @@
-Última modificación: 2026-09-02
+Última modificación: 2026-09-11
 
 # Checklist: Contrato de modelo
 
@@ -46,7 +46,7 @@
 **Description:** Archivo sparse por proveedor y función que lo lee (caché en memoria, como presets).
 
 **Acceptance criteria:**
-- [x] `config/model_overlays/ollama.json` con entradas cloud (v1 arrancó con GPT-OSS + DeepSeek; **hoy: 8 cloud** — gpt-oss, deepseek-v4-flash, gemma4-31b, glm-5.3-flash, glm-5.2, kimi-k2.6, kimi-k3, mistral-large-3)
+- [x] `config/model_overlays/ollama.json` con entradas cloud (v1 arrancó con GPT-OSS + DeepSeek; **2026-09-11:** 9 cloud — gpt-oss, deepseek-v4-flash, gemma4-31b, glm-5.3-flash, **glm-5.3**, glm-5.2, kimi-k2.6, kimi-k3, mistral-large-3). También `openai.json`, `mancer.json`, `abliteration.json`.
 - [x] Overlay = deltas + `capabilities` + `recipes` + `quirks`; no copia el schema entero
 - [x] Loader: archivo ausente o JSON inválido → `{}` (mismo criterio que `get_presets`)
 - [x] DeepSeek: `num_ctx.max` 1048576, default ctx ≠ max, recetas fast/coding/hard, thinking con `max` y disable

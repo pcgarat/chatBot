@@ -29,7 +29,12 @@ ABLIT_KNOWN_MODELS: dict[str, dict[str, Any]] = {
     "abliterated-model-large": {
         "context_length": 1_000_000,
         "pricing": {"prompt_per_1k": 0.005, "completion_per_1k": 0.005},
-        "display_name": "abliterated-model-large (text, 1M)",
+        "display_name": "abliterated-model-large (text, 1M, GLM-5.2)",
+    },
+    "abliterated-model-large-v2": {
+        "context_length": 1_000_000,
+        "pricing": {"prompt_per_1k": 0.005, "completion_per_1k": 0.005},
+        "display_name": "abliterated-model-large-v2 (text, 1M, GLM-5.3)",
     },
 }
 

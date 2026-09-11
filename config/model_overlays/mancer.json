@@ -1,0 +1,148 @@
+{
+  "mythomax": {
+    "capabilities": {
+      "vision": false,
+      "tools": false,
+      "structured_output": false,
+      "thinking": { "kind": "none" }
+    },
+    "params": {
+      "temperature": { "default": 0.9 },
+      "max_tokens": { "default": 512, "max": 8192 }
+    },
+    "recipes": [
+      { "id": "roleplay", "label": "Roleplay", "params": { "temperature": 0.95 } },
+      { "id": "chat", "label": "Chat", "params": { "temperature": 0.8 } }
+    ],
+    "quirks": []
+  },
+  "mytholite": {
+    "capabilities": {
+      "vision": false,
+      "tools": false,
+      "structured_output": false,
+      "thinking": { "kind": "none" }
+    },
+    "params": {
+      "temperature": { "default": 0.9 },
+      "max_tokens": { "default": 150, "max": 2560 }
+    },
+    "recipes": [
+      { "id": "roleplay", "label": "Roleplay", "params": { "temperature": 0.95 } }
+    ],
+    "quirks": []
+  },
+  "weaver": {
+    "capabilities": {
+      "vision": false,
+      "tools": false,
+      "structured_output": false,
+      "thinking": { "kind": "none" }
+    },
+    "params": {
+      "temperature": { "default": 0.9 },
+      "max_tokens": { "default": 512, "max": 8000 }
+    },
+    "recipes": [
+      { "id": "narrative", "label": "Narrativa", "params": { "temperature": 0.95 } },
+      { "id": "chat", "label": "Chat", "params": { "temperature": 0.8 } }
+    ],
+    "quirks": []
+  },
+  "remm-slerp": {
+    "capabilities": {
+      "vision": false,
+      "tools": false,
+      "structured_output": false,
+      "thinking": { "kind": "none" }
+    },
+    "params": {
+      "temperature": { "default": 0.85 },
+      "max_tokens": { "default": 512, "max": 6144 }
+    },
+    "recipes": [
+      { "id": "roleplay", "label": "Roleplay", "params": { "temperature": 0.9 } }
+    ],
+    "quirks": []
+  },
+  "goliath-120b": {
+    "capabilities": {
+      "vision": false,
+      "tools": false,
+      "structured_output": false,
+      "thinking": { "kind": "none" }
+    },
+    "params": {},
+    "recipes": [],
+    "quirks": []
+  },
+  "magnum-72b-v4": {
+    "capabilities": {
+      "vision": false,
+      "tools": false,
+      "structured_output": false,
+      "thinking": { "kind": "none" }
+    },
+    "params": {
+      "temperature": { "default": 0.8 },
+      "max_tokens": { "default": 1024, "max": 32768 }
+    },
+    "recipes": [
+      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.0 } },
+      { "id": "coding", "label": "Coding", "params": { "temperature": 0.3 } }
+    ],
+    "quirks": []
+  },
+  "glm-4.7": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": true,
+      "thinking": { "kind": "none" }
+    },
+    "params": {
+      "temperature": { "default": 0.7 },
+      "max_tokens": { "default": 2048, "max": 131072 }
+    },
+    "recipes": [
+      { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } },
+      { "id": "coding", "label": "Coding", "params": { "temperature": 0.3 } },
+      { "id": "creative", "label": "Creativo", "params": { "temperature": 0.95 } }
+    ],
+    "quirks": []
+  },
+  "danspe-v1-3-0-12b": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "structured_output": false,
+      "thinking": { "kind": "none" }
+    },
+    "params": {
+      "temperature": { "default": 0.85 },
+      "max_tokens": { "default": 512, "max": 16384 }
+    },
+    "recipes": [
+      { "id": "roleplay", "label": "Roleplay", "params": { "temperature": 0.9 } },
+      { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } }
+    ],
+    "quirks": []
+  },
+  "danspe-v1-3-0-24b": {
+    "capabilities": {
+      "vision": false,
+      "tools": false,
+      "structured_output": false,
+      "thinking": { "kind": "none" }
+    },
+    "params": {
+      "temperature": { "default": 0.85 },
+      "max_tokens": { "default": 512, "max": 32768 }
+    },
+    "recipes": [
+      { "id": "roleplay", "label": "Roleplay", "params": { "temperature": 0.9 } },
+      { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } }
+    ],
+    "quirks": []
+  }
+}

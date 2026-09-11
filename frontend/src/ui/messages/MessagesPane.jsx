@@ -3,11 +3,12 @@ import { layoutStore, updateLayout } from "../../store/layout.js";
 import { useStore } from "../../hooks/useStore.js";
 import { messagesForDisplay } from "../../lib/tree.js";
 import { formatMessageHtml, buildCollapsibleMessageHtml, messageCollapseKey, splitFirstParagraph, escapeHtml, kickLazyIllustrations } from "../../lib/html.js";
-import { forkConversationFromMessage, deleteMessageFromHistory } from "../../app/sessionActions.js";
+import { forkConversationFromMessage, deleteMessageFromHistory, findMessageWithIllustration } from "../../app/sessionActions.js";
 import { maybeIllustrateAssistantMessage, generateRemainingImages, illustrateAtParagraph } from "../../app/illustrate.js";
-import { scheduleConversationImageFilter } from "../../app/galleryActions.js";
+import { scheduleConversationImageFilter, highlightIllustrationInConversation } from "../../app/galleryActions.js";
+import { findChatIllustration } from "../../lib/illustrationLocate.js";
 import { showNotice, showError } from "../../store/ui.js";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 function splitTxt2imgPrompt(content) {
   const re = /```txt2img-prompt\n([\s\S]*?)\n```/;
@@ -97,13 +98,43 @@ export function renderMessages() {
     });
   });
   scheduleConversationImageFilter();
-  if (!consulta && wrap) wrap.scrollTop = wrap.scrollHeight;
-  void prevScrollTop;
+  if (wrap && sessionStore.get().pendingReveal) return;
+  if (wrap) wrap.scrollTop = prevScrollTop;
 }
 
 export function closeAllMessageContextMenus() {
   const menu = document.getElementById("msg-text-context-menu");
   if (menu) menu.hidden = true;
+}
+
+function selectedTextExcerpt() {
+  const selection = typeof window.getSelection === "function" ? window.getSelection() : null;
+  if (!selection || selection.isCollapsed) return "";
+  return String(selection.toString() || "").trim();
+}
+
+function placeFixedMenu(menu, clientX, clientY) {
+  menu.style.left = Math.max(8, clientX) + "px";
+  menu.style.top = Math.max(8, clientY) + "px";
+  menu.hidden = false;
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth - 8) {
+    menu.style.left = Math.max(8, window.innerWidth - rect.width - 8) + "px";
+  }
+  if (rect.bottom > window.innerHeight - 8) {
+    menu.style.top = Math.max(8, window.innerHeight - rect.height - 8) + "px";
+  }
+}
+
+function openMessageTextContextMenu(clientX, clientY, ctx) {
+  const menu = document.getElementById("msg-text-context-menu");
+  if (!menu) return;
+  menu.dataset.messageId = ctx.messageId || "";
+  menu.dataset.paragraphIndex = String(ctx.paragraphIndex ?? 0);
+  menu.dataset.excerpt = ctx.excerpt || "";
+  const copyBtn = document.getElementById("msg-text-copy");
+  if (copyBtn) copyBtn.hidden = !ctx.excerpt;
+  placeFixedMenu(menu, clientX, clientY);
 }
 
 export function scrollMessagesToBottom() {
@@ -127,8 +158,110 @@ export function scheduleScrollMessagesToTop() {
 
 export function scrollAndHighlightMessage(id) {
   cancelScheduledScrollToBottom();
-  const node = document.querySelector(`[data-msg-id="${id}"]`);
-  if (node) node.scrollIntoView({ block: "start" });
+  const container = document.getElementById("messages-container");
+  const node = container && id ? container.querySelector(`[data-msg-id="${CSS.escape(String(id))}"]`) : null;
+  if (node) scrollElementInMessages(container, node, "start");
+}
+
+export function scrollElementInMessages(container, el, block) {
+  if (!container || !el) return false;
+  const top = messageOffsetInContainer(container, el);
+  if (block === "center") {
+    const height = el.getBoundingClientRect().height;
+    container.scrollTop = Math.max(0, top - Math.max(0, (container.clientHeight - height) / 2));
+  } else {
+    container.scrollTop = Math.max(0, top);
+  }
+  return true;
+}
+
+function expandCollapsedMessageRow(row) {
+  const collapsible = row && row.querySelector(".message-body-collapsible.is-collapsed");
+  if (!collapsible) return false;
+  const key = collapsible.getAttribute("data-collapse-key");
+  if (!key) return false;
+  sessionStore.set((s) => ({
+    collapsedMessageKeys: (s.collapsedMessageKeys || []).filter((k) => k !== key),
+  }));
+  return true;
+}
+
+export function applyRevealInMessages(pending, options = {}) {
+  if (!pending) return true;
+  cancelScheduledScrollToBottom();
+  const container = document.getElementById("messages-container");
+  if (!container || container.clientHeight < 8) return false;
+  const currentConv = sessionStore.get().conversationId;
+  if (pending.conversationId && currentConv && pending.conversationId !== currentConv) {
+    return false;
+  }
+  const resolved = findMessageWithIllustration(
+    sessionStore.get().messages,
+    pending.filename,
+    pending.sceneId,
+    pending.messageId
+  );
+  const messageId = (resolved && resolved.id) || pending.messageId || null;
+  const row = messageId
+    ? container.querySelector(`.message-row[data-msg-id="${CSS.escape(String(messageId))}"]`)
+    : null;
+  if (messageId && !row) {
+    // Esperar a que cargue el hilo / se pinte el mensaje; no cerrar el pending.
+    return false;
+  }
+  if (row && expandCollapsedMessageRow(row)) return false;
+  kickLazyIllustrations(container);
+  if (pending.filename || pending.sceneId) {
+    if (
+      highlightIllustrationInConversation(pending.filename, pending.sceneId, {
+        silent: true,
+        messageId,
+      })
+    ) {
+      return illustrationRevealIsStable(pending.filename, pending.sceneId, messageId);
+    }
+    if (options.finalAttempt && row) {
+      scrollElementInMessages(container, row, "start");
+      return true;
+    }
+    return false;
+  }
+  if (!row) return false;
+  scrollElementInMessages(container, row, "start");
+  const cRect = container.getBoundingClientRect();
+  const r = row.getBoundingClientRect();
+  return Math.abs(r.top - cRect.top) < 96;
+}
+
+let revealLoopToken = 0;
+
+export function schedulePendingRevealLoop() {
+  const token = ++revealLoopToken;
+  let attempts = 0;
+  const run = () => {
+    if (token !== revealLoopToken) return;
+    const pending = sessionStore.get().pendingReveal;
+    if (!pending) return;
+    attempts += 1;
+    if (applyRevealInMessages(pending, { finalAttempt: attempts >= 45 }) || attempts >= 45) {
+      if (token !== revealLoopToken) return;
+      sessionStore.set({ pendingReveal: null });
+      return;
+    }
+    requestAnimationFrame(run);
+  };
+  run();
+}
+
+function illustrationRevealIsStable(filename, sceneId, messageId) {
+  const root = document.getElementById("messages-container");
+  if (!root) return false;
+  const found = findChatIllustration(root, { filename, sceneId, messageId });
+  const img = found && found.img;
+  const frame = found && found.frame;
+  if (!img || !frame) return false;
+  if (!img.complete) return false;
+  return frame.getBoundingClientRect().height > 1;
 }
 
 export async function openConversationAtMessage(conversationId, messageId) {
@@ -180,19 +313,49 @@ export function paragraphIndexFromEventTarget(target, messageRoot) {
   return 0;
 }
 
+let messageTextContextMenuBound = false;
+
 export function bindMessageTextContextMenu() {
-  const root = document.getElementById("messages-container");
-  if (!root || root.dataset.textCtxBound === "1") return;
-  root.dataset.textCtxBound = "1";
-  root.addEventListener("contextmenu", function (e) {
+  if (messageTextContextMenuBound) return;
+  messageTextContextMenuBound = true;
+  document.addEventListener("contextmenu", function (e) {
     const bubble = e.target.closest(".message-bubble.assistant");
-    if (!bubble) return;
+    if (!bubble) {
+      if (!e.target.closest("#msg-text-context-menu")) closeAllMessageContextMenus();
+      return;
+    }
+    if (e.target.closest("button, a, textarea, input")) return;
     e.preventDefault();
-    const idx = paragraphIndexFromEventTarget(e.target, bubble);
+    e.stopPropagation();
+    const row = bubble.closest("[data-msg-id]");
+    openMessageTextContextMenu(e.clientX, e.clientY, {
+      messageId: row ? row.getAttribute("data-msg-id") : "",
+      paragraphIndex: paragraphIndexFromEventTarget(e.target, bubble),
+      excerpt: selectedTextExcerpt(),
+    });
+  });
+  document.addEventListener("click", function (e) {
     const menu = document.getElementById("msg-text-context-menu");
-    if (!menu) return;
-    menu.hidden = false;
-    menu.dataset.paragraphIndex = String(idx);
+    if (!menu || menu.hidden) return;
+    const item = e.target.closest("#msg-text-context-menu [data-action]");
+    if (item && menu.contains(item)) {
+      const action = item.getAttribute("data-action");
+      const messageId = menu.dataset.messageId;
+      const paragraphIndex = menu.dataset.paragraphIndex;
+      const excerpt = menu.dataset.excerpt || "";
+      closeAllMessageContextMenus();
+      if (action === "illustrate-at") {
+        illustrateAtParagraph(messageId, paragraphIndex, excerpt);
+      } else if (action === "copy-selection") {
+        copyMessageToClipboard(excerpt);
+      }
+      return;
+    }
+    if (e.target.closest("#msg-text-context-menu")) return;
+    closeAllMessageContextMenus();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeAllMessageContextMenus();
   });
 }
 
@@ -213,8 +376,7 @@ export function messageOffsetInContainer(container, messageEl) {
 }
 
 export function scrollMessageStartIntoView(container, messageEl) {
-  if (!container || !messageEl) return;
-  container.scrollTop = messageOffsetInContainer(container, messageEl);
+  scrollElementInMessages(container, messageEl, "start");
 }
 
 export function scrollMessageEndIntoView(container, messageEl) {
@@ -243,26 +405,49 @@ export function scrollToLastVisibleMessageEnd() {
 
 export function initConversationScrollNav() {
   const wrap = document.querySelector(".chat-stream-wrap");
-  const stream = document.getElementById("messages-container");
   const nav = document.getElementById("chat-scroll-nav");
   const btnUp = document.getElementById("btn-scroll-msg-up");
   const btnDown = document.getElementById("btn-scroll-msg-down");
   if (!wrap || !nav || !btnUp || !btnDown) return;
+  if (nav.dataset.scrollNavBound === "1") return;
+  nav.dataset.scrollNavBound = "1";
   const IDLE_HIDE_MS = 1200;
   let hideTimer = null;
   let pointerOverNav = false;
   function setVisible(visible) {
     nav.classList.toggle("is-visible", visible);
   }
+  function clearHide() {
+    if (hideTimer === null) return;
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
   function scheduleHide() {
+    clearHide();
     hideTimer = setTimeout(function () {
+      hideTimer = null;
       if (!pointerOverNav) setVisible(false);
     }, IDLE_HIDE_MS);
   }
-  wrap.addEventListener("mousemove", () => { setVisible(true); scheduleHide(); });
+  wrap.addEventListener("mousemove", () => {
+    setVisible(true);
+    if (!pointerOverNav) scheduleHide();
+  });
+  nav.addEventListener("mouseenter", () => {
+    pointerOverNav = true;
+    clearHide();
+    setVisible(true);
+  });
+  nav.addEventListener("mouseleave", () => {
+    pointerOverNav = false;
+    scheduleHide();
+  });
+  wrap.addEventListener("mouseleave", () => {
+    pointerOverNav = false;
+    scheduleHide();
+  });
   btnUp.addEventListener("click", (e) => { e.preventDefault(); scrollToFirstVisibleMessageStart(); });
   btnDown.addEventListener("click", (e) => { e.preventDefault(); scrollToLastVisibleMessageEnd(); });
-  void stream;
 }
 
 export function initReadingMode() {}
@@ -276,15 +461,30 @@ export function MessagesPane() {
   const illustrating = useStore(sessionStore, (s) => s.illustratingIds);
   const conversationId = useStore(sessionStore, (s) => s.conversationId);
   const autoScroll = useStore(layoutStore, (s) => s.autoScrollDuringGeneration);
+  const renderMarkdown = useStore(layoutStore, (s) => s.renderMarkdown);
+  const pendingReveal = useStore(sessionStore, (s) => s.pendingReveal);
   const ref = useRef(null);
   const display = messagesForDisplay(messages, consulta);
+
+  useLayoutEffect(() => {
+    if (!pendingReveal) return;
+    schedulePendingRevealLoop();
+  }, [pendingReveal, messages, collapsed, consulta]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el) kickLazyIllustrations(el);
+  }, [messages, streamingText, display.length]);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (consulta) return;
-    if (autoScroll) el.scrollTop = el.scrollHeight;
-  }, [messages, streamingText, consulta, autoScroll]);
+    if (!autoScroll) return;
+    if (pendingReveal) return;
+    if (!streamingText && !streamingStatus) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, streamingText, streamingStatus, consulta, autoScroll, pendingReveal]);
 
   function toggleCollapse(key) {
     sessionStore.set((s) => {
@@ -319,14 +519,15 @@ export function MessagesPane() {
         const collapseKey = messageCollapseKey(m, idx >= 0 ? idx : displayIdx);
         const isCollapsed = collapsed.includes(collapseKey);
         const splitPg = !isUser && hasContent ? splitTxt2imgPrompt(m.content || "") : null;
+        const mdOpts = { markdown: !!renderMarkdown };
         let bodyHtml;
         if (splitPg && splitPg.prompt) {
-          const prose = splitPg.text ? `<div class="message-content">${formatMessageHtml(splitPg.text, 0)}</div>` : "";
+          const prose = splitPg.text ? `<div class="message-content">${formatMessageHtml(splitPg.text, 0, mdOpts)}</div>` : "";
           bodyHtml = `${prose}<div class="txt2img-prompt-block"><div class="txt2img-prompt-toolbar"><span class="txt2img-prompt-label">Prompt</span><button type="button" class="txt2img-prompt-copy">Copiar</button></div><pre class="txt2img-prompt-text">${escapeHtml(splitPg.prompt)}</pre></div>`;
         } else if (!isUser && !isEphemeralDebug && hasContent) {
-          bodyHtml = buildCollapsibleMessageHtml(m.content || "", collapseKey, isCollapsed);
+          bodyHtml = buildCollapsibleMessageHtml(m.content || "", collapseKey, isCollapsed, mdOpts);
         } else {
-          bodyHtml = `<div class="message-content">${formatMessageHtml(m.content || "", 0)}</div>`;
+          bodyHtml = `<div class="message-content">${formatMessageHtml(m.content || "", 0, mdOpts)}</div>`;
         }
         const inheritedSplit =
           isInherited && (!display[displayIdx + 1] || display[displayIdx + 1].inherited !== true);
@@ -414,9 +615,14 @@ export function MessagesPane() {
 export function ReadingModeOverlay() {
   const readingIndex = useStore(sessionStore, (s) => s.readingModeIndex);
   const messages = useStore(sessionStore, (s) => s.messages);
+  const renderMarkdown = useStore(layoutStore, (s) => s.renderMarkdown);
   const open = readingIndex != null && readingIndex >= 0;
   const msg = open ? messages[readingIndex] : null;
-  const html = msg ? formatMessageHtml(msg.content || "", 0) : "";
+  const html = msg ? formatMessageHtml(msg.content || "", 0, { markdown: !!renderMarkdown }) : "";
+  useEffect(() => {
+    if (!open) return;
+    kickLazyIllustrations(document.getElementById("reading-mode-body"));
+  }, [html, open]);
   return (
     <div id="reading-mode" className="reading-mode" hidden={!open} role="dialog" aria-modal="true" aria-label="Modo lectura">
       <div className="reading-mode-toolbar font-size-controls" role="toolbar" aria-label="Controles de lectura">

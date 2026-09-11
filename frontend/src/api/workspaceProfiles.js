@@ -37,6 +37,13 @@ export function createPlannerRulePreset(body) {
   });
 }
 
+export function updatePlannerRulePreset(id, body) {
+  return fetchJson(`${API}/planner-rule-presets/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export function deletePlannerRulePreset(id) {
   return fetchJson(`${API}/planner-rule-presets/${id}`, { method: "DELETE" });
 }
