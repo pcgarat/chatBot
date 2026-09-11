@@ -62,6 +62,40 @@ describe("menú contextual de texto en mensajes", () => {
   });
 });
 
+describe("menú Más acciones (details)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="messages-container">
+        <div class="msg-more-wrap">
+          <details open>
+            <summary class="msg-action-btn msg-more-btn">Más</summary>
+            <div class="msg-context-menu" role="menu">
+              <button type="button" class="msg-context-item" data-action="fork-conversation">Nueva conversación</button>
+            </div>
+          </details>
+        </div>
+      </div>
+      <div id="msg-text-context-menu" class="msg-text-context-menu" role="menu" hidden></div>
+    `;
+    bindMessageTextContextMenu();
+  });
+
+  it("cierra al pulsar fuera del menú", () => {
+    fireEvent.click(document.getElementById("messages-container"));
+    expect(document.querySelector(".msg-more-wrap details").open).toBe(false);
+  });
+
+  it("cierra al pulsar una acción del menú", () => {
+    fireEvent.click(document.querySelector(".msg-context-item"));
+    expect(document.querySelector(".msg-more-wrap details").open).toBe(false);
+  });
+
+  it("cierra con Escape", () => {
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(document.querySelector(".msg-more-wrap details").open).toBe(false);
+  });
+});
+
 describe("applyRevealInMessages", () => {
   function mountPhotoFixture() {
     document.body.innerHTML = `

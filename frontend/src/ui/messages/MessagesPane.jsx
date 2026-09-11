@@ -112,6 +112,9 @@ export function renderMessages() {
 export function closeAllMessageContextMenus() {
   const menu = document.getElementById("msg-text-context-menu");
   if (menu) menu.hidden = true;
+  document.querySelectorAll(".msg-more-wrap details[open]").forEach((details) => {
+    details.removeAttribute("open");
+  });
 }
 
 function selectedTextExcerpt() {
@@ -342,6 +345,15 @@ export function bindMessageTextContextMenu() {
     });
   });
   document.addEventListener("click", function (e) {
+    const moreItem = e.target.closest(".msg-more-wrap .msg-context-item");
+    if (moreItem) {
+      moreItem.closest("details")?.removeAttribute("open");
+    } else if (!e.target.closest(".msg-more-wrap details")) {
+      document.querySelectorAll(".msg-more-wrap details[open]").forEach((details) => {
+        details.removeAttribute("open");
+      });
+    }
+
     const menu = document.getElementById("msg-text-context-menu");
     if (!menu || menu.hidden) return;
     const item = e.target.closest("#msg-text-context-menu [data-action]");

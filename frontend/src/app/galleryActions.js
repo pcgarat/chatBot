@@ -603,6 +603,14 @@ export function closeGalleryLightbox() {
   imagesStore.set({ galleryLightboxIndex: -1 });
 }
 
+/** Cierra el visor si el clic es fuera del contenido (backdrop del overlay). */
+export function handleGalleryLightboxOverlayClick(event) {
+  const lightbox = document.getElementById("image-gallery-lightbox");
+  if (!lightbox || lightbox.hidden) return;
+  if (event.target.closest(".image-gallery-lightbox-content")) return;
+  closeGalleryLightbox();
+}
+
 export function renderGalleryLightbox() {
   const { galleryItems, galleryTotal, galleryLightboxIndex, galleryOffset } = imagesStore.get();
   const item = galleryItems[galleryLightboxIndex];
@@ -881,9 +889,7 @@ export function initImageGallery() {
     });
   }
   if (lightbox) {
-    lightbox.addEventListener("click", function (e) {
-      if (e.target === lightbox) closeGalleryLightbox();
-    });
+    lightbox.addEventListener("click", handleGalleryLightboxOverlayClick);
   }
   if (prev) {
     prev.addEventListener("click", function (e) {

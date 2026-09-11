@@ -8,6 +8,8 @@ import {
   loadGalleryPage,
   renderGalleryLightbox,
   highlightIllustrationInConversation,
+  closeGalleryLightbox,
+  handleGalleryLightboxOverlayClick,
 } from "./galleryActions.js";
 
 const openConversationAtIllustration = vi.fn();
@@ -269,5 +271,39 @@ describe("galería", () => {
     expect(modal.hidden).toBe(true);
     expect(imagesStore.get().galleryLightboxIndex).toBe(-1);
     expect(sessionStore.get().pendingReveal).toBeNull();
+  });
+
+  it("cierra el lightbox al pulsar el fondo fuera del contenido", () => {
+    document.body.innerHTML = `
+      <div id="image-gallery-lightbox" class="modal-overlay image-gallery-lightbox">
+        <div class="modal-content image-gallery-lightbox-content">
+          <img id="image-gallery-lightbox-img" alt="" />
+        </div>
+      </div>
+    `;
+    const modal = document.getElementById("image-gallery-lightbox");
+    modal.hidden = false;
+    imagesStore.set({ galleryLightboxIndex: 0 });
+    handleGalleryLightboxOverlayClick({ target: modal });
+    expect(modal.hidden).toBe(true);
+    expect(imagesStore.get().galleryLightboxIndex).toBe(-1);
+  });
+
+  it("no cierra el lightbox al pulsar dentro del contenido", () => {
+    document.body.innerHTML = `
+      <div id="image-gallery-lightbox" class="modal-overlay image-gallery-lightbox">
+        <div class="modal-content image-gallery-lightbox-content">
+          <img id="image-gallery-lightbox-img" alt="" />
+        </div>
+      </div>
+    `;
+    const modal = document.getElementById("image-gallery-lightbox");
+    const content = modal.querySelector(".image-gallery-lightbox-content");
+    modal.hidden = false;
+    imagesStore.set({ galleryLightboxIndex: 0 });
+    handleGalleryLightboxOverlayClick({ target: content });
+    expect(modal.hidden).toBe(false);
+    expect(imagesStore.get().galleryLightboxIndex).toBe(0);
+    closeGalleryLightbox();
   });
 });
