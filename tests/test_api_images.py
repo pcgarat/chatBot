@@ -1100,27 +1100,31 @@ def _seed_gallery_image(
     prompt_provider: str | None = "ollama",
     mode: str = "txt2img",
     seed: int = 1,
+    batch_id: str | None = None,
     created_at=None,
 ):
     from datetime import datetime
 
     from app import crud
 
+    params = {
+        "prompt": prompt,
+        "steps": steps,
+        "width": width,
+        "height": height,
+        "model": forge_model,
+        "sampler_name": "Euler a",
+        "seed": seed,
+    }
+    if batch_id:
+        params["batch_id"] = batch_id
     row = crud.save_illustrated_image_meta(
         db_session,
         message_id=msg.id,
         filename=filename,
         scene_id="s1",
         mode=mode,
-        params={
-            "prompt": prompt,
-            "steps": steps,
-            "width": width,
-            "height": height,
-            "model": forge_model,
-            "sampler_name": "Euler a",
-            "seed": seed,
-        },
+        params=params,
         prompt_model=prompt_model,
         prompt_provider=prompt_provider,
     )
@@ -1283,6 +1287,52 @@ def test_illustrated_gallery_facets(client, db_session):
     assert body["seeds"] == [11, 22]
     assert "768x512" in body["sizes"]
     assert "832x1216" in body["sizes"]
+    assert body["batches"] == []
+
+
+def test_illustrated_gallery_filters_by_batch_id(client, db_session):
+    from app import crud
+
+    conv = crud.create_conversation(db_session, title="lotes", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "relato")
+    _seed_gallery_image(
+        db_session, conv=conv, msg=msg, filename="b1a.png", prompt="a", batch_id="batch-aaa"
+    )
+    _seed_gallery_image(
+        db_session, conv=conv, msg=msg, filename="b1b.png", prompt="b", batch_id="batch-aaa"
+    )
+    _seed_gallery_image(
+        db_session, conv=conv, msg=msg, filename="b2.png", prompt="c", batch_id="batch-bbb"
+    )
+    _seed_gallery_image(db_session, conv=conv, msg=msg, filename="orphan.png", prompt="d")
+
+    by_batch = client.get("/api/illustrated-images", params={"batch_id": "batch-aaa"}).json()
+    assert {i["filename"] for i in by_batch["items"]} == {"b1a.png", "b1b.png"}
+    assert by_batch["total"] == 2
+    assert all(i["batch_id"] == "batch-aaa" for i in by_batch["items"])
+
+    multi = client.get(
+        "/api/illustrated-images",
+        params=[("batch_id", "batch-aaa"), ("batch_id", "batch-bbb")],
+    ).json()
+    assert {i["filename"] for i in multi["items"]} == {"b1a.png", "b1b.png", "b2.png"}
+    assert multi["total"] == 3
+
+    facets = client.get(
+        "/api/illustrated-images/facets",
+        params={"conversation_id": conv.id, "message_id": msg.id},
+    ).json()
+    batch_ids = [b["batch_id"] for b in facets["batches"]]
+    assert set(batch_ids) == {"batch-aaa", "batch-bbb"}
+    by_id = {b["batch_id"]: b["image_count"] for b in facets["batches"]}
+    assert by_id["batch-aaa"] == 2
+    assert by_id["batch-bbb"] == 1
+
+    matching = client.get(
+        "/api/illustrated-images/matching-filenames",
+        params=[("conversation_id", conv.id), ("batch_id", "batch-bbb"), ("batch_id", "batch-aaa")],
+    ).json()
+    assert set(matching["filenames"]) == {"b1a.png", "b1b.png", "b2.png"}
 
 
 def test_illustrated_gallery_filters_by_conversation_and_message(client, db_session):

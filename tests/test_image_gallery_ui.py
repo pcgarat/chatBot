@@ -128,6 +128,8 @@ def test_gallery_css_toggles_panels_independently():
     assert ".image-gallery-lightbox" in css
     assert ".image-gallery-messages" in css
     assert ".image-gallery-msg-chip" in css
+    assert ".image-gallery-families" in css
+    assert ".image-gallery-filter-batches" in css
     assert ".chat-image-filter-notice-wrap" in css
     assert ".chat-image-filter-notice-dismiss" in css
     assert ".chat-illustration-frame.is-gallery-filter-hidden" in css

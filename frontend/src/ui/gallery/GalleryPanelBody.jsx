@@ -62,6 +62,18 @@ export function GalleryPanelBody() {
         <button type="button" id="gallery-purge-orphans" className="btn btn-secondary btn-small image-gallery-purge-orphans" title="Eliminar del disco las imágenes que no están incrustadas en ningún mensaje">Eliminar archivos huérfanos</button>
       </div>
       <div className="image-gallery-messages" id="image-gallery-messages" hidden></div>
+      <div className="image-gallery-families" id="image-gallery-families" hidden>
+        <label className="image-gallery-filter image-gallery-filter-batches" htmlFor="gallery-filter-batch-ids">
+          <span>Lotes</span>
+          <select
+            id="gallery-filter-batch-ids"
+            className="param-control"
+            multiple
+            size={4}
+            aria-label="Filtrar por lotes de generación"
+          ></select>
+        </label>
+      </div>
       <div className="image-gallery-grid" id="image-gallery-grid"></div>
       <div className="image-gallery-pager" id="image-gallery-pager"></div>
       <div id="image-gallery-lightbox" className="modal-overlay image-gallery-lightbox" role="dialog" aria-modal="true" aria-labelledby="image-gallery-lightbox-title" hidden>

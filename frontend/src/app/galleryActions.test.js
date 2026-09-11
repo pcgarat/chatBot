@@ -7,6 +7,7 @@ import {
   clearGalleryToolbarFilters,
   loadGalleryPage,
   renderGalleryLightbox,
+  fillGalleryBatchSelect,
   highlightIllustrationInConversation,
   closeGalleryLightbox,
   handleGalleryLightboxOverlayClick,
@@ -52,7 +53,9 @@ describe("galería", () => {
         mode: "",
         seed: "",
         promptQ: "gato",
+        batchIds: [],
       },
+      galleryFilterOptions: { batches: [] },
     });
   });
 
@@ -66,10 +69,76 @@ describe("galería", () => {
     expect(listed.limit).toBe(24);
   });
 
+  it("batchIds activos van al query de listado", () => {
+    imagesStore.set({
+      galleryFilters: {
+        promptModel: "",
+        promptProvider: "",
+        forgeModel: "",
+        steps: "",
+        size: "",
+        mode: "",
+        seed: "",
+        promptQ: "",
+        batchIds: ["batch-a", "batch-b"],
+      },
+    });
+    const params = appendGalleryToolbarFilters({});
+    expect(params.batch_id).toEqual(["batch-a", "batch-b"]);
+    expect(galleryListParams().batch_id).toEqual(["batch-a", "batch-b"]);
+  });
+
   it("clearGalleryToolbarFilters vacía el store", () => {
+    document.body.innerHTML = `
+      <div id="image-gallery-families">
+        <select id="gallery-filter-batch-ids" multiple>
+          <option value="batch-1" selected>Lote 1</option>
+        </select>
+      </div>
+    `;
+    imagesStore.set({
+      galleryFilters: {
+        promptModel: "x",
+        promptProvider: "",
+        forgeModel: "",
+        steps: "",
+        size: "",
+        mode: "",
+        seed: "",
+        promptQ: "y",
+        batchIds: ["batch-1"],
+      },
+      galleryMessageId: "m1",
+      galleryFilterOptions: { batches: [{ batch_id: "batch-1", image_count: 2 }] },
+    });
     clearGalleryToolbarFilters();
     expect(imagesStore.get().galleryFilters.promptModel).toBe("");
     expect(imagesStore.get().galleryFilters.promptQ).toBe("");
+    expect(imagesStore.get().galleryFilters.batchIds).toEqual([]);
+  });
+
+  it("fillGalleryBatchSelect solo con mensaje seleccionado y lotes", () => {
+    document.body.innerHTML = `
+      <div id="image-gallery-families" hidden>
+        <select id="gallery-filter-batch-ids" multiple></select>
+      </div>
+    `;
+    imagesStore.set({
+      galleryMessageId: null,
+      galleryFilters: { batchIds: [] },
+    });
+    fillGalleryBatchSelect([{ batch_id: "aaaaaaaa-bbbb", image_count: 3 }]);
+    const wrap = document.getElementById("image-gallery-families");
+    const sel = document.getElementById("gallery-filter-batch-ids");
+    expect(wrap.hidden).toBe(true);
+
+    imagesStore.set({ galleryMessageId: "m1", galleryFilters: { batchIds: ["aaaaaaaa-bbbb"] } });
+    fillGalleryBatchSelect([{ batch_id: "aaaaaaaa-bbbb", image_count: 3 }]);
+    expect(wrap.hidden).toBe(false);
+    expect(sel.options).toHaveLength(1);
+    expect(sel.options[0].value).toBe("aaaaaaaa-bbbb");
+    expect(sel.options[0].textContent).toContain("Lote 1");
+    expect(sel.options[0].selected).toBe(true);
   });
 
   it("loadGalleryPage pide /illustrated-images, no /messages sin conversation_id", async () => {
@@ -105,6 +174,7 @@ describe("galería", () => {
         mode: "",
         seed: "",
         promptQ: "",
+        batchIds: [],
       },
     });
     await loadGalleryPage({ silent: true });

@@ -7945,6 +7945,32 @@ body.center-panels-resizing img {
   font-variant-numeric: tabular-nums;
 }
 
+.image-gallery-families {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 2px 0 4px;
+  border-top: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.image-gallery-families[hidden] {
+  display: none;
+}
+
+.image-gallery-filter-batches {
+  flex: 1 1 auto;
+  min-width: 12rem;
+  max-width: 28rem;
+}
+
+.image-gallery-filter-batches .param-control {
+  min-height: 4.5rem;
+  font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+}
+
 .image-gallery-grid {
   flex: 1;
   min-height: 0;
