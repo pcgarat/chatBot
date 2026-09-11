@@ -196,10 +196,81 @@ def test_list_image_generation_queue_api(client, db_session):
     assert data["items"][0]["created_at"]
     assert data["items"][0]["completed_at"] is None
     assert data["items"][0]["result_filename"] is None
+    assert "batch_progress" in data
+    assert isinstance(data["batch_progress"], list)
 
     res_filtered = client.get("/api/image-generation-queue?status=pending")
     assert res_filtered.status_code == 200
     assert len(res_filtered.json()["items"]) == 1
+
+
+def test_summarize_active_image_generation_batches(db_session):
+    conv = crud.create_conversation(db_session, title="Batches", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Escenas.")
+
+    def _job(batch_id: str, scene_id: str, *, complete: bool = False):
+        job = crud.create_image_generation_job(
+            db_session,
+            conversation_id=conv.id,
+            message_id=msg.id,
+            scene_id=scene_id,
+            forge_prompt="p",
+            forge_mode="txt2img",
+            forge_body={"prompt": "p"},
+            batch_id=batch_id,
+        )
+        if complete:
+            crud.complete_image_generation_job(
+                db_session, job.id, result_filename=f"{scene_id}.png"
+            )
+        return job
+
+    for i in range(16):
+        _job("batch-16", f"s16-{i}", complete=i < 3)
+    for i in range(10):
+        _job("batch-10", f"s10-{i}")
+
+    progress = crud.summarize_active_image_generation_batches(db_session)
+    assert [(p["batch_id"], p["completed"], p["total"]) for p in progress] == [
+        ("batch-16", 3, 16),
+        ("batch-10", 0, 10),
+    ]
+
+
+def test_list_image_generation_queue_includes_batch_progress(client, db_session):
+    conv = crud.create_conversation(db_session, title="API Batches", model_id="m", provider="ollama")
+    msg = crud.add_message(db_session, conv.id, "assistant", "Dos lotes.")
+    for i in range(4):
+        job = crud.create_image_generation_job(
+            db_session,
+            conversation_id=conv.id,
+            message_id=msg.id,
+            scene_id=f"a{i}",
+            forge_prompt="a",
+            forge_mode="txt2img",
+            forge_body={"prompt": "a"},
+            batch_id="batch-a",
+        )
+        if i < 1:
+            crud.complete_image_generation_job(db_session, job.id, result_filename=f"a{i}.png")
+    for i in range(2):
+        crud.create_image_generation_job(
+            db_session,
+            conversation_id=conv.id,
+            message_id=msg.id,
+            scene_id=f"b{i}",
+            forge_prompt="b",
+            forge_mode="txt2img",
+            forge_body={"prompt": "b"},
+            batch_id="batch-b",
+        )
+
+    data = client.get("/api/image-generation-queue").json()
+    by_id = {row["batch_id"]: row for row in data["batch_progress"]}
+    assert by_id["batch-a"]["completed"] == 1
+    assert by_id["batch-a"]["total"] == 4
+    assert by_id["batch-b"]["completed"] == 0
+    assert by_id["batch-b"]["total"] == 2
 
 
 def test_pause_resume_image_generation_queue_api(client):

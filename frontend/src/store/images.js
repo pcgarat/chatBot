@@ -49,6 +49,7 @@ export const imagesStore = createStore({
   queueExpandedId: null,
   queuePaused: false,
   queueSelectedIds: [],
+  batchProgress: [],
   forgeDefaults: {},
   lastForgeParams: null,
   plannerContract: null,

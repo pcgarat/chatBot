@@ -1311,6 +1311,8 @@ def test_e2e_image_generation_queue_list(client, ollama_available):
     body = r.json()
     assert "items" in body and "total" in body
     assert "active_count" in body
+    assert "batch_progress" in body
+    assert isinstance(body["batch_progress"], list)
     assert "paused" in body
     assert isinstance(body["items"], list)
     assert body["limit"] >= 1

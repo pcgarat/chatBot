@@ -1230,6 +1230,63 @@ def count_active_image_generation_jobs(db: Session) -> int:
     )
 
 
+def summarize_active_image_generation_batches(db: Session) -> list[dict]:
+    """Progreso completed/total por batch_id con jobs aún pendientes o en curso."""
+    active_batch_ids = {
+        row[0]
+        for row in db.query(ImageGenerationJob.batch_id)
+        .filter(
+            ImageGenerationJob.batch_id.isnot(None),
+            ImageGenerationJob.batch_id != "",
+            ImageGenerationJob.status.in_(("pending", "generating")),
+        )
+        .distinct()
+        .all()
+        if row[0]
+    }
+    if not active_batch_ids:
+        return []
+
+    rows = (
+        db.query(ImageGenerationJob)
+        .filter(ImageGenerationJob.batch_id.in_(active_batch_ids))
+        .all()
+    )
+    by_batch: dict[str, dict] = {}
+    for job in rows:
+        bid = job.batch_id
+        entry = by_batch.setdefault(
+            bid,
+            {
+                "batch_id": bid,
+                "completed": 0,
+                "total": 0,
+                "created_at": job.created_at,
+            },
+        )
+        entry["total"] += 1
+        if job.status == "completed":
+            entry["completed"] += 1
+        if job.created_at and (
+            entry["created_at"] is None or job.created_at < entry["created_at"]
+        ):
+            entry["created_at"] = job.created_at
+
+    result = []
+    for entry in by_batch.values():
+        created = entry["created_at"]
+        result.append(
+            {
+                "batch_id": entry["batch_id"],
+                "completed": entry["completed"],
+                "total": entry["total"],
+                "created_at": created.isoformat() if created else None,
+            }
+        )
+    result.sort(key=lambda item: item["created_at"] or "")
+    return result
+
+
 def list_active_image_generation_job_ids(db: Session) -> list[str]:
     rows = (
         db.query(ImageGenerationJob.id)

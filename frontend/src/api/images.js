@@ -53,8 +53,17 @@ export function getForgeLastGenerationParams() {
   return fetchJson(`${API}/forge/last-generation-params`);
 }
 
-export function messageIllustrationPath(conversationId, messageId, path) {
+export function messageIllustrationPath(conversationId, messageId, path, options = {}) {
   return fetchJson(
-    `${API}/conversations/${conversationId}/messages/${messageId}/illustrations/${path}`
+    `${API}/conversations/${conversationId}/messages/${messageId}/illustrations/${path}`,
+    options
   );
+}
+
+export function clearMessagePhotos(conversationId, messageId) {
+  return messageIllustrationPath(conversationId, messageId, "clear-photos", { method: "POST" });
+}
+
+export function pruneOrphanAnchors(conversationId, messageId) {
+  return messageIllustrationPath(conversationId, messageId, "prune-orphans", { method: "POST" });
 }

@@ -614,6 +614,13 @@ class ImageGenerationJobListItem(BaseModel):
     completed_at: Optional[str] = None
 
 
+class ImageGenerationBatchProgress(BaseModel):
+    batch_id: str
+    completed: int = 0
+    total: int = 0
+    created_at: Optional[str] = None
+
+
 class ImageGenerationJobListResponse(BaseModel):
     items: list[ImageGenerationJobListItem] = Field(default_factory=list)
     total: int = 0
@@ -621,6 +628,7 @@ class ImageGenerationJobListResponse(BaseModel):
     offset: int = 0
     active_count: int = 0
     paused: bool = False
+    batch_progress: list[ImageGenerationBatchProgress] = Field(default_factory=list)
 
 
 class ImageGenerationQueueRunStateResponse(BaseModel):

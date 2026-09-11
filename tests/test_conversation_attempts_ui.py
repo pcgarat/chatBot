@@ -40,6 +40,20 @@ def test_js_mutaciones_contenido_disponibles_en_heredados():
     assert "msg-delete-btn" in js
 
 
+def test_js_menu_mensaje_acciones_ilustracion():
+    """Menú ⋮ del assistant: borrar fotos, anclas huérfanas y generar restantes."""
+    js = frontend_source()
+    assert 'data-action="clear-photos"' in js
+    assert "Borrar todas las imágenes" in js
+    assert 'data-action="prune-orphans"' in js
+    assert "Borrar anclas huérfanas" in js
+    assert 'data-action="generate-remaining"' in js
+    assert "Generar imágenes restantes" in js
+    assert "clearMessagePhotos" in js
+    assert "pruneOrphanAnchors" in js
+    assert "generateRemainingImages" in js
+
+
 def test_css_variante_anidada_e_historial_heredado():
     css = STYLE_CSS.read_text(encoding="utf-8")
     assert ".conversation-item-fork" in css

@@ -9,6 +9,7 @@ import { formatDateTime } from "../lib/dates.js";
 import { mapApiMessage } from "../lib/tree.js";
 import { ingestQueueItemsForDebug } from "../store/debug.js";
 import { goToConversationTarget } from "./sessionActions.js";
+import { syncImageBatchProgressDom } from "../ui/status/imageBatchProgress.js";
 
 const IMAGE_QUEUE_POLL_MS = 2500;
 let pollTimer = null;
@@ -100,6 +101,7 @@ export async function loadImageQueuePage() {
     syncImageQueueActiveCount(data.active_count);
     syncImageQueuePauseUi();
     ingestQueueItemsForDebug(items);
+    applyBatchProgressFromQueue(data);
     renderImageQueueList();
   } catch (e) {
     const list = document.getElementById("image-queue-list");
@@ -219,6 +221,7 @@ export async function pollImageQueue() {
     imageQueueKnownActive = data.active_count || 0;
     syncImageQueueActiveCount(data.active_count);
     syncImageQueuePauseUi();
+    applyBatchProgressFromQueue(data);
     const items = data.items || [];
     if (isQueuePanelVisible()) {
       imagesStore.set({ queueItems: items, queuePaused: imageQueuePaused });
@@ -543,6 +546,12 @@ function syncImageQueuePauseUi() {
   if (label) label.hidden = !imageQueuePaused;
 }
 
+function applyBatchProgressFromQueue(data) {
+  const batchProgress = (data && data.batch_progress) || [];
+  imagesStore.set({ batchProgress });
+  syncImageBatchProgressDom(batchProgress);
+}
+
 function syncImageQueueActiveCount(activeCount) {
   const node = document.getElementById("image-queue-active-count");
   if (!node) return;
@@ -569,6 +578,7 @@ export async function loadImageQueueForDebug() {
     imageQueueKnownActive = data.active_count || 0;
     syncImageQueueActiveCount(data.active_count);
     syncImageQueuePauseUi();
+    applyBatchProgressFromQueue(data);
     ingestQueueItemsForDebug(data.items);
     if (shouldWatchImageQueue()) startImageQueuePoll();
     else maybeStopImageQueuePoll();

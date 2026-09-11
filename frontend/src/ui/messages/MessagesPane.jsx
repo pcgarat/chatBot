@@ -5,7 +5,13 @@ import { messagesForDisplay } from "../../lib/tree.js";
 import { canLoadOlderMessage } from "../../lib/messageWindow.js";
 import { formatMessageHtml, buildCollapsibleMessageHtml, messageCollapseKey, splitFirstParagraph, escapeHtml, kickLazyIllustrations } from "../../lib/html.js";
 import { forkConversationFromMessage, deleteMessageFromHistory, findMessageWithIllustration, loadOlderMessageInView } from "../../app/sessionActions.js";
-import { maybeIllustrateAssistantMessage, generateRemainingImages, illustrateAtParagraph } from "../../app/illustrate.js";
+import {
+  maybeIllustrateAssistantMessage,
+  generateRemainingImages,
+  clearMessagePhotos,
+  pruneOrphanAnchors,
+  illustrateAtParagraph,
+} from "../../app/illustrate.js";
 import { scheduleConversationImageFilter, highlightIllustrationInConversation } from "../../app/galleryActions.js";
 import { findChatIllustration } from "../../lib/illustrationLocate.js";
 import { showNotice, showError } from "../../store/ui.js";
@@ -634,7 +640,9 @@ export function MessagesPane() {
                               <button type="button" className="msg-context-item" data-action="fork-conversation" role="menuitem" onClick={() => forkConversationFromMessage(m.id)}>Nueva conversación desde aquí</button>
                               {m.role === "assistant" && hasContent ? (
                                 <>
-                                  <button type="button" className="msg-context-item" data-action="clear-photos" role="menuitem" onClick={() => generateRemainingImages(m.id)}>Generar imágenes restantes</button>
+                                  <button type="button" className="msg-context-item" data-action="clear-photos" role="menuitem" onClick={() => clearMessagePhotos(m.id)}>Borrar todas las imágenes</button>
+                                  <button type="button" className="msg-context-item" data-action="prune-orphans" role="menuitem" onClick={() => pruneOrphanAnchors(m.id)}>Borrar anclas huérfanas</button>
+                                  <button type="button" className="msg-context-item" data-action="generate-remaining" role="menuitem" onClick={() => generateRemainingImages(m.id)}>Generar imágenes restantes</button>
                                 </>
                               ) : null}
                             </div>
