@@ -10,6 +10,10 @@ export const sessionStore = createStore({
   messages: [],
   allMessages: [],
   activeLeafId: null,
+  /** Mensaje ancla del historial izquierdo / salto unificado. */
+  focusMessageId: null,
+  /** Primer índice visible del camino activo; anteriores se revelan al hacer scroll arriba. */
+  viewStartIndex: 0,
   consultaAssistantId: null,
   rules: [],
   plannerRules: [],
@@ -51,6 +55,8 @@ export function resetSession() {
     messages: [],
     allMessages: [],
     activeLeafId: null,
+    focusMessageId: null,
+    viewStartIndex: 0,
     consultaAssistantId: null,
     rules: [],
     composerDraft: "",

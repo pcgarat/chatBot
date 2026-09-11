@@ -86,7 +86,7 @@ export async function setLeftHistoryMode(mode) {
   historyStore.set({ mode: next });
   const root = document.documentElement;
   if (next === "messages") root.setAttribute("data-history-consulta", "on");
-  else if (!sessionStore.get().consultaAssistantId) root.removeAttribute("data-history-consulta");
+  else root.removeAttribute("data-history-consulta");
   await refreshLeftHistory();
 }
 
@@ -140,7 +140,7 @@ export async function clearConversationHistory(id) {
   try {
     await conversationsApi.clearConversationMessages(id);
     if (sessionStore.get().conversationId === id) {
-      sessionStore.set({ messages: [], allMessages: [], activeLeafId: null });
+      sessionStore.set({ messages: [], allMessages: [], activeLeafId: null, viewStartIndex: 0 });
     }
     showNotice("Historial de mensajes borrado.");
   } catch (e) {
@@ -158,7 +158,7 @@ export function currentLeftHistorySort() {
 }
 
 export function applyConsultaChrome() {
-  const consulta = isMessagesHistoryMode() || Boolean(sessionStore.get().consultaAssistantId);
+  const consulta = isMessagesHistoryMode();
   if (consulta) document.documentElement.setAttribute("data-history-consulta", "on");
   else document.documentElement.removeAttribute("data-history-consulta");
   const btn = document.getElementById("btn-history-messages");
@@ -176,10 +176,10 @@ export function syncMessageHistoryChrome() {
 
 export function syncMessageHistoryActiveItem() {
   const list = document.getElementById("conversations-list");
-  const consultaAssistantId = sessionStore.get().consultaAssistantId;
+  const focusId = sessionStore.get().focusMessageId || sessionStore.get().consultaAssistantId;
   if (!list) return;
   list.querySelectorAll(".message-history-item").forEach((node) => {
-    node.classList.toggle("active", node.dataset.id === consultaAssistantId);
+    node.classList.toggle("active", node.dataset.id === focusId);
   });
 }
 

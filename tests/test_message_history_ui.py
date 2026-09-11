@@ -70,12 +70,15 @@ def test_message_history_load_more_uses_offset():
     assert "Cargar más" in lists
 
 
-def test_opening_consulta_does_not_reload_message_history_pagination():
+def test_opening_message_does_not_reload_message_history_pagination():
     """Clic en un mensaje no debe recargar el historial desde offset 0 (colapsa páginas ya cargadas)."""
     actions = frontend_file("app/historyActions.js")
     session = frontend_file("app/sessionActions.js")
+    lists = frontend_file("ui/history/HistoryLists.jsx")
     assert "function syncMessageHistoryActiveItem" in actions
     assert "message-history-item" in actions
-    assert "consultaAssistantId" in actions
-    assert "keepConsulta: true" in session
-    assert "refreshLeftHistory()" not in session.split("export async function openConsultaTurn")[1].split("export async function newConversation")[0]
+    assert "focusMessageId" in actions or "consultaAssistantId" in actions
+    assert "goToConversationTarget" in lists
+    open_fn = session.split("export async function openConsultaTurn")[1].split("export async function newConversation")[0]
+    assert "openConversationAtMessage" in open_fn
+    assert "refreshLeftHistory()" not in open_fn

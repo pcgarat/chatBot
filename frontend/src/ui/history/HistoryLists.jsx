@@ -17,7 +17,7 @@ import {
   restoreConversationFromTrash,
   clearConversationHistory,
 } from "../../app/historyActions.js";
-import { newConversation, newPromptGeneratorConversation, openConversation, openConsultaTurn } from "../../app/sessionActions.js";
+import { newConversation, newPromptGeneratorConversation, openConversation, goToConversationTarget } from "../../app/sessionActions.js";
 import { setLeftCollapsed } from "../layout/LayoutEffects.jsx";
 
 const clearHistoryIconSvg = (
@@ -89,7 +89,7 @@ export function ConversationsList() {
   const msgTotal = useStore(historyStore, (s) => s.messageHistoryTotal);
   const msgQuery = useStore(historyStore, (s) => s.messageHistoryQuery);
   const searchIn = useStore(historyStore, (s) => s.messageHistorySearchIn);
-  const consultaId = useStore(sessionStore, (s) => s.consultaAssistantId);
+  const focusId = useStore(sessionStore, (s) => s.focusMessageId || s.consultaAssistantId);
   const msgSort = useStore(historyStore, (s) => s.messageSort);
 
   if (mode === "messages") {
@@ -122,11 +122,16 @@ export function ConversationsList() {
                 return (
                   <div
                     key={item.id}
-                    className={`conversation-item message-history-item${item.id === consultaId ? " active" : ""}`}
+                    className={`conversation-item message-history-item${item.id === focusId ? " active" : ""}`}
                     data-id={item.id}
                     data-conversation-id={item.conversation_id}
                     title={`${convTitle} · ${created}`}
-                    onClick={() => openConsultaTurn(item.conversation_id, item.id)}
+                    onClick={() =>
+                      goToConversationTarget({
+                        conversationId: item.conversation_id,
+                        messageId: item.id,
+                      })
+                    }
                   >
                     <div className="conv-row">
                       <span className="conv-title">{preview}</span>
