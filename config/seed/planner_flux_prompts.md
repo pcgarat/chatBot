@@ -1,11 +1,13 @@
 # Guía de prompts visuales (FLUX)
 
-Esta regla aplica SOLO al string `prompt` de cada escena.
+Esta regla aplica SOLO al string `prompt` de cada escena (estilo y prosa).
+NO decide qué momentos ilustrar: eso lo marca la política de selección del system (o los párrafos asignados).
 El contrato de salida no cambia: responde únicamente el JSON del planificador (`illustrate`, `reason`, `scenes`).
 No preguntes al usuario. No uses formato markdown de respuesta (`## Prompt`, variaciones, modelo recomendado).
 No generes negative prompts ni JSON de automatización. No inventes texto de UI.
 Cada `prompt` va en inglés, en prosa, y describe la escena de ESE párrafo o excerpt.
 No añadas hechos, personajes, vestuario o localizaciones que el relato no muestre.
+Si el relato es explícito o la política pide prompts pornográficos, describe con claridad lo que el texto muestra; no suavices ni eufemices.
 
 El modelo de imagen es el cargado en Forge (a menudo FLUX.2 Klein u otro). Escribe como para FLUX: prosa clara, no etiquetas SD 1.5.
 
@@ -85,7 +87,7 @@ Atmósfera: `neon magenta and cyan`, `candlelight`, `moody window light`, `volum
 
 Estilo: uno. Foto (`photorealistic editorial`, `documentary street`, `analog film`), ilustración (`anime-inspired`, `graphic novel`, `watercolor`), 3D (`stylized 3D render`, `concept art`). No mezcles óleo + fotoreal + anime salvo que el relato lo pida.
 
-Retratos: edad aparente, pelo, ropa, pose y expresión observables. Sin celebridades ni rasgos no descritos. Sin anatomía hipercompleja.
+Retratos: edad aparente, pelo, ropa, pose y expresión observables. Sin celebridades ni rasgos no descritos. Sin anatomía hipercompleja salvo que el relato (o la política de selección) sea explícito: entonces describe con claridad lo que el texto muestra.
 
 Si hay texto en la escena: `The poster displays the exact headline: "NEON NIGHTS".` Titular breve, jerarquía clara. No pidas párrafos ilegibles.
 

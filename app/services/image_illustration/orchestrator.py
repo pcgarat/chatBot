@@ -405,7 +405,7 @@ class ImageIllustrationOrchestrator:
                 assigned_paragraphs=assigned or None,
                 existing_prompts=known_prompts or None,
                 visual_consistency=visual_consistency,
-                selection_instructions=batch.selection_instructions or None,
+                selection_policy=batch.selection_policy or None,
             )
             if plan.illustrate and plan.scenes:
                 if batch.binds_to_assigned:

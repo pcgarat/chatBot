@@ -32,6 +32,7 @@ def context_length_from_show(show: dict[str, Any]) -> int | None:
     ctx = (
         model_info.get("llama.context_length")
         or model_info.get("context_length")
+        or _prefixed_context_length(model_info)
         or details.get("context_length")
         or show.get("context_length")
     )
@@ -39,3 +40,11 @@ def context_length_from_show(show: dict[str, Any]) -> int | None:
         return int(ctx) if ctx is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _prefixed_context_length(model_info: dict[str, Any]) -> Any:
+    """Ollama usa claves tipo llama.context_length / nemotron_h_moe.context_length."""
+    for key, value in model_info.items():
+        if isinstance(key, str) and key.endswith(".context_length"):
+            return value
+    return None

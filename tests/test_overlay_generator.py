@@ -43,6 +43,19 @@ def test_stub_from_show_solo_campos_fiables():
     assert "temperature" not in stub["params"]
 
 
+def test_stub_from_show_ctx_por_arquitectura_prefijada():
+    """Nemotron y otras familias exponen {arch}.context_length, no llama.context_length."""
+    stub = stub_from_show(
+        "nemotron-3-super:cloud",
+        {
+            "capabilities": ["completion", "thinking", "tools"],
+            "model_info": {"nemotron_h_moe.context_length": 262144},
+        },
+    )
+    assert stub["params"]["num_ctx"]["max"] == 262144
+    assert stub["capabilities"]["thinking"]["kind"] == "boolean"
+
+
 def test_stub_from_show_sin_thinking_ni_ctx():
     stub = stub_from_show("m", {"capabilities": ["completion"]})
     assert stub["capabilities"]["thinking"] == {"kind": "none"}

@@ -32,11 +32,14 @@ Reglas:
 - Devuelve SOLO JSON válido, sin markdown.
 - Si el mensaje trae «ubicación fijada», illustrate DEBE ser true y UNA sola escena. No rechaces por no-relato. NO elijas otro sitio: paragraph_index = el indicado. El excerpt o el párrafo es el momento a ilustrar. Continuidad: mismos personajes, ropa, escenario, iluminación y estilo que el relato (y que los prompts ya usados). Varía solo acción, pose, encuadre e instante. Si ya hay imagen en ese párrafo, esta va AL LADO (otro instante, no un duplicado).
 - Si el mensaje trae «párrafos asignados» (sin ubicación fijada), NO elijas ubicación: escribe un prompt visual en inglés para CADA paragraph_index listado (en ese orden). El prompt debe describir la escena de ESE párrafo. anchor_excerpt puede ir vacío; paragraph_index es obligatorio y debe coincidir.
-- Si NO hay párrafos asignados: elige hasta max_images escenas repartidas a lo largo del relato (puntos medios entre imágenes existentes); anchor_excerpt literal o paragraph_index.
-- No concentres varias escenas al inicio ni en el mismo párrafo (salvo ubicación fijada).
+- Si el system incluye «Política de selección de escenas», esa política MANDA sobre dónde colocar las imágenes, si se pueden concentrar y el nivel de explicitud del prompt. Anula cualquier intuición de reparto uniforme o de puntos medios.
+- Si NO hay párrafos asignados NI política de selección: elige hasta max_images momentos visualmente distintos; evita párrafos ya ilustrados; no pongas varias en el mismo párrafo.
 - Si el mensaje trae «consistencia visual: ON»: TODAS las escenas de este JSON (y respecto a prompts ya usados) DEBEN copiar los mismos tokens de identidad: edad, cuerpo, pelo, etnia, ropa. No parafrasees. Varía solo acción, pose, encuadre e instante. Escenario e iluminación se mantienen si es la misma escena narrativa; si el relato cambia de sitio o de ropa, gana el texto.
 - Si el mensaje lista prompts ya usados y consistencia visual está OFF (y NO hay ubicación fijada), NO generes escenas visualmente similares (mismo sujeto, pose, vestuario, encuadre o momento). Cada prompt nuevo debe aportar una escena distinta del relato.
 """
+
+_SELECTION_POLICY_HEADER = "--- Política de selección de escenas ---"
+_EXTRA_INSTRUCTIONS_HEADER = "--- Instrucciones adicionales ---"
 
 
 def load_planner_system_prompt(config_path: Path | None = None) -> str:
@@ -48,15 +51,26 @@ def load_planner_system_prompt(config_path: Path | None = None) -> str:
     return _DEFAULT_SYSTEM
 
 
-def compose_planner_system_prompt(base: str, extra_instructions: str | None = None) -> str:
-    """Une el system base del planificador con instrucciones adicionales del panel."""
+def compose_planner_system_prompt(
+    base: str,
+    extra_instructions: str | None = None,
+    selection_policy: str | None = None,
+) -> str:
+    """Une base + extras del panel + política de estrategia (esta última gana en conflictos de ubicación)."""
+    parts: list[str] = []
     core = (base or "").rstrip()
+    if core:
+        parts.append(core)
     extra = (extra_instructions or "").strip()
-    if not extra:
-        return core
-    if not core:
-        return extra
-    return f"{core}\n\n--- Instrucciones adicionales ---\n{extra}"
+    if extra:
+        parts.append(f"{_EXTRA_INSTRUCTIONS_HEADER}\n{extra}")
+    policy = (selection_policy or "").strip()
+    if policy:
+        if policy.startswith(_SELECTION_POLICY_HEADER):
+            parts.append(policy)
+        else:
+            parts.append(f"{_SELECTION_POLICY_HEADER}\n{policy}")
+    return "\n\n".join(parts) if parts else ""
 
 
 def log_planner_exchange(debug_request: str, debug_response: str) -> None:
@@ -321,8 +335,14 @@ class LlmScenePlanner:
     ):
         self.provider = provider
         self.model = model
-        base = system_prompt if system_prompt is not None else load_planner_system_prompt()
-        self.system_prompt = compose_planner_system_prompt(base, system_instructions)
+        self._base_system = (
+            system_prompt if system_prompt is not None else load_planner_system_prompt()
+        )
+        self._extra_instructions = system_instructions
+        # Sin política de estrategia (se añade por llamada en plan).
+        self.system_prompt = compose_planner_system_prompt(
+            self._base_system, self._extra_instructions
+        )
         self.extra_body = extra_body
         self.last_debug: dict[str, str] | None = None
 
@@ -337,9 +357,12 @@ class LlmScenePlanner:
         pinned: bool = False,
         focus_excerpt: str | None = None,
         visual_consistency: bool = True,
+        selection_policy: str | None = None,
         selection_instructions: str | None = None,
     ) -> ScenePlan:
         self.last_debug = None
+        # selection_instructions: alias legacy; la política va al system, no al user.
+        policy = (selection_policy or selection_instructions or "").strip() or None
         assigned = list(assigned_paragraphs or [])
         limit = 1 if pinned else (len(assigned) if assigned else max_images)
         if limit <= 0:
@@ -355,7 +378,7 @@ class LlmScenePlanner:
                 existing_prompts=existing_prompts,
                 visual_consistency=visual_consistency,
             )
-            strategy_section = ""
+            effective_policy = None
         else:
             already_block = _already_planned_block(
                 already_planned,
@@ -363,21 +386,22 @@ class LlmScenePlanner:
                 visual_consistency=visual_consistency,
             )
             assigned_section = _assigned_paragraphs_block(assigned) if assigned else ""
-            strategy_extra = (selection_instructions or "").strip()
-            strategy_section = f"{strategy_extra}\n\n" if strategy_extra else ""
+            effective_policy = None if assigned else policy
         coverage = (coverage_block or "").strip()
         coverage_section = "" if pinned else (f"{coverage}\n" if coverage else "")
         user = (
             f"max_images={limit}\n\n"
             f"{policy_block}"
-            f"{strategy_section}"
             f"{assigned_section}"
             f"{coverage_section}"
             f"{already_block}"
             f"--- TEXTO DEL ASISTENTE ---\n{text}\n--- FIN ---"
         )
+        system = compose_planner_system_prompt(
+            self._base_system, self._extra_instructions, effective_policy
+        )
         messages = [
-            {"role": "system", "content": self.system_prompt},
+            {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
         payload: dict[str, Any] = {

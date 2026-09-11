@@ -81,6 +81,63 @@ def test_compose_planner_system_prompt_appends_extra():
     assert "Instrucciones adicionales" in out
 
 
+def test_compose_planner_system_prompt_puts_selection_policy_after_extras():
+    from app.services.image_illustration.scene_planner import compose_planner_system_prompt
+
+    out = compose_planner_system_prompt(
+        "BASE",
+        "Estilo editorial suave",
+        "Modo: picos pornográficos.\nPrioriza máxima carga explícita.",
+    )
+    assert out.index("Instrucciones adicionales") < out.index("Política de selección")
+    assert out.index("Estilo editorial suave") < out.index("picos pornográficos")
+    assert out.endswith("Prioriza máxima carga explícita.")
+
+
+def test_planner_system_prompt_is_location_neutral_without_hardcoded_distribution():
+    from app.services.image_illustration.scene_planner import load_planner_system_prompt
+
+    text = load_planner_system_prompt()
+    assert "Política de selección de escenas" in text
+    assert "puntos medios entre imágenes" not in text
+    assert "escenas repartidas a lo largo" not in text
+    assert "No concentres varias escenas" not in text
+
+
+def test_planner_injects_selection_policy_into_system_not_user():
+    provider = FakeProvider(
+        json.dumps(
+            {
+                "illustrate": True,
+                "reason": "picos",
+                "scenes": [
+                    {"id": "s1", "prompt": "explicit act", "paragraph_index": 1},
+                ],
+            }
+        )
+    )
+    planner = LlmScenePlanner(
+        provider,
+        model="m1",
+        system_prompt="SYS BASE",
+        system_instructions="Guía FLUX editorial",
+    )
+    plan = planner.plan(
+        "Relato explícito.",
+        max_images=1,
+        selection_policy="Modo: picos pornográficos.\nANULA el reparto uniforme.",
+    )
+    assert plan.illustrate is True
+    system = provider.calls[0]["messages"][0]["content"]
+    user = provider.calls[0]["messages"][1]["content"]
+    assert "Política de selección de escenas" in system
+    assert "ANULA el reparto uniforme" in system
+    assert "Guía FLUX editorial" in system
+    assert system.index("Instrucciones adicionales") < system.index("Política de selección")
+    assert "ANULA el reparto uniforme" not in user
+    assert "picos pornográficos" not in user
+
+
 def test_planner_stores_last_debug_request_and_response():
     provider = FakeProvider(
         json.dumps(

@@ -2,6 +2,9 @@
 
 El orquestador no decide *cómo* repartir las ilustraciones: delega en una
 estrategia registrada. Añadir un modo nuevo = nueva clase + registro.
+
+Las estrategias LLM aportan una *política de selección* que el planificador
+inyecta en el system (prioridad sobre reparto uniforme).
 """
 
 from __future__ import annotations
@@ -28,13 +31,18 @@ DEFAULT_SCENE_SELECTION_STRATEGY = SceneSelectionStrategyId.DISTRIBUTED.value
 
 @dataclass(frozen=True)
 class SceneSelectionBatch:
-    """Plan de un lote: párrafos preasignados y/o instrucciones al LLM."""
+    """Plan de un lote: párrafos preasignados y/o política de selección al LLM."""
 
     strategy_id: str
     max_scenes: int
     assigned_paragraphs: list[ParagraphInfo] = field(default_factory=list)
-    selection_instructions: str = ""
+    selection_policy: str = ""
     binds_to_assigned: bool = True
+
+    @property
+    def selection_instructions(self) -> str:
+        """Alias legacy para callers que aún leen selection_instructions."""
+        return self.selection_policy
 
 
 class SceneSelectionStrategy(Protocol):
@@ -56,22 +64,24 @@ class SceneSelectionStrategy(Protocol):
     ) -> SceneSelectionBatch: ...
 
 
-_LLM_EROTIC_STORY_INSTRUCTIONS = """\
-Estrategia de selección: narrativa erótica (LLM).
-Elige hasta max_images momentos del relato que, en secuencia, cuenten la historia con las imágenes.
+_LLM_EROTIC_STORY_POLICY = """\
+Modo: narrativa erótica.
+Esta política MANDA sobre la ubicación de las escenas (no uses puntos medios geométricos).
+Elige hasta max_images momentos que, en secuencia, cuenten la historia con las imágenes.
 Prioriza pasajes de alto contenido sexual o erótico cuando existan (deseo, intimidad, acto, clímax, aftercare).
 Si un tramo no tiene carga erótica suficiente, elige el beat narrativo más visual que avance la trama.
-Reparte las escenas a lo largo del arco (no todas al inicio ni en el mismo párrafo).
-Evita párrafos ya ilustrados (ver ubicaciones existentes).
+Reparte a lo largo del arco narrativo (no todas al inicio). Un momento por párrafo salvo que el relato lo pida; evita párrafos ya ilustrados.
 Cada scene debe llevar paragraph_index del párrafo elegido y un prompt en inglés explícito, sensual/erótico y anclado a ese momento.
 """
 
-_LLM_PORNOGRAPHIC_PEAKS_INSTRUCTIONS = """\
-Estrategia de selección: picos pornográficos (LLM).
+_LLM_PORNOGRAPHIC_PEAKS_POLICY = """\
+Modo: picos pornográficos.
+Esta política MANDA sobre la ubicación de las escenas y ANULA el reparto uniforme.
 Elige hasta max_images los momentos MÁS pornográficos y explícitos del relato (acto sexual gráfico, anatomía, fluidos, penetración, oral, etc.).
 No priorices romanticismo, tensión suave ni aftercare: prioriza la máxima carga pornográfica.
-Si hay varios picos, elige los más explícitos y visuales; evita párrafos ya ilustrados.
+Puedes concentrar varias escenas en párrafos cercanos o del mismo tramo si son los picos más fuertes; evita solo duplicar el mismo instante ya ilustrado.
 Cada scene debe llevar paragraph_index del párrafo elegido y un prompt en inglés muy explícito, pornográfico y anclado a ese momento (sin eufemismos).
+Si no hay contenido explícito suficiente, elige lo más cercano al máximo nivel sexual disponible y dilo en reason.
 """
 
 
@@ -80,22 +90,22 @@ def _llm_free_selection_batch(
     strategy_id: str,
     coverage: CoverageMap,
     count: int,
-    instructions: str,
+    policy: str,
 ) -> SceneSelectionBatch:
-    """Lote sin párrafos preasignados: el LLM elige ubicación."""
+    """Lote sin párrafos preasignados: el LLM elige ubicación según la política."""
     if not coverage.paragraphs or count <= 0:
         return SceneSelectionBatch(
             strategy_id=strategy_id,
             max_scenes=0,
             assigned_paragraphs=[],
-            selection_instructions=instructions,
+            selection_policy=policy,
             binds_to_assigned=False,
         )
     return SceneSelectionBatch(
         strategy_id=strategy_id,
         max_scenes=count,
         assigned_paragraphs=[],
-        selection_instructions=instructions,
+        selection_policy=policy,
         binds_to_assigned=False,
     )
 
@@ -141,7 +151,7 @@ class DistributedSceneSelectionStrategy:
             strategy_id=self.id,
             max_scenes=len(assigned),
             assigned_paragraphs=assigned,
-            selection_instructions="",
+            selection_policy="",
             binds_to_assigned=True,
         )
 
@@ -176,7 +186,7 @@ class LlmEroticStorySceneSelectionStrategy:
             strategy_id=self.id,
             coverage=coverage,
             count=count,
-            instructions=_LLM_EROTIC_STORY_INSTRUCTIONS,
+            policy=_LLM_EROTIC_STORY_POLICY,
         )
 
 
@@ -210,7 +220,7 @@ class LlmPornographicPeaksSceneSelectionStrategy:
             strategy_id=self.id,
             coverage=coverage,
             count=count,
-            instructions=_LLM_PORNOGRAPHIC_PEAKS_INSTRUCTIONS,
+            policy=_LLM_PORNOGRAPHIC_PEAKS_POLICY,
         )
 
 
