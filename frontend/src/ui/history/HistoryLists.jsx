@@ -1,176 +1,179 @@
-import { historyStore, CONV_SORT_OPTIONS, MSG_SORT_OPTIONS, CONV_GROUP_LABELS, isMessagesHistoryMode } from "../../store/history.js";
+import { historyStore, CONV_GROUP_LABELS, isMessagesHistoryMode } from "../../store/history.js";
 import { sessionStore } from "../../store/session.js";
 import { useStore } from "../../hooks/useStore.js";
+import { getConversationGroup } from "../../lib/forest.js";
+import { formatDateTime } from "../../lib/dates.js";
 import {
-  buildConversationForest,
-  getConversationGroup,
-  conversationGroupTs,
-  conversationWhenIso,
-} from "../../lib/forest.js";
-import { formatDate, formatDateTime } from "../../lib/dates.js";
-import {
-  setLeftHistoryMode,
+  loadMessageTreeRoots,
+  toggleMessageTreeNode,
+  restoreConversationFromTrash,
+  permanentlyDeleteFromTrash,
+  emptyTrash,
   onLeftHistorySortChange,
   onMessageHistorySearchInput,
-  loadMessageHistory,
-  deleteConversationFromHistory,
-  restoreConversationFromTrash,
-  clearConversationHistory,
+  setLeftHistoryMode,
 } from "../../app/historyActions.js";
-import { newConversation, newPromptGeneratorConversation, openConversation, goToConversationTarget } from "../../app/sessionActions.js";
+import { newConversation, newPromptGeneratorConversation, openMessageTreeNode } from "../../app/sessionActions.js";
 import { setLeftCollapsed } from "../layout/LayoutEffects.jsx";
 
-const clearHistoryIconSvg = (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 20H7L3 16l10-10 4 4-6 6h9l4-4"/></svg>
-);
+function MessageTreeNodeRow({ node, depth }) {
+  const expanded = useStore(historyStore, (s) => !!(s.treeExpandedIds || {})[node.id]);
+  const childrenMap = useStore(historyStore, (s) => s.treeChildrenByParent || {});
+  const selectedId = useStore(historyStore, (s) => s.treeSelectedMessageId);
+  const focusId = useStore(sessionStore, (s) => s.focusMessageId || s.consultaAssistantId);
+  const activeId = selectedId || focusId;
+  const kids = childrenMap[node.id] || [];
+  const when = formatDateTime(node.created_at);
+  const preview = node.content_preview || "(sin texto)";
+  const title = node.conversation_title || "Conversación";
 
-function groupedConversations(list, sort, currentId) {
-  const { roots, childrenByParent } = buildConversationForest(list || [], sort);
-  const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
-  roots.forEach((c) => {
-    groups[getConversationGroup(new Date(conversationGroupTs(c, childrenByParent, sort)))].push(c);
-  });
-  return { groups, childrenByParent, currentId };
-}
-
-function ConversationItem({ c, depth, currentId, childrenByParent }) {
-  const when = formatDate(conversationWhenIso(c, historyStore.get().conversationSort));
-  const meta = `${c.provider || "ollama"}/${c.model_id} · ${when}`;
-  const kids = childrenByParent.get(c.id) || [];
   return (
     <>
       <div
-        className={`conversation-item ${c.id === currentId ? "active" : ""} ${depth ? "conversation-item-fork" : ""}`}
-        data-id={c.id}
+        className={`conversation-item message-tree-item${node.id === activeId ? " active" : ""}${
+          node.is_fork_edge ? " conversation-item-fork message-tree-item-fork" : ""
+        }`}
+        data-id={node.id}
+        data-conversation-id={node.conversation_id}
         data-depth={depth}
-        title={meta}
+        title={`${title} · ${when}`}
         style={{ paddingLeft: 8 + depth * 14 }}
-        onClick={() => openConversation(c.id)}
       >
         <div className="conv-row">
-          <span className="conv-title">
-            {c.kind === "prompt_generator" ? <span className="conv-kind-badge" title="Prompt generator">txt2img</span> : null}
-            {c.kind === "prompt_generator" ? " " : null}
-            {c.title}
-          </span>
-          <span className="conv-when">{when}</span>
-          {c.id === currentId ? (
+          {node.has_children ? (
             <button
               type="button"
-              className="conv-clear-btn"
-              data-id={c.id}
-              title="Limpiar historial de mensajes"
-              aria-label="Limpiar historial"
+              className="message-tree-expand"
+              aria-expanded={expanded ? "true" : "false"}
+              aria-label={expanded ? "Colapsar" : "Expandir"}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                clearConversationHistory(c.id);
+                toggleMessageTreeNode(node.id);
               }}
             >
-              {clearHistoryIconSvg}
+              {expanded ? "▾" : "▸"}
             </button>
-          ) : null}
+          ) : (
+            <span className="message-tree-expand message-tree-expand-spacer" aria-hidden="true" />
+          )}
+          <button
+            type="button"
+            className="message-tree-open"
+            onClick={() => openMessageTreeNode(node.conversation_id, node.id)}
+          >
+            <span className="conv-title">
+              {node.is_fork_edge ? <span className="conv-kind-badge" title="Fork">fork</span> : null}
+              {node.is_fork_edge ? " " : null}
+              {preview}
+            </span>
+          </button>
         </div>
+        <time className="conv-meta message-history-created" dateTime={node.created_at || ""}>
+          {when}
+        </time>
       </div>
-      {kids.map((ch) => (
-        <ConversationItem key={ch.id} c={ch} depth={depth + 1} currentId={currentId} childrenByParent={childrenByParent} />
-      ))}
+      {expanded
+        ? kids.map((ch) => <MessageTreeNodeRow key={ch.id} node={ch} depth={depth + 1} />)
+        : null}
     </>
   );
 }
 
-export function ConversationsList() {
-  const conversations = useStore(historyStore, (s) => s.conversations);
-  const deleted = useStore(historyStore, (s) => s.deletedConversations);
-  const mode = useStore(historyStore, (s) => s.mode);
-  const sort = useStore(historyStore, (s) => s.conversationSort);
-  const currentId = useStore(sessionStore, (s) => s.conversationId);
-  const msgItems = useStore(historyStore, (s) => s.messageHistoryItems);
-  const msgTotal = useStore(historyStore, (s) => s.messageHistoryTotal);
-  const msgQuery = useStore(historyStore, (s) => s.messageHistoryQuery);
-  const searchIn = useStore(historyStore, (s) => s.messageHistorySearchIn);
-  const focusId = useStore(sessionStore, (s) => s.focusMessageId || s.consultaAssistantId);
-  const msgSort = useStore(historyStore, (s) => s.messageSort);
-
-  if (mode === "messages") {
-    const q = (msgQuery || "").trim();
-    if (!msgItems.length) {
-      return (
-        <>
-          <div className="conversations-list" id="conversations-list">
-            <p className="conv-group-label">{q ? "Sin resultados." : "No hay respuestas todavía."}</p>
-          </div>
-          <MessagePager loaded={0} total={msgTotal} q={q} searchIn={searchIn} />
-        </>
-      );
+function groupRootsByConversation(roots) {
+  const byConv = new Map();
+  (roots || []).forEach((n) => {
+    const key = n.conversation_id;
+    if (!byConv.has(key)) {
+      byConv.set(key, {
+        conversation_id: key,
+        conversation_title: n.conversation_title || "Conversación",
+        created_at: n.created_at,
+        nodes: [],
+      });
     }
-    const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
-    msgItems.forEach((item) => {
-      const iso = msgSort === "image" && item.latest_image_at ? item.latest_image_at : item.created_at;
-      groups[getConversationGroup(iso)].push(item);
-    });
-    return (
-      <>
-        <div className="conversations-list" id="conversations-list">
-          {["hoy", "ayer", "semana", "anteriores"].filter((k) => groups[k].length).map((key) => (
-            <div key={key}>
-              <div className="conv-group-label" aria-hidden="true">{CONV_GROUP_LABELS[key]}</div>
-              {groups[key].map((item) => {
-                const created = formatDateTime(item.created_at);
-                const preview = item.content_preview || "(sin texto)";
-                const convTitle = item.conversation_title || "Conversación";
-                return (
-                  <div
-                    key={item.id}
-                    className={`conversation-item message-history-item${item.id === focusId ? " active" : ""}`}
-                    data-id={item.id}
-                    data-conversation-id={item.conversation_id}
-                    title={`${convTitle} · ${created}`}
-                    onClick={() =>
-                      goToConversationTarget({
-                        conversationId: item.conversation_id,
-                        messageId: item.id,
-                      })
-                    }
-                  >
-                    <div className="conv-row">
-                      <span className="conv-title">{preview}</span>
-                    </div>
-                    <time className="conv-meta message-history-created" dateTime={item.created_at || ""}>{created}</time>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        <MessagePager loaded={msgItems.length} total={msgTotal} q={q} searchIn={searchIn} />
-      </>
-    );
-  }
+    const g = byConv.get(key);
+    g.nodes.push(n);
+    if (n.created_at && (!g.created_at || n.created_at > g.created_at)) g.created_at = n.created_at;
+  });
+  return Array.from(byConv.values()).map((g) => {
+    g.nodes.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
+    return g;
+  });
+}
 
-  const { groups, childrenByParent } = groupedConversations(conversations, sort, currentId);
+export function ConversationsList() {
+  const roots = useStore(historyStore, (s) => s.treeRoots);
+  const total = useStore(historyStore, (s) => s.treeRootsTotal);
+  const deleted = useStore(historyStore, (s) => s.deletedConversations);
+
+  const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
+  groupRootsByConversation(roots).forEach((g) => {
+    groups[getConversationGroup(g.created_at)].push(g);
+  });
   const order = ["hoy", "ayer", "semana", "anteriores"].filter((k) => groups[k].length);
+
   return (
     <>
       <div className="conversations-list" id="conversations-list">
+        {!roots.length ? <p className="conv-group-label">No hay respuestas todavía.</p> : null}
         {order.map((key) => (
           <div key={key}>
-            <div className="conv-group-label" aria-hidden="true">{CONV_GROUP_LABELS[key]}</div>
-            {groups[key].map((c) => (
-              <ConversationItem key={c.id} c={c} depth={0} currentId={currentId} childrenByParent={childrenByParent} />
+            <div className="conv-group-label" aria-hidden="true">
+              {CONV_GROUP_LABELS[key]}
+            </div>
+            {groups[key].map((g) => (
+              <div key={g.conversation_id} className="message-tree-conv-group">
+                <div className="message-tree-conv-title" title={g.conversation_title}>
+                  {g.conversation_title}
+                </div>
+                {g.nodes.map((n) => (
+                  <MessageTreeNodeRow key={n.id} node={n} depth={0} />
+                ))}
+              </div>
             ))}
           </div>
         ))}
       </div>
+      {roots.length < total ? (
+        <div className="message-history-pager" id="message-tree-pager">
+          <span className="message-history-page-meta">
+            {roots.length} / {total}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-small message-history-load-more"
+            onClick={() => loadMessageTreeRoots({ append: true })}
+          >
+            Cargar más
+          </button>
+        </div>
+      ) : null}
       <div className="conversations-trash" id="conversations-trash" hidden={!deleted.length}>
-        <div className="conv-group-label" id="conversations-trash-label">Papelera</div>
+        <div className="conversations-trash-header">
+          <div className="conv-group-label" id="conversations-trash-label">
+            Papelera
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-small"
+            id="conversations-trash-empty"
+            onClick={() => emptyTrash()}
+          >
+            Vaciar
+          </button>
+        </div>
         <div className="conversations-trash-list" id="conversations-trash-list">
           {deleted.map((c) => (
             <div key={c.id} className="conversation-item" data-id={c.id}>
               <div className="conv-row">
                 <span className="conv-title">{c.title}</span>
-                <button type="button" className="btn btn-secondary btn-small" onClick={() => restoreConversationFromTrash(c.id)}>Restaurar</button>
-                <button type="button" className="btn btn-secondary btn-small" onClick={() => deleteConversationFromHistory(c.id)}>Eliminar</button>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => restoreConversationFromTrash(c.id)}>
+                  Restaurar
+                </button>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => permanentlyDeleteFromTrash(c.id)}>
+                  Eliminar
+                </button>
               </div>
             </div>
           ))}
@@ -180,42 +183,11 @@ export function ConversationsList() {
   );
 }
 
-function MessagePager({ loaded, total, q, searchIn }) {
-  const hidden = !isMessagesHistoryMode();
-  return (
-    <div className="message-history-pager" id="message-history-pager" hidden={hidden || (!loaded && !q)}>
-      {q && searchIn === "content" && loaded > 0 ? (
-        <p className="message-history-search-hint">Sin coincidencias en el título; resultados en el texto.</p>
-      ) : null}
-      {loaded > 0 ? <span className="message-history-page-meta">{loaded} / {total}</span> : null}
-      {loaded < total ? (
-        <button type="button" className="btn btn-secondary btn-small message-history-load-more" id="message-history-load-more" onClick={() => loadMessageHistory({ append: true })}>
-          Cargar más
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 export function HistorySortSelect() {
-  const mode = useStore(historyStore, (s) => s.mode);
-  const convSort = useStore(historyStore, (s) => s.conversationSort);
-  const msgSort = useStore(historyStore, (s) => s.messageSort);
-  const options = mode === "messages" ? MSG_SORT_OPTIONS : CONV_SORT_OPTIONS;
-  const value = mode === "messages" ? msgSort : convSort;
-  return (
-    <select
-      id="left-history-sort-select"
-      className="param-control left-history-sort-select"
-      aria-label="Ordenar historial"
-      value={value}
-      onChange={(e) => onLeftHistorySortChange(e.target.value)}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
-      ))}
-    </select>
-  );
+  return null;
 }
 
-export { setLeftHistoryMode, newConversation, newPromptGeneratorConversation, onMessageHistorySearchInput, setLeftCollapsed };
+export { setLeftHistoryMode, newConversation, newPromptGeneratorConversation, onMessageHistorySearchInput, setLeftCollapsed, onLeftHistorySortChange };
+
+// compat: modo mensajes ya no se usa como vista
+void isMessagesHistoryMode;

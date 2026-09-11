@@ -7,7 +7,7 @@ import { historyStore } from "../store/history.js";
 import { imagesStore, persistImagesPrefs } from "../store/images.js";
 import { updateLayout, setChatPanelVisible, isGalleryPanelVisible } from "../store/layout.js";
 import { persistImagesPanel, applyImagesSnapshot, imagesSnapshotForConversation } from "./imagesPanel.js";
-import { applyConversationTree, visibleMessages } from "../lib/tree.js";
+import { applyConversationTree, visibleMessages, latestLeafInSubtree } from "../lib/tree.js";
 import { initialViewStartIndex, clampViewStartIndex } from "../lib/messageWindow.js";
 import { getDefaultConversationTitle } from "../lib/dates.js";
 import { buildModelParams } from "../lib/params.js";
@@ -15,7 +15,12 @@ import {
   illustrationNeedleInContent as contentHasIllustration,
   contentHasExactFilename,
 } from "../lib/illustrationLocate.js";
-import { applyConsultaChrome, refreshLeftHistory, setLeftHistoryMode, syncMessageHistoryActiveItem } from "./historyActions.js";
+import {
+  applyConsultaChrome,
+  refreshLeftHistory,
+  refreshMessageTreePreservingExpansion,
+  syncMessageHistoryActiveItem,
+} from "./historyActions.js";
 import { serializeRuleItems, hydrateChatRulesFromLibrary } from "./rulesActions.js";
 import { loadModelContract, loadModels, loadParamsForProvider, applyConversationParams } from "./settingsActions.js";
 import { loadOlderMessageInView } from "./messageWindowActions.js";
@@ -168,7 +173,6 @@ export async function openConsultaTurn(conversationId, assistantId) {
 }
 
 export async function newConversation() {
-  if (historyStore.get().mode === "messages") await setLeftHistoryMode("conversations");
   setFocusMessageId(null);
   applyConsultaChrome();
   setChatPanelVisible(true);
@@ -183,7 +187,7 @@ export async function newConversation() {
       system_instructions: serializeRuleItems(sessionStore.get().rules),
     });
     await setCurrentConversation(conv);
-    await refreshLeftHistory();
+    await refreshMessageTreePreservingExpansion();
     return conv;
   } catch (e) {
     showError("Error al crear conversación: " + e.message);
@@ -192,7 +196,6 @@ export async function newConversation() {
 }
 
 export async function newPromptGeneratorConversation() {
-  if (historyStore.get().mode === "messages") await setLeftHistoryMode("conversations");
   setFocusMessageId(null);
   applyConsultaChrome();
   updateLayout({ centerChatVisible: true });
@@ -205,7 +208,7 @@ export async function newPromptGeneratorConversation() {
       kind: "prompt_generator",
     });
     await setCurrentConversation(conv);
-    await refreshLeftHistory();
+    await refreshMessageTreePreservingExpansion();
     return conv;
   } catch (e) {
     showError("Error al crear txt2img: " + e.message);
@@ -236,10 +239,10 @@ export async function forkConversationFromMessage(messageId) {
   const { conversationId } = sessionStore.get();
   if (!messageId || !conversationId) return;
   try {
-    if (historyStore.get().mode === "messages") await setLeftHistoryMode("conversations");
     const conv = await conversationsApi.forkConversation(conversationId, { message_id: messageId });
     await setCurrentConversation(conv);
     updateLayout({ composerCollapsed: false });
+    await refreshMessageTreePreservingExpansion();
     showNotice("Conversación nueva. El historial se toma del mensaje original.");
   } catch (e) {
     showError("No se pudo crear la conversación: " + e.message);
@@ -429,8 +432,11 @@ async function revealMessageInConversation(conversationId, messageId, options = 
       all.some((m) => m && m.id === resolvedMessageId && !m.ephemeral_debug));
 
   if (resolvedMessageId && !known) {
+    const ownOnly = (sessionStore.get().allMessages || []).filter((m) => m && !m.inherited && !m.ephemeral_debug);
+    const leaf = latestLeafInSubtree(ownOnly.length ? ownOnly : sessionStore.get().allMessages, resolvedMessageId);
+    const leafId = (leaf && leaf.id) || resolvedMessageId;
     await conversationsApi.patchConversation(targetConv, {
-      active_leaf_message_id: resolvedMessageId,
+      active_leaf_message_id: leafId,
     });
     await openConversation(targetConv, {
       skipScroll: true,
@@ -446,12 +452,22 @@ async function revealMessageInConversation(conversationId, messageId, options = 
   }
 
   if (resolvedMessageId) {
+    const ownOnly = (sessionStore.get().allMessages || []).filter((m) => m && !m.inherited && !m.ephemeral_debug);
+    const leaf = latestLeafInSubtree(ownOnly.length ? ownOnly : sessionStore.get().allMessages, resolvedMessageId);
+    const leafId = (leaf && leaf.id) || resolvedMessageId;
     const prevLeaf = sessionStore.get().activeLeafId;
     applyFocusMessageWindow(resolvedMessageId);
-    if (prevLeaf !== resolvedMessageId) {
+    if (prevLeaf !== leafId) {
       conversationsApi
-        .patchConversation(targetConv, { active_leaf_message_id: resolvedMessageId })
+        .patchConversation(targetConv, { active_leaf_message_id: leafId })
         .catch(() => {});
+      if (leafId !== resolvedMessageId) {
+        await openConversation(targetConv, {
+          skipScroll: true,
+          focusMessageId: resolvedMessageId,
+        });
+        applyFocusMessageWindow(resolvedMessageId);
+      }
     }
   } else {
     const msgs = sessionStore.get().messages || [];
@@ -504,9 +520,19 @@ export async function openConversationAtMessage(conversationId, messageId) {
     });
     syncMessageHistoryActiveItem();
     queueRevealInMessages(conversationId, messageId);
+    updateLayout({ composerCollapsed: false });
   } catch (err) {
     showError("No se pudo abrir el mensaje: " + err.message);
   }
+}
+
+/** Clic en nodo del árbol de historial: hilo editable + hoja del subárbol. */
+export async function openMessageTreeNode(conversationId, messageId) {
+  historyStore.set({ treeSelectedMessageId: messageId || null });
+  setChatPanelVisible(true);
+  updateLayout({ composerCollapsed: false });
+  document.documentElement.removeAttribute("data-history-consulta");
+  return openConversationAtMessage(conversationId, messageId);
 }
 
 export async function openConversationAtIllustration(conversationId, messageId, filenameOrOptions, sceneId) {

@@ -48,6 +48,34 @@ export function visibleMessages(allMessages, activeLeafId, ephemerals = []) {
   return inherited.concat(pathFromMessages(own, effectiveLeafId(allMessages, activeLeafId))).concat(ephemerals);
 }
 
+/** Hoja más reciente del subárbol que empieza en rootId (solo mensajes propios del path SQL). */
+export function latestLeafInSubtree(messages, rootId) {
+  if (!rootId) return null;
+  const list = (messages || []).filter((m) => m && m.id && !m.ephemeral_debug);
+  const byId = new Map(list.map((m) => [m.id, m]));
+  const root = byId.get(rootId);
+  if (!root) return null;
+  const childrenByParent = new Map();
+  list.forEach((m) => {
+    const pid = m.parent_id || null;
+    if (!childrenByParent.has(pid)) childrenByParent.set(pid, []);
+    childrenByParent.get(pid).push(m);
+  });
+  const order = new Map(list.map((m, i) => [m.id, i]));
+  const stack = [root];
+  const nodes = [];
+  while (stack.length) {
+    const node = stack.pop();
+    nodes.push(node);
+    const kids = childrenByParent.get(node.id) || [];
+    for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
+  }
+  const leaves = nodes.filter((n) => !(childrenByParent.get(n.id) || []).length);
+  if (!leaves.length) return root;
+  leaves.sort((a, b) => (order.get(a.id) || 0) - (order.get(b.id) || 0));
+  return leaves[leaves.length - 1];
+}
+
 export function applyConversationTree(conv) {
   const inherited = (conv.inherited_messages || []).map((m) => ({
     ...mapApiMessage(m),

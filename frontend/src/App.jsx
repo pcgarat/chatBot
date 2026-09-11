@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { LayoutEffects } from "./ui/layout/LayoutEffects.jsx";
-import { onAppClick, onAppChange, onAppPointerDown, onAppPointerMove, onAppPointerUp } from "./ui/layout/shellEvents.js";
-import { ConversationsList, HistorySortSelect } from "./ui/history/HistoryLists.jsx";
+import { onAppClick, onAppChange, onAppKeyDown, onAppPointerDown, onAppPointerMove, onAppPointerUp } from "./ui/layout/shellEvents.js";
+import { ConversationsList } from "./ui/history/HistoryLists.jsx";
 import { MessagesPane, ReadingModeOverlay } from "./ui/messages/MessagesPane.jsx";
 import { GalleryPanelBody } from "./ui/gallery/GalleryPanelBody.jsx";
 import { QueuePanelBody } from "./ui/queue/QueuePanelBody.jsx";
@@ -17,7 +17,7 @@ export default function App() {
     <>
     <LayoutEffects />
     <StoreDomSync />
-    <div id="app" className="app-shell" onClick={onAppClick} onChange={onAppChange} onPointerDown={onAppPointerDown} onPointerMove={onAppPointerMove} onPointerUp={onAppPointerUp} onPointerCancel={onAppPointerUp}>
+    <div id="app" className="app-shell" onClick={onAppClick} onChange={onAppChange} onKeyDown={onAppKeyDown} onPointerDown={onAppPointerDown} onPointerMove={onAppPointerMove} onPointerUp={onAppPointerUp} onPointerCancel={onAppPointerUp}>
         <aside className="column-left sidebar-column" id="column-left" aria-label="Conversaciones">
           <div className="sidebar-header">
             <div className="sidebar-logo-block">
@@ -32,7 +32,7 @@ export default function App() {
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="M5 12h2"/></svg>
             </button>
           </div>
-          <div className="sidebar-new-conversation-wrap">
+            <div className="sidebar-new-conversation-wrap">
             <div className="sidebar-create-stack">
               <button type="button" id="btn-new-chat" className="sidebar-add-btn" title="Nueva conversación" aria-label="Nueva conversación">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -43,20 +43,8 @@ export default function App() {
                 <span className="sidebar-add-btn-text">txt2img</span>
               </button>
             </div>
-            <button type="button" id="btn-history-messages" className="sidebar-add-btn" title="Historial de respuestas del modelo" aria-label="Mensajes" aria-pressed="false" aria-controls="conversations-list">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="3.5" cy="6" r=".5"/><circle cx="3.5" cy="12" r=".5"/><circle cx="3.5" cy="18" r=".5"/></svg>
-              <span className="sidebar-add-btn-text">Mensajes</span>
-            </button>
           </div>
           <div className="conversations-list-wrap">
-            <div className="left-history-sort" id="left-history-sort">
-              <label className="param-label left-history-sort-label" htmlFor="left-history-sort-select">Orden</label>
-              <HistorySortSelect />
-            </div>
-            <div className="message-history-search-wrap" id="message-history-search-wrap" hidden>
-              <label className="param-label left-history-sort-label" htmlFor="message-history-search">Buscar</label>
-              <input type="search" id="message-history-search" className="param-control message-history-search" placeholder="Título o texto" aria-label="Buscar mensajes" />
-            </div>
             <ConversationsList />
           </div>
           <div id="sidebar-left-splitter" className="sidebar-column-splitter sidebar-column-splitter--right" role="separator" aria-orientation="vertical" aria-controls="column-left" aria-label="Redimensionar historial" aria-valuemin="180" aria-valuemax="420" aria-valuenow="188" tabIndex="0" title="Arrastra para cambiar el ancho. Doble clic restaura."></div>
@@ -143,7 +131,7 @@ export default function App() {
               <div className="composer-main-row send-row">
                 <textarea id="message-input" className="composer-textarea" rows="2" placeholder="Escribe un comando o envía un mensaje al modelo..." aria-label="Mensaje"></textarea>
                 <div className="composer-actions send-row-buttons">
-                  <button type="button" id="btn-generate-prompt" className="send-button composer-generate-prompt-btn" title="Generar prompt" aria-label="Generar prompt" hidden>Generar prompt</button>
+                  <button type="button" id="btn-generate-prompt" className="send-button composer-generate-prompt-btn" title="Generar prompt" aria-label="Generar prompt" hidden><span className="composer-generate-prompt-icon" aria-hidden="true"></span></button>
                   <button type="button" id="btn-send" className="send-button composer-send-btn" title="Enviar" aria-label="Enviar mensaje" data-composer-action="send"><span className="composer-send-icon" aria-hidden="true"></span></button>
                 </div>
               </div>

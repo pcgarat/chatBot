@@ -271,6 +271,35 @@ def test_e2e_conversation_fork(client, ollama_available):
         assert msg_id in listed_ids
 
 
+def test_e2e_message_tree_children_includes_fork_edge(client, ollama_available):
+    """GET /api/message-tree/{ancla}/children incluye el primer assistant del fork con is_fork_edge."""
+    model_name = _get_first_ollama_model(client)
+    origin_id = client.post(
+        "/api/conversations",
+        json={"title": "E2E message-tree fork", "model_id": model_name, "provider": "ollama"},
+    ).json()["id"]
+    r1 = client.post(
+        f"/api/conversations/{origin_id}/messages",
+        json={"content": "Di solo: ancla"},
+    )
+    assert r1.status_code == 200
+    origin = client.get(f"/api/conversations/{origin_id}").json()
+    ancla = next(m for m in origin["messages"] if m["role"] == "assistant")
+    child = client.post(
+        f"/api/conversations/{origin_id}/fork", json={"message_id": ancla["id"]}
+    ).json()
+    r_fork = client.post(
+        f"/api/conversations/{child['id']}/messages",
+        json={"content": "Di solo: rama"},
+    )
+    assert r_fork.status_code == 200
+    child2 = client.get(f"/api/conversations/{child['id']}").json()
+    fork_assistant = next(m for m in child2["messages"] if m["role"] == "assistant")
+
+    kids = client.get(f"/api/message-tree/{ancla['id']}/children").json()
+    assert any(k["id"] == fork_assistant["id"] and k["is_fork_edge"] is True for k in kids)
+
+
 def test_e2e_fork_inherited_content_mutations(client, ollama_available):
     """Mutaciones de ilustración sobre un mensaje heredado se aplican a la fila del origen."""
     model_name = _get_first_ollama_model(client)

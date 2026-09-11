@@ -7,7 +7,7 @@ import { buildModelParams } from "../lib/params.js";
 import { visibleMessages } from "../lib/tree.js";
 import { clampViewStartIndex } from "../lib/messageWindow.js";
 import { newConversation } from "./sessionActions.js";
-import { refreshLeftHistory } from "./historyActions.js";
+import { refreshLeftHistory, refreshMessageTreePreservingExpansion } from "./historyActions.js";
 import { createStreamBuffer } from "./stream.js";
 import { maybeIllustrateAssistantMessage } from "./illustrate.js";
 import { getChatRulesTextForSystem } from "./rulesActions.js";
@@ -52,7 +52,7 @@ export async function sendPromptGeneratorTurn({ force = false } = {}) {
     sessionStore.set({ composerDraft: "" });
     const { openConversation } = await import("./sessionActions.js");
     await openConversation(conversationId);
-    await refreshLeftHistory();
+    await refreshMessageTreePreservingExpansion();
   } catch (e) {
     showError("Error al generar prompt: " + e.message);
   } finally {
@@ -251,7 +251,7 @@ export async function sendMessage() {
             abortController: null,
             keepEphemeral: false,
           });
-          refreshLeftHistory();
+          refreshMessageTreePreservingExpansion();
           if (assistantMsg.id) maybeIllustrateAssistantMessage(assistantMsg.id);
         }
       }

@@ -507,6 +507,52 @@ def test_delete_message_by_id_404(client):
     assert "mensaje" in r.json()["detail"].lower()
 
 
+@patch("app.routers.api_conversations.rag.delete_message_document")
+def test_delete_message_removes_embedded_photo_files(mock_rag_delete, client, db_session, tmp_path, monkeypatch):
+    """Al borrar un mensaje se eliminan del disco las fotos incrustadas si nadie más las referencia."""
+    from app import crud
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    name = storage.save_illustrated_image("s1", b"\x89PNG\r\n\x1a\n")
+    conv = crud.create_conversation(db_session, title="Fotos", model_id="m")
+    content = f'Texto\n<img src="/api/illustrated-images/{name}" class="chat-illustration" />'
+    msg = crud.add_message(db_session, conv.id, "assistant", content)
+    crud.save_illustrated_image_meta(
+        db_session,
+        message_id=msg.id,
+        filename=name,
+        scene_id="s1",
+        mode="txt2img",
+        params={"prompt": "x"},
+    )
+
+    r = client.delete(f"/api/conversations/{conv.id}/messages/{msg.id}")
+    assert r.status_code == 204
+    assert storage.resolve_illustrated_path(name) is None
+    assert crud.get_illustrated_image_meta(db_session, name) is None
+    mock_rag_delete.assert_called_once_with(conv.id, msg.id)
+
+
+@patch("app.routers.api_conversations.rag.delete_message_document")
+def test_delete_message_keeps_photo_if_still_referenced(mock_rag_delete, client, db_session, tmp_path, monkeypatch):
+    """No borra el fichero si otro mensaje sigue incrustando la misma foto."""
+    from app import crud
+    from app.services.image_illustration import storage
+
+    monkeypatch.setattr(storage, "DEFAULT_DIR", tmp_path / "illustrated")
+    name = storage.save_illustrated_image("shared", b"\x89PNG\r\n\x1a\n")
+    img = f'<img src="/api/illustrated-images/{name}" class="chat-illustration" />'
+    conv = crud.create_conversation(db_session, title="Share", model_id="m")
+    msg_a = crud.add_message(db_session, conv.id, "assistant", f"A\n{img}")
+    crud.add_message(db_session, conv.id, "assistant", f"B\n{img}")
+
+    r = client.delete(f"/api/conversations/{conv.id}/messages/{msg_a.id}")
+    assert r.status_code == 204
+    assert storage.resolve_illustrated_path(name) is not None
+    mock_rag_delete.assert_called_once()
+
+
 @patch("app.routers.api_conversations.settings")
 def test_build_llm_messages_incluye_rag_context(mock_settings):
     """Si hay rag_context se incluye en el system message."""

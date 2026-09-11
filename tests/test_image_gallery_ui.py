@@ -40,7 +40,8 @@ def test_gallery_entry_and_panel_exist_in_html():
     assert 'id="btn-center-chat"' not in left
     assert 'id="btn-image-gallery"' not in left
     assert 'id="btn-image-queue"' not in left
-    assert 'id="btn-history-messages"' in left
+    assert 'id="btn-history-messages"' not in left
+    assert "<ConversationsList" in left
     chat_btn = actions.index('id="btn-center-chat"')
     gallery_btn = actions.index('id="btn-image-gallery"')
     queue_btn = actions.index('id="btn-image-queue"')

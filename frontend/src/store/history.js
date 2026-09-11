@@ -17,13 +17,26 @@ export const MSG_SORT_OPTIONS = [
 export const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "Semana", anteriores: "Antes" };
 
 export const MESSAGE_HISTORY_PAGE_SIZE = 50;
+export const MESSAGE_TREE_ROOT_PAGE_SIZE = 50;
 export const MESSAGE_HISTORY_SEARCH_DEBOUNCE_MS = 280;
+
+function normalizeMode(raw) {
+  if (raw === "tree" || raw === "messages" || raw === "conversations") return "tree";
+  return "tree";
+}
 
 function readMode() {
   try {
-    return localStorage.getItem(LEFT_HISTORY_MODE_KEY) === "messages" ? "messages" : "conversations";
+    const stored = localStorage.getItem(LEFT_HISTORY_MODE_KEY);
+    const mode = normalizeMode(stored);
+    if (stored !== "tree") {
+      try {
+        localStorage.setItem(LEFT_HISTORY_MODE_KEY, "tree");
+      } catch (_) {}
+    }
+    return mode;
   } catch (_) {
-    return "conversations";
+    return "tree";
   }
 }
 
@@ -70,7 +83,7 @@ export function persistMessageSort(sort) {
 
 export function persistLeftHistoryMode(mode) {
   try {
-    localStorage.setItem(LEFT_HISTORY_MODE_KEY, mode);
+    localStorage.setItem(LEFT_HISTORY_MODE_KEY, normalizeMode(mode));
   } catch (_) {}
 }
 
@@ -84,11 +97,20 @@ export const historyStore = createStore({
   messageHistoryTotal: 0,
   messageHistoryQuery: "",
   messageHistorySearchIn: null,
+  treeRoots: [],
+  treeRootsTotal: 0,
+  treeChildrenByParent: {},
+  treeExpandedIds: {},
+  treeSelectedMessageId: null,
   loading: false,
 });
 
 export function isMessagesHistoryMode(state = historyStore.get()) {
   return state.mode === "messages";
+}
+
+export function isTreeHistoryMode(state = historyStore.get()) {
+  return state.mode === "tree" || state.mode !== "messages";
 }
 
 export function currentLeftHistorySort(state = historyStore.get()) {

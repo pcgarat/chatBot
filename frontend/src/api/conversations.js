@@ -46,6 +46,18 @@ export async function restoreConversation(id) {
   }
 }
 
+export async function permanentlyDeleteConversation(id) {
+  const res = await fetch(`${API}/conversations/${id}/permanent`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || res.statusText);
+  }
+}
+
+export async function purgeDeletedConversations() {
+  return fetchJson(`${API}/conversations/deleted`, { method: "DELETE" });
+}
+
 export function listDeletedConversations() {
   return fetchJson(`${API}/conversations/deleted`);
 }

@@ -1,5 +1,5 @@
 """El historial izquierdo se puede ocultar y volver a mostrar."""
-from tests.frontend_source import frontend_markup, frontend_source
+from tests.frontend_source import frontend_file, frontend_markup, frontend_source
 
 from pathlib import Path
 
@@ -26,11 +26,9 @@ def test_left_sidebar_collapse_persists_in_js():
 
 
 def test_conversation_list_is_single_line_dense():
-    js = frontend_source()
-    assert "conv-when" in js
-    conv_list_fn = js.split("function renderConversationsList")[1].split("function renderMessageHistoryList")[0]
-    assert "conv-meta" not in conv_list_fn
-    assert "conv-icon" not in conv_list_fn
+    lists = frontend_file("ui/history/HistoryLists.jsx")
+    assert "message-tree-item" in lists
+    assert "conv-title" in lists
 
 
 def test_index_serves_sidebar_collapse_markup(client):
@@ -41,15 +39,13 @@ def test_index_serves_sidebar_collapse_markup(client):
     assert 'id="btn-expand-left"' in frontend_markup()
 
 
-def test_mensajes_stays_in_left_sidebar_apart_from_center_toggles():
+def test_mensajes_toggle_removed_center_toggles_stay():
     html = frontend_markup()
     left = html[html.index('id="column-left"') : html.index("</aside>")]
     actions = html[html.index('class="chat-session-actions"') : html.index('id="center-panels-empty"')]
-    assert 'id="btn-history-messages"' in left
-    assert 'aria-label="Mensajes"' in left
+    assert 'id="btn-history-messages"' not in left
     assert 'id="btn-center-chat"' not in left
     assert 'id="btn-image-gallery"' not in left
-    assert 'id="btn-history-messages"' not in actions
     assert 'id="btn-center-chat"' in actions
     assert 'id="btn-image-gallery"' in actions
     assert 'id="btn-image-queue"' in actions

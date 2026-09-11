@@ -416,6 +416,46 @@ def restore_conversation(db: Session, conversation_id: str) -> Conversation | No
     return conv
 
 
+def hard_delete_conversation(db: Session, conversation_id: str) -> bool:
+    """Borrado definitivo solo desde papelera: fila, mensajes e imágenes asociadas."""
+    from app.services.image_illustration.content_ops import extract_illustrated_filenames
+    from app.services.image_illustration.orphan_files import delete_unreferenced_illustrated_files
+
+    conv = get_conversation(db, conversation_id, include_deleted=True)
+    if not conv or conv.deleted_at is None:
+        return False
+    filenames: list[str] = []
+    for msg in list(conv.messages or []):
+        filenames.extend(extract_illustrated_filenames(msg.content or ""))
+        for img in list(getattr(msg, "illustrated_images", None) or []):
+            if img.filename:
+                filenames.append(img.filename)
+    db.query(Conversation).filter(
+        Conversation.forked_from_conversation_id == conversation_id
+    ).update(
+        {
+            Conversation.forked_from_conversation_id: None,
+            Conversation.forked_from_message_id: None,
+        },
+        synchronize_session=False,
+    )
+    db.delete(conv)
+    db.commit()
+    if filenames:
+        delete_unreferenced_illustrated_files(db, filenames)
+    return True
+
+
+def purge_deleted_conversations(db: Session) -> list[str]:
+    """Hard-delete de toda la papelera. Devuelve los ids eliminados."""
+    ids = [c.id for c in list_deleted_conversations(db)]
+    deleted: list[str] = []
+    for conversation_id in ids:
+        if hard_delete_conversation(db, conversation_id):
+            deleted.append(conversation_id)
+    return deleted
+
+
 def get_messages(db: Session, conversation_id: str) -> list[Message]:
     return (
         db.query(Message)

@@ -1,4 +1,5 @@
 import * as conversationsApi from "../api/conversations.js";
+import * as messageTreeApi from "../api/messageTree.js";
 import { showError, showNotice } from "../store/ui.js";
 import {
   historyStore,
@@ -7,6 +8,7 @@ import {
   persistLeftHistoryMode,
   persistMessageSort,
   MESSAGE_HISTORY_PAGE_SIZE,
+  MESSAGE_TREE_ROOT_PAGE_SIZE,
   CONV_SORT_OPTIONS,
   MSG_SORT_OPTIONS,
   readStoredConversationSort,
@@ -15,6 +17,7 @@ import {
 import { sessionStore, resetSession } from "../store/session.js";
 
 let messageHistoryLoadSeq = 0;
+let treeLoadSeq = 0;
 let searchTimer = null;
 
 export function mergeMessageHistoryItems(existing, incoming) {
@@ -75,18 +78,81 @@ export async function loadMessageHistory(options = {}) {
   }
 }
 
+export async function loadMessageTreeRoots(options = {}) {
+  const append = !!options.append;
+  const seq = ++treeLoadSeq;
+  const state = historyStore.get();
+  const offset = append ? (state.treeRoots || []).length : 0;
+  try {
+    const data = await messageTreeApi.listMessageTreeRoots({
+      limit: MESSAGE_TREE_ROOT_PAGE_SIZE,
+      offset,
+    });
+    if (seq !== treeLoadSeq) return;
+    const incoming = (data && data.items) || [];
+    const nextRoots = append ? (state.treeRoots || []).concat(incoming) : incoming;
+    historyStore.set({
+      treeRoots: nextRoots,
+      treeRootsTotal: data && typeof data.total === "number" ? data.total : nextRoots.length,
+      treeChildrenByParent: append ? state.treeChildrenByParent : {},
+      treeExpandedIds: append ? state.treeExpandedIds : {},
+      loading: false,
+    });
+    await loadDeletedConversations();
+  } catch (e) {
+    if (seq !== treeLoadSeq) return;
+    showError("Error al cargar el árbol de mensajes: " + e.message);
+  }
+}
+
+export async function loadMessageTreeChildren(messageId) {
+  if (!messageId) return;
+  try {
+    const kids = await messageTreeApi.listMessageTreeChildren(messageId);
+    const map = { ...(historyStore.get().treeChildrenByParent || {}) };
+    map[messageId] = Array.isArray(kids) ? kids : [];
+    historyStore.set({ treeChildrenByParent: map });
+  } catch (e) {
+    showError("Error al expandir el árbol: " + e.message);
+  }
+}
+
+export async function toggleMessageTreeNode(messageId) {
+  if (!messageId) return;
+  const state = historyStore.get();
+  const expanded = { ...(state.treeExpandedIds || {}) };
+  if (expanded[messageId]) {
+    delete expanded[messageId];
+    historyStore.set({ treeExpandedIds: expanded });
+    return;
+  }
+  expanded[messageId] = true;
+  historyStore.set({ treeExpandedIds: expanded });
+  if (!(state.treeChildrenByParent || {})[messageId]) {
+    await loadMessageTreeChildren(messageId);
+  }
+}
+
+export async function refreshMessageTreePreservingExpansion() {
+  const prevExpanded = { ...(historyStore.get().treeExpandedIds || {}) };
+  await loadMessageTreeRoots();
+  const ids = Object.keys(prevExpanded);
+  if (!ids.length) return;
+  historyStore.set({ treeExpandedIds: prevExpanded });
+  await Promise.all(ids.map((id) => loadMessageTreeChildren(id)));
+}
+
 export async function refreshLeftHistory() {
   if (isMessagesHistoryMode()) return loadMessageHistory();
-  return loadConversations();
+  return loadMessageTreeRoots();
 }
 
 export async function setLeftHistoryMode(mode) {
-  const next = mode === "messages" ? "messages" : "conversations";
+  const next = "tree";
   persistLeftHistoryMode(next);
   historyStore.set({ mode: next });
-  const root = document.documentElement;
-  if (next === "messages") root.setAttribute("data-history-consulta", "on");
-  else root.removeAttribute("data-history-consulta");
+  document.documentElement.removeAttribute("data-history-consulta");
+  void mode;
   await refreshLeftHistory();
 }
 
@@ -120,7 +186,7 @@ export async function deleteConversationFromHistory(id) {
     await refreshLeftHistory();
     showNotice("Conversación movida a la papelera.");
   } catch (e) {
-    showError("Error al eliminar: " + e.message);
+    showError("Error al borrar: " + e.message);
   }
 }
 
@@ -128,11 +194,43 @@ export async function restoreConversationFromTrash(id) {
   try {
     await conversationsApi.restoreConversation(id);
     await refreshLeftHistory();
-    const { openConversation } = await import("./sessionActions.js");
-    await openConversation(id);
     showNotice("Conversación restaurada.");
   } catch (e) {
     showError("Error al restaurar: " + e.message);
+  }
+}
+
+export async function permanentlyDeleteFromTrash(id) {
+  if (!window.confirm("¿Eliminar definitivamente esta conversación? No se podrá recuperar.")) {
+    return;
+  }
+  try {
+    await conversationsApi.permanentlyDeleteConversation(id);
+    if (sessionStore.get().conversationId === id) resetSession();
+    await refreshLeftHistory();
+    showNotice("Conversación eliminada definitivamente.");
+  } catch (e) {
+    showError("Error al eliminar: " + e.message);
+  }
+}
+
+export async function emptyTrash() {
+  const n = (historyStore.get().deletedConversations || []).length;
+  if (!n) return;
+  if (!window.confirm(`¿Vaciar la papelera (${n})? No se podrá recuperar.`)) {
+    return;
+  }
+  try {
+    const result = await conversationsApi.purgeDeletedConversations();
+    const currentId = sessionStore.get().conversationId;
+    const purgedIds = (result && result.ids) || [];
+    if (currentId && purgedIds.includes(currentId)) resetSession();
+    await refreshLeftHistory();
+    showNotice(
+      "Papelera vaciada (" + ((result && result.deleted) || purgedIds.length || n) + ")."
+    );
+  } catch (e) {
+    showError("Error al vaciar papelera: " + e.message);
   }
 }
 
@@ -142,9 +240,10 @@ export async function clearConversationHistory(id) {
     if (sessionStore.get().conversationId === id) {
       sessionStore.set({ messages: [], allMessages: [], activeLeafId: null, viewStartIndex: 0 });
     }
-    showNotice("Historial de mensajes borrado.");
+    await refreshLeftHistory();
+    showNotice("Historial de mensajes limpiado.");
   } catch (e) {
-    showError("Error al limpiar historial: " + e.message);
+    showError("Error al limpiar: " + e.message);
   }
 }
 
@@ -158,27 +257,27 @@ export function currentLeftHistorySort() {
 }
 
 export function applyConsultaChrome() {
-  const consulta = isMessagesHistoryMode();
-  if (consulta) document.documentElement.setAttribute("data-history-consulta", "on");
-  else document.documentElement.removeAttribute("data-history-consulta");
+  document.documentElement.removeAttribute("data-history-consulta");
   const btn = document.getElementById("btn-history-messages");
-  if (btn) btn.setAttribute("aria-pressed", isMessagesHistoryMode() ? "true" : "false");
+  if (btn) btn.setAttribute("aria-pressed", "false");
   syncMessageHistoryChrome();
 }
 
 export function syncMessageHistoryChrome() {
-  const show = isMessagesHistoryMode();
   const messageHistorySearchWrap = document.getElementById("message-history-search-wrap");
   const messageHistoryPager = document.getElementById("message-history-pager");
-  if (messageHistorySearchWrap) messageHistorySearchWrap.hidden = !show;
-  if (!show && messageHistoryPager) messageHistoryPager.hidden = true;
+  if (messageHistorySearchWrap) messageHistorySearchWrap.hidden = true;
+  if (messageHistoryPager) messageHistoryPager.hidden = true;
+  const sortWrap = document.getElementById("left-history-sort");
+  if (sortWrap) sortWrap.hidden = true;
 }
 
 export function syncMessageHistoryActiveItem() {
   const list = document.getElementById("conversations-list");
   const focusId = sessionStore.get().focusMessageId || sessionStore.get().consultaAssistantId;
+  historyStore.set({ treeSelectedMessageId: focusId || null });
   if (!list) return;
-  list.querySelectorAll(".message-history-item").forEach((node) => {
+  list.querySelectorAll(".message-history-item, .message-tree-item").forEach((node) => {
     node.classList.toggle("active", node.dataset.id === focusId);
   });
 }

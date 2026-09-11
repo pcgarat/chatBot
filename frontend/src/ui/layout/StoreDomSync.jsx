@@ -6,7 +6,6 @@ import { debugStore, renderChatDebugLog, renderImagesDebugLog, syncDebugPanelDom
 import { uiStore, currentStatus } from "../../store/ui.js";
 import { historyStore } from "../../store/history.js";
 import { getWorkspaceProfiles } from "../../app/profilesActions.js";
-import { onMessageHistorySearchInput } from "../../app/historyActions.js";
 import { renderContextUsageBar } from "../status/StatusBarInfo.js";
 import { applyThinkAndRecipesFromContract, syncSettingsPresetsMirrors } from "../../app/settingsActions.js";
 import { applyParamsConfigToDom } from "../../lib/contractUi.js";
@@ -126,14 +125,9 @@ export function StoreDomSync() {
 
   useEffect(() => {
     const wrap = document.getElementById("message-history-search-wrap");
-    if (wrap) wrap.hidden = mode !== "messages";
-    const btn = document.getElementById("btn-history-messages");
-    if (btn) btn.setAttribute("aria-pressed", mode === "messages" ? "true" : "false");
-    const search = document.getElementById("message-history-search");
-    if (search && !search.dataset.bound) {
-      search.dataset.bound = "1";
-      search.addEventListener("input", (e) => onMessageHistorySearchInput(e.target.value));
-    }
+    if (wrap) wrap.hidden = true;
+    const sortWrap = document.getElementById("left-history-sort");
+    if (sortWrap) sortWrap.hidden = true;
   }, [mode]);
 
   useEffect(() => {
