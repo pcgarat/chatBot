@@ -13,6 +13,7 @@ from app.provider_params import get_context_length_max, get_params_config, get_p
 from app.providers import ProviderFactory, get_provider
 from app.providers.capabilities import get_model_details, get_provider_capabilities
 from app.services.model_contract import contract_as_dict, resolve_model_contract
+from app.services.model_contract.show_live import context_length_from_show
 from app.schemas import (
     ModelInfo,
     ModelInfoResponse,
@@ -342,19 +343,9 @@ def _resolve_context_length(provider_name: str, model_id: str) -> int | None:
     """
     raw = get_model_info(provider_name, model_id)
     provider_info = raw.get("provider_info") or {}
-    model_info = provider_info.get("model_info") or {}
-    details = provider_info.get("details") or {}
-    ctx = (
-        model_info.get("llama.context_length")
-        or model_info.get("context_length")
-        or details.get("context_length")
-        or provider_info.get("context_length")
-    )
+    ctx = context_length_from_show(provider_info if isinstance(provider_info, dict) else {})
     if ctx is not None:
-        try:
-            return int(ctx)
-        except (TypeError, ValueError):
-            pass
+        return ctx
     ctx = get_context_length_max(provider_name, model_id)
     if ctx is not None:
         return ctx

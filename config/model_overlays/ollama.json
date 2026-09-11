@@ -307,5 +307,21 @@
     "params": {},
     "recipes": [],
     "quirks": []
+  },
+  "nemotron-3-super:cloud": {
+    "capabilities": {
+      "vision": false,
+      "tools": true,
+      "thinking": {
+        "kind": "boolean",
+        "can_disable": true,
+        "default": true
+      }
+    },
+    "params": {
+      "num_ctx": { "max": 262144 }
+    },
+    "recipes": [],
+    "quirks": []
   }
 }
