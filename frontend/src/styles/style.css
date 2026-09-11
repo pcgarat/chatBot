@@ -54,10 +54,10 @@
   --sidebar-item-active: var(--accent-light-strong);
   --sidebar-primary: var(--accent);
   --sidebar-primary-foreground: #ffffff;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 12px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 14px;
   --font-family-body: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Ubuntu", "Cantarell", sans-serif;
   --font-family-mono: "Cascadia Code", "Segoe UI Mono", Consolas, "Ubuntu Mono", monospace;
   --bg-sidebar: var(--mica-fallback);
@@ -164,12 +164,12 @@
 }
 
 [data-theme="dark"] .column-center {
-  /* superficie clara — tokens light se definen al final del CSS */
-  background-color: #ffffff;
+  /* superficie del shell: el documento claro vive en .chat-column */
+  background-color: transparent;
 }
 
 [data-theme="dark"] .primary-header.chat-header {
-  background-color: #ffffff;
+  background-color: transparent;
 }
 
 /* Composer dark overrides (reescritos para panel central claro al final) */
@@ -456,11 +456,12 @@ body {
   width: auto;
   height: 28px;
   min-height: 28px;
-  padding: 2px 22px 2px 8px;
+  padding: 2px 32px 2px 8px;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-color: color-mix(in srgb, var(--bg-input, var(--input)) 70%, transparent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c8c8c8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 6px center;
+  background-position: right 12px center;
   background-size: 12px;
 }
 
@@ -471,8 +472,8 @@ body {
   flex-shrink: 0;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 4px);
-  background: var(--bg-input, var(--input));
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--bg-input, var(--input)) 70%, transparent);
   color: var(--foreground);
 }
 
@@ -483,7 +484,7 @@ body {
 
 .workspace-profile-bar .workspace-profile-icon-btn:hover:not(:disabled),
 .workspace-profile-bar .workspace-profile-icon-btn:focus-visible:not(:disabled) {
-  background: var(--muted, var(--accent-light));
+  background: color-mix(in srgb, var(--muted, var(--accent-light)) 70%, transparent);
   outline: none;
 }
 
@@ -605,27 +606,27 @@ body {
   width: 100%;
   padding: 5px 8px;
   border-radius: var(--radius-md);
-  background: var(--card);
-  color: var(--sidebar-foreground);
-  border: 1px solid var(--border);
+  background: var(--accent-light-strong);
+  color: var(--accent);
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   cursor: pointer;
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
+  transition: background var(--fluent-duration) var(--fluent-ease),
+    color var(--fluent-duration) var(--fluent-ease);
 }
 
 .sidebar-add-btn:hover {
-  background: var(--bg-input);
-  border-color: var(--muted-foreground);
+  background: var(--accent-light-strong);
+  color: var(--accent);
 }
 
 .sidebar-add-btn svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
+  display: none;
 }
 
 .sidebar-add-btn-text {
@@ -1426,6 +1427,23 @@ body {
   font-weight: 600;
 }
 
+#debug-images-body {
+  position: relative;
+}
+
+#debug-images-body #images-debug-stop {
+  position: absolute;
+  top: 6px;
+  right: var(--rp-pad-x, 12px);
+  z-index: 2;
+  height: 26px;
+  min-height: 26px;
+}
+
+#debug-images-body .debug-log {
+  padding-top: 36px;
+}
+
 .debug-accordion-body {
   flex: 1;
   min-height: 0;
@@ -1965,7 +1983,7 @@ img.chat-illustration.illustration-debug-highlight {
 
 input[type="checkbox"],
 input[type="radio"] {
-  accent-color: var(--send-blue);
+  accent-color: var(--accent-light-strong);
 }
 
 .footer-toggle-label {
@@ -1997,9 +2015,9 @@ input[type="radio"] {
 
 .checkbox-box.checked,
 .footer-toggle-label:has(.footer-checkbox-input:checked) .checkbox-box {
-  background-color: var(--send-blue);
-  border-color: var(--send-blue);
-  color: #fff;
+  background-color: var(--accent-light-strong);
+  border-color: var(--accent-light-strong);
+  color: var(--accent);
 }
 
 .footer-toggle-label:has(.footer-checkbox-input:checked) .checkbox-box::after {
@@ -4808,7 +4826,7 @@ body.reading-mode-resizing img {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 1px;
   padding-top: 0;
 }
 
@@ -4952,11 +4970,39 @@ body.reading-mode-resizing img {
   height: 28px;
 }
 
+.chat-session-actions .chat-delete-btn.icon-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 2px;
+  background: var(--shell-canvas, transparent);
+  color: var(--muted-foreground);
+  box-shadow: none;
+  transition: background-color var(--fluent-duration) var(--fluent-ease),
+    color var(--fluent-duration) var(--fluent-ease);
+}
+
+.chat-session-actions .chat-delete-btn.icon-btn-danger svg {
+  width: 12px;
+  height: 12px;
+}
+
 .chat-delete-btn.icon-btn-danger:hover,
 .icon-btn.icon-btn-danger:hover {
   color: var(--destructive-foreground);
   background: var(--destructive);
   border-color: var(--destructive);
+}
+
+.chat-session-actions .chat-delete-btn.icon-btn-danger:hover {
+  color: var(--muted-foreground);
+  background: var(--shell-canvas, transparent);
+  border-color: transparent;
 }
 
 .chat-delete-btn.icon-btn-danger:focus-visible,
@@ -5219,9 +5265,9 @@ textarea:focus:not(:focus-visible) {
 .sidebar-add-btn {
   padding: 8px 12px;
   border-radius: var(--radius-md);
-  background: var(--accent-light);
+  background: var(--accent-light-strong);
   color: var(--accent);
-  border: 1px solid transparent;
+  border: none;
   font-size: 0.8125rem;
   font-weight: 600;
   transition: background var(--fluent-duration) var(--fluent-ease),
@@ -5235,8 +5281,8 @@ textarea:focus:not(:focus-visible) {
 }
 
 .sidebar-add-btn:active {
-  background: var(--accent);
-  color: var(--primary-foreground);
+  background: var(--accent-light-strong);
+  color: var(--accent);
 }
 
 .sidebar-footer {
@@ -5515,7 +5561,7 @@ textarea:focus:not(:focus-visible) {
 }
 
 .fluent-switch-input:checked + .fluent-switch-track {
-  background: var(--accent);
+  background: var(--accent-light-strong);
 }
 
 .fluent-switch-input:checked + .fluent-switch-track .fluent-switch-thumb {
@@ -6141,7 +6187,7 @@ textarea:focus:not(:focus-visible) {
 
 input[type="checkbox"],
 input[type="radio"] {
-  accent-color: var(--accent);
+  accent-color: var(--accent-light-strong);
 }
 
 /* Enviar: icono navy del lateral dark sobre fondo blanco */
@@ -6176,19 +6222,20 @@ input[type="radio"] {
 }
 
 .sidebar-add-btn {
-  background: var(--accent);
-  color: var(--primary-foreground);
-  border-color: var(--accent);
+  background: var(--accent-light-strong);
+  color: var(--accent);
+  border: none;
 }
 
 .sidebar-add-btn:hover {
-  background: var(--accent-hover);
-  color: var(--primary-foreground);
-  border-color: var(--accent-hover);
+  background: var(--accent-light-strong);
+  color: var(--accent);
+  border: none;
 }
 
 .sidebar-add-btn:active {
-  background: var(--accent-pressed);
+  background: var(--accent-light-strong);
+  color: var(--accent);
 }
 
 .conversation-item {
@@ -6594,6 +6641,8 @@ body {
   width: var(--sidebar-left-width, 188px);
   flex: 0 0 var(--sidebar-left-width, 188px);
   padding: 0 6px;
+  /* Intermedio entre blanco y el lienzo de los paneles */
+  --history-scroll-thumb: color-mix(in srgb, var(--shell-canvas) 50%, #ffffff);
   transition: width var(--fluent-duration) var(--fluent-ease),
     padding var(--fluent-duration) var(--fluent-ease),
     opacity var(--fluent-duration) var(--fluent-ease),
@@ -6605,7 +6654,7 @@ body {
   padding: 0 4px 0 8px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 4px;
 }
 
@@ -6639,19 +6688,52 @@ body {
 }
 
 .column-left .sidebar-add-btn {
-  padding: 4px 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 12px;
   font-size: calc(0.6875rem * var(--sidebar-left-font-scale, 1));
-  gap: 4px;
-  min-height: 26px;
+  font-weight: 600;
+  gap: 0;
+  height: 28px;
+  min-height: 28px;
+  border-radius: var(--radius-md);
+  background: var(--accent-light-strong);
+  color: var(--accent);
+  border: none;
+  justify-content: center;
+  transition: background var(--fluent-duration) var(--fluent-ease),
+    color var(--fluent-duration) var(--fluent-ease);
 }
 
 .column-left .sidebar-add-btn svg {
-  width: 12px;
-  height: 12px;
+  display: none;
 }
 
 .column-left .conversations-list-wrap {
   padding: 2px 0 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--history-scroll-thumb) transparent;
+}
+
+.column-left .conversations-list-wrap::-webkit-scrollbar {
+  width: 8px;
+}
+
+.column-left .conversations-list-wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.column-left .conversations-list-wrap::-webkit-scrollbar-thumb {
+  background: var(--history-scroll-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.column-left .conversations-list-wrap::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--shell-canvas) 35%, #ffffff);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .column-left .conversations-list {
@@ -6751,12 +6833,13 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-secondary);
-  padding: 8px 6px 2px;
+  padding: 16px 6px 2px;
   margin: 0;
 }
 
 .column-left .conv-group-label:first-child {
-  padding-top: 2px;
+  padding-top: 16px;
+  margin-top: 0;
 }
 
 .column-left .conversation-item {
@@ -7106,13 +7189,9 @@ html[data-history-consulta="on"] .composer-expand-btn {
   --switch-thumb: #ffffff;
   color: var(--sidebar-foreground);
   isolation: isolate;
-  background-color: #0a1830 !important;
-  background-image:
-    linear-gradient(rgba(14, 22, 36, 0.45), rgba(18, 28, 42, 0.62)),
-    radial-gradient(ellipse 110% 85% at -5% -10%, rgba(0, 120, 212, 0.85), transparent 55%),
-    radial-gradient(ellipse 90% 70% at 110% 110%, rgba(0, 99, 177, 0.65), transparent 50%),
-    radial-gradient(ellipse 55% 45% at 55% 40%, rgba(96, 205, 255, 0.14), transparent 60%),
-    linear-gradient(168deg, #04101f 0%, #0a1830 34%, #0c1c34 68%, #081420 100%) !important;
+  background: var(--shell-canvas, #0b1524) !important;
+  background-color: var(--shell-canvas, #0b1524) !important;
+  background-image: none !important;
   background-attachment: local;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -7126,8 +7205,12 @@ html[data-history-consulta="on"] .composer-expand-btn {
 [data-theme="dark"] .column-right .panel-scroll,
 [data-theme="dark"] .column-right .sidebar-content,
 [data-theme="dark"] .column-right .rules-tab-scroll,
-[data-theme="dark"] .column-right .sidebar-tab-panel {
-  background-color: transparent;
+[data-theme="dark"] .column-right .sidebar-tab-panel,
+[data-theme="dark"] .column-right .settings-model-pin,
+[data-theme="dark"] #settings-model-pin {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
 }
 
 [data-theme="dark"] .sidebar-tab-rail {
@@ -7141,17 +7224,25 @@ html[data-history-consulta="on"] .composer-expand-btn {
 [data-theme="dark"] .column-right select,
 [data-theme="dark"] .column-right textarea {
   color-scheme: dark;
-  background-color: var(--bg-input);
+  background-color: color-mix(in srgb, var(--bg-input) 70%, transparent);
   color: var(--foreground);
   border-color: var(--border);
 }
 
 /* ========================================================================
-   Dark mode: panel central de conversación = superficie blanca (documento).
-   Tokens light scoped; laterales siguen en bloom Win11 dark.
+   Dark mode: documento claro solo dentro de la isla (.chat-column).
+   El shell (columnas + header) permanece en el lienzo oscuro.
    ======================================================================== */
 [data-theme="dark"] .column-center,
 [data-theme="dark"] .column-center.chat-area.main-pane {
+  color-scheme: dark;
+  color: var(--foreground);
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .column-center > .chat-column {
   color-scheme: light;
   --accent: #0078d4;
   --accent-hover: #106ebe;
@@ -7208,44 +7299,38 @@ html[data-history-consulta="on"] .composer-expand-btn {
   --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #0078d4;
   --switch-off: #8a8a8a;
   --switch-thumb: #ffffff;
-  color: var(--foreground);
+  color: #1a1a1a;
   background: #ffffff !important;
-  background-image: none !important;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
 [data-theme="dark"] .column-center .chat-panel-header {
-  --chat-header-bg: #ffffff;
-  --chat-header-edge: rgba(0, 0, 0, 0.08);
-  --accent: #0078d4;
-  background: #ffffff;
-  border-bottom-color: var(--chat-header-edge);
-  box-shadow: inset 3px 0 0 0 #0078d4;
-  color: #1a1a1a;
+  --chat-header-bg: transparent;
+  --chat-header-edge: transparent;
+  background: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
+  color: var(--foreground);
 }
 
 [data-theme="dark"] .column-center .conversation-title-input,
 [data-theme="dark"] .column-center .chat-title-row .conversation-title-input {
-  color: #1a1a1a;
+  color: var(--foreground);
 }
 
 [data-theme="dark"] .column-center .conversation-title-input::placeholder {
-  color: #9d9d9d;
+  color: var(--muted-foreground);
 }
 
 [data-theme="dark"] .column-center .conversation-title-input:hover {
-  background: rgba(255, 255, 255, 0.65);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 
 [data-theme="dark"] .column-center .conversation-title-input:focus {
-  background: #ffffff;
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
 }
 
 [data-theme="dark"] .column-center .chat-stream,
-[data-theme="dark"] .column-center .chat-stream-wrap,
-[data-theme="dark"] .column-center .chat-column {
+[data-theme="dark"] .column-center .chat-stream-wrap {
   background: transparent;
   color: #1a1a1a;
 }
@@ -7364,10 +7449,22 @@ html[data-history-consulta="on"] .composer-expand-btn {
   border-color: color-mix(in srgb, #c42b1c 22%, transparent);
 }
 
+[data-theme="dark"] .column-center .chat-session-actions .chat-delete-btn.icon-btn-danger {
+  color: var(--muted-foreground);
+  background: var(--shell-canvas, transparent);
+  border-color: transparent;
+}
+
 [data-theme="dark"] .column-center .chat-delete-btn.icon-btn-danger:hover {
   color: #ffffff;
   background: #c42b1c;
   border-color: #c42b1c;
+}
+
+[data-theme="dark"] .column-center .chat-session-actions .chat-delete-btn.icon-btn-danger:hover {
+  color: var(--muted-foreground);
+  background: var(--shell-canvas, transparent);
+  border-color: transparent;
 }
 
 [data-theme="dark"] .column-center .sidebar-expand-btn {
@@ -7599,10 +7696,10 @@ body.center-panels-resizing img {
   flex-shrink: 0;
   align-items: stretch;
   gap: 1px;
-  padding: 1px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 0;
+  border: none;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.04);
+  background: transparent;
 }
 
 .center-view-toggle {
@@ -7615,8 +7712,8 @@ body.center-panels-resizing img {
   padding: 0 8px;
   border: none;
   border-radius: 2px;
-  background: transparent;
-  color: #5d5d5d;
+  background: var(--shell-canvas, transparent);
+  color: var(--muted-foreground);
   font-family: var(--font-family-body);
   font-size: 0.6875rem;
   font-weight: 500;
@@ -7634,17 +7731,17 @@ body.center-panels-resizing img {
 }
 
 .center-view-toggle:hover {
-  background: rgba(0, 120, 212, 0.1);
-  color: #1a1a1a;
+  background: var(--shell-canvas, transparent);
+  color: var(--muted-foreground);
 }
 
 .center-view-toggle:active {
-  background: rgba(0, 120, 212, 0.18);
+  background: var(--shell-canvas, transparent);
 }
 
 .center-view-toggle[aria-pressed="true"] {
-  background: rgba(0, 120, 212, 0.18);
-  color: #0078d4;
+  background: var(--shell-canvas, transparent);
+  color: var(--accent);
 }
 
 .center-view-toggle:focus-visible {
@@ -8447,7 +8544,30 @@ body.center-panels-resizing img {
   min-height: var(--rp-control-h);
   padding: 4px 8px;
   font-size: var(--rp-label);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  background-color: color-mix(in srgb, var(--bg-input, var(--input, var(--layer-alt))) 70%, transparent);
+}
+
+.column-right select,
+.column-right input:not([type="checkbox"]):not([type="radio"]),
+.column-right textarea {
+  background-color: color-mix(in srgb, var(--bg-input, var(--input, var(--layer-alt))) 70%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.column-right select,
+.column-right select.param-control,
+.column-right .rule-library-select,
+.column-right .model-select-input,
+.column-right .workspace-profile-select,
+.column-right .composer-think-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c8c8c8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+  padding-right: 32px;
 }
 
 .column-right textarea.param-control,
@@ -8577,6 +8697,10 @@ body.center-panels-resizing img {
 .sidebar-create-stack {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
   gap: 6px;
 }
 
@@ -8638,4 +8762,544 @@ body.center-panels-resizing img {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.45;
+}
+
+/* ========================================================================
+   Layout: lienzo unificado + conversación como isla flotante
+   Firma: un único recuadro redondeado sin trazo; el resto es un plano continuo.
+   ======================================================================== */
+
+:root {
+  --shell-canvas: #e2e8f0;
+  --chat-island-bg: #ffffff;
+  --chat-island-radius: 18px;
+  --chat-island-gap: 12px;
+  --chat-island-shadow: none;
+  --chat-stream-fade: 48px;
+  --bg-sidebar: var(--shell-canvas);
+  --sidebar: var(--shell-canvas);
+  --mica: var(--shell-canvas);
+  --mica-fallback: var(--shell-canvas);
+}
+
+[data-theme="dark"] {
+  --shell-canvas: #0b1524;
+  --chat-island-bg: #ffffff;
+  --chat-island-shadow: none;
+  --bg-sidebar: var(--shell-canvas);
+  --sidebar: var(--shell-canvas);
+  --mica: var(--shell-canvas);
+  --mica-fallback: var(--shell-canvas);
+  --wallpaper: none;
+}
+
+body {
+  background: var(--shell-canvas);
+  background-image: none;
+}
+
+.app-shell,
+#app,
+#root {
+  background: transparent;
+}
+
+.column-left,
+.column-right,
+.column-center,
+.column-center.chat-area.main-pane {
+  background: var(--shell-canvas) !important;
+  background-image: none !important;
+  background-color: var(--shell-canvas) !important;
+  border: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.settings-model-pin,
+#settings-model-pin,
+.column-right .settings-model-pin {
+  background: var(--shell-canvas) !important;
+  background-image: none !important;
+  background-color: var(--shell-canvas) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.column-left,
+.column-right {
+  border-color: transparent;
+}
+
+.sidebar-header,
+.sidebar-footer,
+.workspace-profile-bar,
+.chat-panel-header,
+.primary-header.chat-header,
+.app-status-bar,
+.sidebar-tab-rail,
+.sidebar-content,
+.sidebar-tab-panels,
+.sidebar-tab-panel,
+.conversations-list-wrap,
+.panel-scroll,
+.rules-tab-scroll,
+.accordion-header,
+.debug-dock,
+.debug-accordion,
+.debug-accordion-heading,
+.debug-accordion-body {
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  border-right: none;
+  box-shadow: none;
+}
+
+.sidebar-tab-rail {
+  border-right: none;
+  background: transparent;
+}
+
+.sidebar-tab-rail-spacer::after {
+  display: none;
+}
+
+.accordion-section,
+.panel-section,
+.panel-section:last-child,
+.sidebar-option.param-option,
+.sidebar-option.sidebar-actions,
+.pref-row,
+.pref-row:last-child,
+.column-right .panel-field-group,
+.column-right .panel-field-group:first-child,
+.column-right .sidebar-option.param-option,
+.column-right .pref-row,
+.column-right .pref-row:last-child,
+.settings-model-pin,
+.planner-rule-preset-bar,
+.debug-accordion,
+.debug-accordion-body,
+.debug-accordion.is-open,
+.workspace-profile-bar,
+.sidebar-header,
+.sidebar-footer,
+.app-status-bar {
+  border: none;
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  border-right: none;
+  box-shadow: none;
+}
+
+/* Separadores estructurales del shell: cero líneas */
+.accordion-section {
+  border: none !important;
+  border-bottom: none !important;
+}
+
+.panel-section {
+  border: none !important;
+  border-bottom: none !important;
+}
+
+.pref-row,
+.column-right .pref-row {
+  border: none !important;
+  border-bottom: none !important;
+}
+
+.debug-accordion,
+.debug-accordion-body,
+.debug-accordion.is-open {
+  border: none !important;
+  border-top: none !important;
+}
+
+.sidebar-option.param-option,
+.column-right .sidebar-option,
+.column-right .sidebar-option.param-option,
+.column-right .panel-field-group,
+.settings-model-pin,
+.planner-rule-preset-bar,
+.sidebar-tab-rail,
+.sidebar-footer,
+.sidebar-header,
+.workspace-profile-bar,
+.app-status-bar,
+.conv-group-label,
+.badge-row {
+  border: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.accordion-header {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+}
+
+.chat-panel-header {
+  --chat-header-bg: transparent;
+  --chat-header-edge: transparent;
+}
+
+.app-status-bar {
+  background: var(--shell-canvas);
+}
+
+.column-center {
+  padding: 0;
+  gap: 0;
+  min-height: 0;
+}
+
+.column-center > .chat-column {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0 var(--chat-island-gap) var(--chat-island-gap);
+  border-radius: var(--chat-island-radius);
+  border: none;
+  background: var(--chat-island-bg);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.column-center > .image-gallery-panel,
+.column-center > .image-queue-panel {
+  margin: 0 var(--chat-island-gap) var(--chat-island-gap);
+  border-radius: var(--chat-island-radius);
+  border: none;
+  background: var(--chat-island-bg);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+html[data-center-gallery="on"]:not([data-center-chat="off"]) .column-center > .chat-column,
+html[data-center-queue="on"]:not([data-center-chat="off"]) .column-center > .chat-column {
+  margin-bottom: calc(var(--chat-island-gap) / 2);
+}
+
+html[data-center-gallery="on"]:not([data-center-chat="off"]) .column-center > .image-gallery-panel,
+html[data-center-queue="on"]:not([data-center-chat="off"]) .column-center > .image-queue-panel {
+  margin-top: calc(var(--chat-island-gap) / 2);
+}
+
+.sidebar-column-splitter::after {
+  opacity: 0;
+}
+
+.sidebar-column-splitter:hover::after,
+.sidebar-column-splitter:focus-visible::after,
+body.side-panels-resizing .sidebar-column-splitter::after {
+  opacity: 0.55;
+}
+
+html[data-chat-fullscreen="on"] .column-center > .chat-column,
+.app-shell.chat-fullscreen .column-center > .chat-column {
+  margin: var(--chat-island-gap);
+}
+
+/* Dark: refuerzo final — shell = lienzo; isla = documento claro */
+[data-theme="dark"] .column-center,
+[data-theme="dark"] .column-center.chat-area.main-pane,
+[data-theme="dark"] .column-left,
+[data-theme="dark"] .column-right,
+[data-theme="dark"] .app-status-bar {
+  background: var(--shell-canvas) !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .column-left .accordion-header,
+[data-theme="dark"] .column-right .accordion-header,
+[data-theme="dark"] .column-left .sidebar-header,
+[data-theme="dark"] .column-right .sidebar-footer,
+[data-theme="dark"] .column-left .conversations-list-wrap,
+[data-theme="dark"] .column-right .panel-scroll,
+[data-theme="dark"] .column-right .sidebar-content,
+[data-theme="dark"] .column-right .rules-tab-scroll,
+[data-theme="dark"] .column-right .sidebar-tab-panel,
+[data-theme="dark"] .sidebar-tab-rail,
+[data-theme="dark"] .workspace-profile-bar,
+[data-theme="dark"] .debug-dock,
+[data-theme="dark"] .debug-accordion,
+[data-theme="dark"] .debug-accordion-body {
+  background: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .column-center > .chat-column {
+  background: var(--chat-island-bg) !important;
+}
+
+[data-theme="dark"] .column-center .chat-stream,
+[data-theme="dark"] .column-center .chat-stream-wrap {
+  background: transparent;
+  color: #1a1a1a;
+}
+
+/* Controles sin trazo: botones, inputs, selects, chips. El foco queda en box-shadow. */
+.icon-btn,
+.icon-btn-sm,
+.small-icon-btn {
+  border: none !important;
+  border-color: transparent !important;
+}
+
+button,
+.btn,
+.btn-secondary,
+.icon-btn,
+.icon-btn-sm,
+.small-icon-btn,
+.sidebar-add-btn,
+.sidebar-header-btn,
+.sidebar-collapse-btn,
+.sidebar-expand-btn,
+.center-view-toggle,
+.font-size-btn,
+.msg-action-btn,
+.msg-collapse-toggle,
+.chat-delete-btn,
+.chat-scroll-nav-btn,
+.composer-collapse-btn,
+.composer-expand-btn,
+.composer-send-btn,
+.composer-generate-prompt-btn,
+.send-button,
+.workspace-profile-icon-btn,
+.workspace-profile-select,
+.segmented-toggle-btn,
+.param-control,
+.param-help-btn,
+.rule-tag,
+.chip,
+.param-badge,
+.context-pill,
+.params-to-send-chip,
+.context-badge,
+.checkbox-box,
+.fluent-switch-track,
+.model-select-input,
+.conversation-title-input,
+.inline-input,
+.composer-textarea,
+.composer-panel,
+.composer-panel #message-input,
+.composer-panel #instruction-override,
+.chat-font-size-corner,
+.chat-scroll-nav,
+.conv-kind-badge,
+.txt2img-prompt-block,
+.txt2img-prompt-toolbar,
+.txt2img-prompt-copy,
+.message-history-search,
+.left-history-select,
+.left-history-sort-select,
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  border: none !important;
+  border-color: transparent !important;
+  outline: none;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+.auto-title-check input {
+  border: none !important;
+  outline: none;
+  box-shadow: none;
+}
+
+.checkbox-box {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.checkbox-box.checked,
+.footer-toggle-label:has(.footer-checkbox-input:checked) .checkbox-box {
+  background: var(--accent-light-strong) !important;
+  background-color: var(--accent-light-strong) !important;
+  border-color: var(--accent-light-strong) !important;
+  color: var(--accent) !important;
+}
+
+.fluent-switch-input:checked + .fluent-switch-track {
+  background: var(--accent-light-strong) !important;
+  background-color: var(--accent-light-strong) !important;
+}
+
+button:focus-visible,
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.center-view-toggle:focus-visible,
+.param-control:focus-visible,
+.sidebar-add-btn:focus-visible,
+.workspace-profile-select:focus-visible,
+.model-select-input:focus-visible,
+.conversation-title-input:focus-visible,
+.inline-input:focus-visible,
+.composer-textarea:focus-visible,
+.composer-panel #message-input:focus-visible,
+.composer-panel #instruction-override:focus-visible,
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Mensajes: fondo blanco, sin borde ni elevación */
+.message,
+.message-bubble,
+.message.user,
+.message.assistant,
+.message-bubble.user,
+.message-bubble.assistant,
+[data-theme="dark"] .column-center .message-bubble.user,
+[data-theme="dark"] .column-center .message.user,
+[data-theme="dark"] .column-center .message-bubble.assistant,
+[data-theme="dark"] .column-center .message.assistant {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: #1a1a1a;
+}
+
+/* Toggles centrales: mismo fondo que el lienzo; texto muted / acento */
+.center-panel-toggles {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.center-view-toggle,
+.center-view-toggle:hover,
+.center-view-toggle:active {
+  border: none !important;
+  background: var(--shell-canvas) !important;
+  color: var(--muted-foreground) !important;
+  box-shadow: none !important;
+}
+
+.center-view-toggle[aria-pressed="true"],
+.center-view-toggle[aria-pressed="true"]:hover {
+  background: var(--shell-canvas) !important;
+  color: var(--accent) !important;
+}
+
+.center-view-toggle:focus-visible {
+  box-shadow: var(--focus-ring) !important;
+}
+
+.chat-session-actions .chat-delete-btn.icon-btn-danger,
+.chat-session-actions .chat-delete-btn.icon-btn-danger:hover,
+.chat-session-actions .chat-delete-btn.icon-btn-danger:active {
+  border: none !important;
+  background: var(--shell-canvas) !important;
+  color: var(--muted-foreground) !important;
+  box-shadow: none !important;
+}
+
+.chat-session-actions .chat-delete-btn.icon-btn-danger:focus-visible {
+  box-shadow: var(--focus-ring) !important;
+}
+
+/* Crear conversación / generador: mismo look que side-tab activo */
+.column-left .sidebar-add-btn,
+.column-left .sidebar-add-btn:hover,
+.column-left .sidebar-add-btn:active {
+  border: none !important;
+  border-color: transparent !important;
+  background: var(--accent-light-strong) !important;
+  color: var(--accent) !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+  justify-content: center;
+  border-radius: var(--radius-md) !important;
+  width: 100% !important;
+}
+
+.column-left .sidebar-add-btn svg {
+  display: none !important;
+}
+
+.column-left .sidebar-add-btn:focus-visible {
+  box-shadow: var(--focus-ring) !important;
+}
+
+/* Stream de mensajes: padding vertical + desaparición en degradado */
+.column-center .chat-stream-wrap {
+  --chat-stream-fade: 48px;
+  --chat-stream-fade-top: 56px;
+  --chat-stream-fade-bottom: 22px;
+  position: relative;
+  isolation: isolate;
+}
+
+.column-center .chat-stream-wrap::before,
+.column-center .chat-stream-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.column-center .chat-stream-wrap::before {
+  top: 0;
+  height: var(--chat-stream-fade-top);
+  background: linear-gradient(
+    to bottom,
+    var(--chat-island-bg) 0%,
+    var(--chat-island-bg) 48%,
+    color-mix(in srgb, var(--chat-island-bg) 55%, transparent) 78%,
+    transparent 100%
+  );
+}
+
+.column-center .chat-stream-wrap::after {
+  bottom: 0;
+  height: var(--chat-stream-fade-bottom);
+  background: linear-gradient(
+    to top,
+    var(--chat-island-bg) 0%,
+    color-mix(in srgb, var(--chat-island-bg) 70%, transparent) 55%,
+    transparent 100%
+  );
+}
+
+.column-center #messages-container.chat-stream,
+.column-center .chat-stream#messages-container {
+  padding-top: calc(var(--chat-stream-fade-top) * 0.7 + 10px);
+  padding-bottom: calc(var(--chat-stream-fade-bottom) * 0.7 + 10px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .column-center > .chat-column,
+  .column-center > .image-gallery-panel,
+  .column-center > .image-queue-panel {
+    transition: none;
+  }
 }

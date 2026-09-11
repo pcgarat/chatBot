@@ -20,14 +20,6 @@ export default function App() {
     <div id="app" className="app-shell" onClick={onAppClick} onChange={onAppChange} onKeyDown={onAppKeyDown} onPointerDown={onAppPointerDown} onPointerMove={onAppPointerMove} onPointerUp={onAppPointerUp} onPointerCancel={onAppPointerUp}>
         <aside className="column-left sidebar-column" id="column-left" aria-label="Conversaciones">
           <div className="sidebar-header">
-            <div className="sidebar-logo-block">
-              <div className="sidebar-title-row">
-                <div className="sidebar-logo-icon">
-                  <img src="/static/img/logo_256.png" alt="" className="sidebar-logo-img" />
-                </div>
-                <span className="sidebar-title">Historial</span>
-              </div>
-            </div>
             <button type="button" id="btn-collapse-left" className="icon-btn sidebar-collapse-btn" title="Ocultar historial" aria-label="Ocultar historial" aria-controls="column-left" aria-expanded="true">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="M5 12h2"/></svg>
             </button>
@@ -35,12 +27,10 @@ export default function App() {
             <div className="sidebar-new-conversation-wrap">
             <div className="sidebar-create-stack">
               <button type="button" id="btn-new-chat" className="sidebar-add-btn" title="Nueva conversación" aria-label="Nueva conversación">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span className="sidebar-add-btn-text">Nueva</span>
+                <span className="sidebar-add-btn-text">Nueva conversación</span>
               </button>
-              <button type="button" id="btn-prompt-generator" className="sidebar-add-btn" title="Prompt generator (txt2img)" aria-label="txt2img">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                <span className="sidebar-add-btn-text">txt2img</span>
+              <button type="button" id="btn-prompt-generator" className="sidebar-add-btn" title="Generador de prompts" aria-label="Generador de prompts">
+                <span className="sidebar-add-btn-text">Generador de prompts</span>
               </button>
             </div>
           </div>
@@ -81,7 +71,7 @@ export default function App() {
                   </button>
                 </div>
                 <button type="button" id="btn-clear-memory" className="icon-btn icon-btn-danger chat-delete-btn" title="Borrar conversación" aria-label="Borrar conversación">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                 </button>
               </div>
             </div>
@@ -175,8 +165,7 @@ export default function App() {
               <button type="button" className="sidebar-tab" role="tab" id="sidebar-tab-imagenes" data-sidebar-tab="imagenes" aria-controls="tab-imagenes" aria-selected="false" tabIndex="-1" title="Imágenes" aria-label="Imágenes">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
               </button>
-              <div className="sidebar-tab-rail-spacer" aria-hidden="true"></div>
-              <button type="button" className="sidebar-tab sidebar-tab--docked" role="tab" id="sidebar-tab-preferencias" data-sidebar-tab="preferencias" aria-controls="tab-preferencias" aria-selected="false" tabIndex="-1" title="Preferencias" aria-label="Preferencias">
+              <button type="button" className="sidebar-tab" role="tab" id="sidebar-tab-preferencias" data-sidebar-tab="preferencias" aria-controls="tab-preferencias" aria-selected="false" tabIndex="-1" title="Preferencias" aria-label="Preferencias">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               </button>
             </div>
@@ -864,9 +853,9 @@ export default function App() {
                   <span>Debug imágenes</span>
                   <svg className="debug-accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
-                <button type="button" id="images-debug-stop" className="icon-btn debug-stop-btn" title="Abortar todas las generaciones" aria-label="Abortar generaciones">Stop</button>
               </h2>
               <div className="debug-accordion-body" id="debug-images-body" hidden>
+                <button type="button" id="images-debug-stop" className="icon-btn debug-stop-btn" title="Abortar todas las generaciones" aria-label="Abortar generaciones">Stop</button>
                 <div className="debug-log" id="images-debug-log" role="log" aria-live="polite"></div>
               </div>
             </section>

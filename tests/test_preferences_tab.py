@@ -1,4 +1,4 @@
-"""Tab Preferencias anclado al fondo del rail derecho, con acordeón Interfaz."""
+"""Tab Preferencias en el rail derecho, con acordeón Interfaz."""
 from tests.frontend_source import frontend_markup, frontend_source
 
 from pathlib import Path
@@ -7,18 +7,18 @@ ROOT = Path(__file__).resolve().parents[1]
 STYLE_CSS = ROOT / "frontend" / "src" / "styles" / "style.css"
 
 
-def test_preferences_tab_is_docked_after_work_tabs():
+def test_preferences_tab_is_with_other_work_tabs():
     html = frontend_markup()
     reglas = html.index('id="sidebar-tab-reglas"')
     ajustes = html.index('id="sidebar-tab-parametros"')
     imagenes = html.index('id="sidebar-tab-imagenes"')
-    spacer = html.index("sidebar-tab-rail-spacer")
     prefs = html.index('id="sidebar-tab-preferencias"')
-    assert reglas < ajustes < imagenes < spacer < prefs
+    assert reglas < ajustes < imagenes < prefs
+    assert "sidebar-tab-rail-spacer" not in html
+    assert "sidebar-tab--docked" not in html
     assert 'data-sidebar-tab="preferencias"' in html
     assert 'id="tab-preferencias"' in html
     assert 'aria-controls="tab-preferencias"' in html
-    assert "sidebar-tab--docked" in html
 
 
 def test_interfaz_accordion_hosts_interface_controls():
@@ -117,11 +117,10 @@ def test_preferences_js_shares_handlers_without_duplicate_logic():
     assert "preferencias" in ids
 
 
-def test_preferences_css_docks_tab_and_lays_out_rows():
+def test_preferences_css_lays_out_rows():
     css = STYLE_CSS.read_text(encoding="utf-8")
     html = frontend_markup()
-    assert ".sidebar-tab-rail-spacer" in css
-    assert "sidebar-tab--docked" in html
+    assert "sidebar-tab--docked" not in html
     assert ".pref-row" in css
     assert ".pref-font-stepper" in css
     assert ".pref-font-value" in css

@@ -49,6 +49,26 @@ def test_right_panel_field_and_group_classes_exist():
     assert ".column-right .panel-section-title" in css
 
 
+def test_right_panel_inputs_and_selects_use_translucent_background():
+    css = _css()
+    mix = "color-mix(in srgb, var(--bg-input, var(--input, var(--layer-alt))) 70%, transparent)"
+    param_block = css.split(".column-right .param-control,")[1].split(".column-right select,")[0]
+    assert mix in param_block
+    assert "border-radius: var(--radius-md)" in param_block
+    generic = css.split(
+        ".column-right select,\n.column-right input:not([type=\"checkbox\"]):not([type=\"radio\"]),"
+    )[1].split("}")[0]
+    assert mix in generic
+    assert "border-radius: var(--radius-md)" in generic
+    assert "--radius-sm: 6px" in css
+    assert "--radius-md: 10px" in css
+    select_arrow = css.split(".column-right select.param-control,")[1].split("}")[0]
+    assert "appearance: none" in select_arrow
+    assert "stroke='%23c8c8c8'" in select_arrow
+    assert "background-position: right 12px center" in select_arrow
+    assert "padding-right: 32px" in select_arrow
+
+
 def test_all_right_accordion_headers_have_title_and_caption():
     right = _right_html()
     headers = re.findall(

@@ -23,6 +23,7 @@ describe("shell React", () => {
     expect(document.getElementById("column-left")).toBeInTheDocument();
     expect(document.getElementById("column-right")).toBeInTheDocument();
     expect(document.getElementById("messages-container")).toBeInTheDocument();
+    expect(document.getElementById("chat-column")).toBeInTheDocument();
     expect(document.getElementById("image-gallery-panel")).toBeInTheDocument();
     expect(document.getElementById("image-queue-panel")).toBeInTheDocument();
     expect(document.getElementById("btn-new-chat")).toBeInTheDocument();
