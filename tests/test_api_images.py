@@ -305,7 +305,7 @@ def test_illustrate_forwards_panel_prompt_to_orchestrator(client, db_session):
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None, visual_consistency=True):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None, visual_consistency=True, scene_selection_strategy="distributed"):
             captured["prompt"] = prompt
             captured["max_images"] = max_images
             captured["batch_size"] = batch_size
@@ -339,7 +339,7 @@ def test_illustrate_forwards_forge_param_overrides_to_orchestrator(client, db_se
     captured: dict = {}
 
     class FakeOrch:
-        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None, visual_consistency=True):
+        def run(self, text, *, max_images, retries, prompt="", include_prompt_debug=False, batch_size=10, existing_prompts=None, forge_overrides=None, run_context=None, visual_consistency=True, scene_selection_strategy="distributed"):
             captured["forge_overrides"] = forge_overrides
             yield IllustrationEvent(type="done", message="ok", content=text)
 
@@ -649,8 +649,10 @@ def test_illustrate_forwards_visual_consistency_to_orchestrator(client, db_sessi
             forge_overrides=None,
             run_context=None,
             visual_consistency=True,
+            scene_selection_strategy="distributed",
         ):
             captured["visual_consistency"] = visual_consistency
+            captured["scene_selection_strategy"] = scene_selection_strategy
             yield IllustrationEvent(type="done", message="ok", content=text)
 
     with patch("app.routers.api_images._build_orchestrator", return_value=FakeOrch()):
@@ -660,6 +662,7 @@ def test_illustrate_forwards_visual_consistency_to_orchestrator(client, db_sessi
         )
         assert omitted.status_code == 200
         assert captured["visual_consistency"] is True
+        assert captured["scene_selection_strategy"] == "distributed"
         off = client.post(
             f"/api/conversations/{conv.id}/messages/{msg.id}/illustrate",
             json={
@@ -667,10 +670,24 @@ def test_illustrate_forwards_visual_consistency_to_orchestrator(client, db_sessi
                 "images_per_response": 1,
                 "retries": 0,
                 "visual_consistency": False,
+                "scene_selection_strategy": "llm_erotic_story",
             },
         )
-    assert off.status_code == 200
-    assert captured["visual_consistency"] is False
+        assert off.status_code == 200
+        assert captured["visual_consistency"] is False
+        assert captured["scene_selection_strategy"] == "llm_erotic_story"
+
+
+def test_illustrate_request_scene_selection_strategy_defaults_and_normalizes():
+    from app.schemas import IllustrateRequest
+
+    assert IllustrateRequest(prompt_model="m").scene_selection_strategy == "distributed"
+    erotic = IllustrateRequest(
+        prompt_model="m", scene_selection_strategy="llm_erotic_story"
+    )
+    assert erotic.scene_selection_strategy == "llm_erotic_story"
+    unknown = IllustrateRequest(prompt_model="m", scene_selection_strategy="weird")
+    assert unknown.scene_selection_strategy == "distributed"
 
 
 def test_illustrate_request_batch_size_defaults_to_10():

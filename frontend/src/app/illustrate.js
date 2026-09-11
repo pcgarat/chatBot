@@ -5,7 +5,7 @@ import { sessionStore } from "../store/session.js";
 import { appStatus, showError, showNotice } from "../store/ui.js";
 import { pushChatDebugEntry, appendImagesDebugLog, ingestPlannerLlmDebug, updateChatDebugEntry } from "../store/debug.js";
 import { buildModelParams } from "../lib/params.js";
-import { collectImagesSnapshot, readForgePanelParams, isVisualConsistencyEnabled } from "./imagesPanel.js";
+import { collectImagesSnapshot, readForgePanelParams, isVisualConsistencyEnabled, readSceneSelectionStrategy } from "./imagesPanel.js";
 import { getPlannerRulesTextForSystem } from "./rulesActions.js";
 import { startImageQueuePoll, loadImageQueuePage } from "./queueActions.js";
 import { refreshGalleryAfterScopeChange } from "./galleryActions.js";
@@ -67,6 +67,7 @@ function snapshotBody(extra = {}) {
     prompt_system_instructions: getPlannerRulesTextForSystem(),
     use_chat_config: snap.use_chat_config,
     visual_consistency: isVisualConsistencyEnabled(),
+    scene_selection_strategy: readSceneSelectionStrategy(),
     prompt_model_params: snap.use_chat_config
       ? buildModelParams()
       : snap.prompt_model_params || {},

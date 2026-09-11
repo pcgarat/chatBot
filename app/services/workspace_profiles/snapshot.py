@@ -124,6 +124,16 @@ def normalize_planner_instructions(value: object) -> list[dict]:
     return _normalize_planner_instructions(value)
 
 
+def _normalize_scene_selection_strategy(value: object) -> str:
+    from app.services.image_illustration.scene_selection import (
+        normalize_scene_selection_strategy_id,
+    )
+
+    if value is None:
+        return normalize_scene_selection_strategy_id(None)
+    return normalize_scene_selection_strategy_id(str(value))
+
+
 def conversation_images_snapshot(value: object) -> dict:
     """Snapshot de imágenes en conversación: sin reglas del planificador (son globales)."""
     data = _normalize_images(value).to_dict()
@@ -204,6 +214,9 @@ def _normalize_images(value: object) -> ImagesSnapshot:
         use_chat_config=bool(data.get("use_chat_config")),
         visual_consistency=(
             True if data.get("visual_consistency") is None else bool(data.get("visual_consistency"))
+        ),
+        scene_selection_strategy=_normalize_scene_selection_strategy(
+            data.get("scene_selection_strategy")
         ),
         images_per_response=_clamp_int(data.get("images_per_response"), 1, 50, 2),
         batch_size=_clamp_int(data.get("batch_size"), 1, 50, 10),

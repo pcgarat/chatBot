@@ -148,6 +148,8 @@ def test_format_coverage_block_lists_gaps_and_suggestions():
     assert "sin imagen" in block
     assert "[0]" in block and "[1]" in block
     assert "sugeridos" in block.lower() or "Párrafos sugeridos" in block
+    free = format_coverage_block(cov)
+    assert "estrategia" in free.lower() or "Mapa de cobertura" in free
 
 
 def test_occupied_scenes_from_coverage():

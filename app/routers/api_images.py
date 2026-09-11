@@ -427,6 +427,7 @@ def illustrate_message(
             prompt_system_instructions=body.prompt_system_instructions,
             use_chat_config=body.use_chat_config,
             visual_consistency=body.visual_consistency,
+            scene_selection_strategy=body.scene_selection_strategy,
         ),
     )
 
@@ -447,6 +448,7 @@ def illustrate_message(
                 forge_overrides=_forge_overrides_from_body(body),
                 run_context=run_context,
                 visual_consistency=body.visual_consistency,
+                scene_selection_strategy=body.scene_selection_strategy,
             ),
             debug=body.debug,
             include_prompt_debug=body.include_prompt_debug,

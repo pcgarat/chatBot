@@ -84,6 +84,16 @@ def test_normalize_images_snapshot_keeps_visual_consistency_off():
     assert out["images"]["visual_consistency"] is False
 
 
+def test_normalize_images_snapshot_scene_selection_strategy():
+    raw = _minimal_snapshot()
+    assert normalize_snapshot(raw)["images"]["scene_selection_strategy"] == "distributed"
+    raw["images"]["scene_selection_strategy"] = "llm_erotic_story"
+    out = normalize_snapshot(raw)
+    assert out["images"]["scene_selection_strategy"] == "llm_erotic_story"
+    raw["images"]["scene_selection_strategy"] = "unknown-mode"
+    assert normalize_snapshot(raw)["images"]["scene_selection_strategy"] == "distributed"
+
+
 def test_normalize_snapshot_keeps_planner_prompt_model_params():
     raw = _minimal_snapshot()
     raw["images"]["prompt_model_params"] = {

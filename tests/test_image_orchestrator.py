@@ -33,6 +33,7 @@ class FakePlanner:
         pinned=False,
         focus_excerpt=None,
         visual_consistency=True,
+        selection_instructions=None,
     ):
         self.last_text = text
         self.last_already_planned = already_planned
@@ -42,6 +43,7 @@ class FakePlanner:
         self.last_pinned = pinned
         self.last_focus_excerpt = focus_excerpt
         self.last_visual_consistency = visual_consistency
+        self.last_selection_instructions = selection_instructions
         return self._scene_plan
 
 
@@ -63,6 +65,7 @@ class SequencingPlanner:
         pinned=False,
         focus_excerpt=None,
         visual_consistency=True,
+        selection_instructions=None,
     ):
         self.calls.append(
             {
@@ -75,6 +78,7 @@ class SequencingPlanner:
                 "pinned": pinned,
                 "focus_excerpt": focus_excerpt,
                 "visual_consistency": visual_consistency,
+                "selection_instructions": selection_instructions,
             }
         )
         if not self._plans:

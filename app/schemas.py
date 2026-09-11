@@ -431,8 +431,26 @@ class IllustrateRequest(ForgePanelParamFields):
             "entre las escenas del mensaje. Si false, prioriza variedad de look."
         ),
     )
+    scene_selection_strategy: str = Field(
+        default="distributed",
+        description=(
+            "Estrategia de selección de escenas: "
+            "'distributed' (huecos) o 'llm_erotic_story' (LLM elige momentos eróticos)."
+        ),
+    )
     reactor: ReactorPanelSettings = Field(default_factory=ReactorPanelSettings)
     debug: bool = False
+
+    @field_validator("scene_selection_strategy", mode="before")
+    @classmethod
+    def _normalize_scene_selection_strategy(cls, value):
+        from app.services.image_illustration.scene_selection import (
+            normalize_scene_selection_strategy_id,
+        )
+
+        return normalize_scene_selection_strategy_id(
+            value if isinstance(value, str) or value is None else str(value)
+        )
 
     @model_validator(mode="before")
     @classmethod
@@ -664,6 +682,7 @@ class WorkspaceImagesSnapshot(ForgePanelParamFields):
     enabled: bool = False
     use_chat_config: bool = False
     visual_consistency: bool = True
+    scene_selection_strategy: str = "distributed"
     images_per_response: int = 2
     batch_size: int = 10
     retries: int = 1
@@ -683,6 +702,17 @@ class WorkspaceImagesSnapshot(ForgePanelParamFields):
             text = value.strip()
             return [{"title": "Instrucciones", "content": text}] if text else []
         return value
+
+    @field_validator("scene_selection_strategy", mode="before")
+    @classmethod
+    def _normalize_scene_selection_strategy(cls, value):
+        from app.services.image_illustration.scene_selection import (
+            normalize_scene_selection_strategy_id,
+        )
+
+        return normalize_scene_selection_strategy_id(
+            value if isinstance(value, str) or value is None else str(value)
+        )
 
 
 class WorkspaceSnapshotIn(BaseModel):

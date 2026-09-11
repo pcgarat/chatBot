@@ -337,6 +337,7 @@ class LlmScenePlanner:
         pinned: bool = False,
         focus_excerpt: str | None = None,
         visual_consistency: bool = True,
+        selection_instructions: str | None = None,
     ) -> ScenePlan:
         self.last_debug = None
         assigned = list(assigned_paragraphs or [])
@@ -354,6 +355,7 @@ class LlmScenePlanner:
                 existing_prompts=existing_prompts,
                 visual_consistency=visual_consistency,
             )
+            strategy_section = ""
         else:
             already_block = _already_planned_block(
                 already_planned,
@@ -361,11 +363,14 @@ class LlmScenePlanner:
                 visual_consistency=visual_consistency,
             )
             assigned_section = _assigned_paragraphs_block(assigned) if assigned else ""
+            strategy_extra = (selection_instructions or "").strip()
+            strategy_section = f"{strategy_extra}\n\n" if strategy_extra else ""
         coverage = (coverage_block or "").strip()
         coverage_section = "" if pinned else (f"{coverage}\n" if coverage else "")
         user = (
             f"max_images={limit}\n\n"
             f"{policy_block}"
+            f"{strategy_section}"
             f"{assigned_section}"
             f"{coverage_section}"
             f"{already_block}"
