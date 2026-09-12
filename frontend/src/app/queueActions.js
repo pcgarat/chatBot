@@ -243,8 +243,10 @@ export async function pollImageQueue() {
   }
 }
 
-export function startImageQueuePoll() {
+export function startImageQueuePoll(options) {
+  const immediate = !options || options.immediate !== false;
   stopImageQueuePoll();
+  if (immediate) void pollImageQueue();
   pollTimer = setInterval(() => {
     pollImageQueue();
   }, IMAGE_QUEUE_POLL_MS);
@@ -693,7 +695,11 @@ export function initImageQueuePanel() {
     if (e.key === "Escape") closeImageQueueContextMenu();
   });
   if (isQueuePanelVisible()) {
-    loadImageQueuePage();
+    void loadImageQueuePage().then(function () {
+      if (shouldWatchImageQueue()) startImageQueuePoll({ immediate: false });
+    });
+  } else {
+    // Chips de progreso y active_count viven en la status bar: sincronizar aunque el panel esté cerrado.
     startImageQueuePoll();
   }
   const queuePanel = document.getElementById("image-queue-panel");

@@ -1,12 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   takeNewlySettledQueueJobs,
   toggleQueueSelected,
   renderImageQueueList,
   setQueueFilter,
   initImageQueuePanel,
+  startImageQueuePoll,
+  stopImageQueuePoll,
 } from "./queueActions.js";
 import { imagesStore } from "../store/images.js";
+import { layoutStore } from "../store/layout.js";
 import { listQueue } from "../api/queue.js";
 
 const openConversationAtIllustration = vi.fn();
@@ -38,7 +41,13 @@ describe("cola", () => {
     listQueue.mockClear();
     openConversationAtIllustration.mockReset();
     openConversationAtMessage.mockReset();
-    imagesStore.set({ queueFilterStatus: "", queueItems: [], queueSelectedIds: [] });
+    imagesStore.set({ queueFilterStatus: "", queueItems: [], queueSelectedIds: [], batchProgress: [] });
+    layoutStore.set({ centerQueueVisible: false });
+    stopImageQueuePoll();
+  });
+
+  afterEach(() => {
+    stopImageQueuePoll();
   });
 
   it("setQueueFilter pide la cola con el estado elegido", () => {
@@ -120,5 +129,38 @@ describe("cola", () => {
       sceneId: "s-faro",
     });
     expect(openConversationAtMessage).not.toHaveBeenCalled();
+  });
+
+  it("al arrancar el poll sincroniza chips de batch aunque el panel de cola esté cerrado", async () => {
+    document.body.innerHTML = `
+      <span id="image-batch-progress" class="image-batch-progress" hidden></span>
+      <span id="header-provider-name">ollama</span>
+      <span id="image-queue-active-count" hidden></span>
+      <button id="image-queue-pause-toggle"></button>
+      <span id="image-queue-paused-label" hidden></span>
+    `;
+    listQueue.mockResolvedValueOnce({
+      items: [],
+      paused: false,
+      active_count: 2,
+      batch_progress: [
+        { batch_id: "b1", completed: 2, total: 20, created_at: "2026-09-11T12:00:00" },
+        { batch_id: "b2", completed: 0, total: 3, created_at: "2026-09-11T12:01:00" },
+      ],
+    });
+
+    startImageQueuePoll();
+    await vi.waitFor(() => {
+      expect(listQueue).toHaveBeenCalled();
+    });
+    await vi.waitFor(() => {
+      const host = document.getElementById("image-batch-progress");
+      expect(host.hidden).toBe(false);
+      expect([...host.querySelectorAll(".image-batch-progress-chip")].map((el) => el.textContent)).toEqual([
+        "2/20",
+        "0/3",
+      ]);
+    });
+    expect(layoutStore.get().centerQueueVisible).toBe(false);
   });
 });

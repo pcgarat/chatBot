@@ -31,8 +31,14 @@ describe("shell React", () => {
     expect(document.getElementById("btn-image-gallery")).toBeInTheDocument();
     expect(document.getElementById("btn-image-queue")).toBeInTheDocument();
     expect(document.getElementById("app-status-bar")).toBeInTheDocument();
-    expect(document.getElementById("image-batch-progress-left")).toBeInTheDocument();
-    expect(document.getElementById("image-batch-progress-right")).toBeInTheDocument();
+    const batchProgress = document.getElementById("image-batch-progress");
+    const provider = document.getElementById("header-provider-name");
+    expect(batchProgress).toBeInTheDocument();
+    expect(document.getElementById("image-batch-progress-left")).toBeNull();
+    expect(document.getElementById("image-batch-progress-right")).toBeNull();
+    expect(
+      batchProgress.compareDocumentPosition(provider) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it("al pulsar Ajustes enseña las opciones de modelo", () => {

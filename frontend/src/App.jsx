@@ -878,9 +878,8 @@ export default function App() {
         <div className="app-status-bar-right">
           <div className="status-bar-model-info" aria-label="Modelo activo">
             <span id="connection-status-dot" className="connection-status-dot" aria-hidden="true"></span>
-            <span id="image-batch-progress-left" className="image-batch-progress" hidden aria-label="Progreso de imágenes (anteriores)"></span>
+            <span id="image-batch-progress" className="image-batch-progress" hidden aria-label="Progreso de imágenes por petición"></span>
             <span id="header-provider-name" className="header-provider-model status-bar-provider"></span>
-            <span id="image-batch-progress-right" className="image-batch-progress" hidden aria-label="Progreso de imágenes (recientes)"></span>
             <span id="header-model-name" className="header-provider-model status-bar-model"></span>
             <span id="status-model-capabilities" className="model-capability-chips status-model-capabilities" hidden role="list" aria-label="Capacidades del modelo"></span>
           </div>

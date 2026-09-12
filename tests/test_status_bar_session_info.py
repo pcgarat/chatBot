@@ -28,6 +28,12 @@ def test_model_and_ctx_live_in_status_bar_right():
     assert 'id="connection-status-dot"' in footer
     assert 'id="context-usage-row"' in footer
     assert 'id="context-usage-badge"' in footer
+    assert 'id="image-batch-progress"' in footer
+    assert 'id="image-batch-progress-left"' not in footer
+    assert 'id="image-batch-progress-right"' not in footer
+    batch_pos = footer.index('id="image-batch-progress"')
+    provider_pos = footer.index('id="header-provider-name"')
+    assert batch_pos < provider_pos
     assert 'id="dark-mode-toggle"' not in footer
     assert 'id="auto-scroll-during-generation"' not in footer
 

@@ -1,6 +1,6 @@
 /**
  * Progreso de generación de imágenes por petición (batch) en la status bar.
- * Chips a izquierda/derecha del nombre del proveedor.
+ * Todos los chips van a la izquierda del nombre del proveedor.
  */
 
 export function normalizeBatchProgress(raw) {
@@ -24,15 +24,6 @@ export function normalizeBatchProgress(raw) {
     .sort(function (a, b) {
       return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
     });
-}
-
-/** Mitad más antigua a la izquierda del proveedor; el resto a la derecha. */
-export function splitBatchProgressAroundProvider(batches) {
-  const list = Array.isArray(batches) ? batches.slice() : [];
-  if (!list.length) return { left: [], right: [] };
-  if (list.length === 1) return { left: list, right: [] };
-  const mid = Math.ceil(list.length / 2);
-  return { left: list.slice(0, mid), right: list.slice(mid) };
 }
 
 export function formatBatchProgressLabel(batch) {
@@ -64,7 +55,5 @@ function renderChips(container, batches) {
 
 export function syncImageBatchProgressDom(batches) {
   const normalized = normalizeBatchProgress(batches);
-  const { left, right } = splitBatchProgressAroundProvider(normalized);
-  renderChips(document.getElementById("image-batch-progress-left"), left);
-  renderChips(document.getElementById("image-batch-progress-right"), right);
+  renderChips(document.getElementById("image-batch-progress"), normalized);
 }

@@ -165,6 +165,7 @@ export async function runIllustrationStream(opts) {
     }
     appendImagesDebugLog("Stream de ilustración terminado");
     if (queuedAny) {
+      // Poll inmediato: los chips de la status bar no dependen de abrir el panel de cola.
       startImageQueuePoll();
       if (layoutStore.get().centerQueueVisible) loadImageQueuePage();
       if (!opts.doneNotice) showNotice("Imágenes encoladas para generación.");
