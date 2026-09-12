@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 
 from app.db import Base, get_db
 from app import models  # noqa: F401 - registra tablas en Base
+from app import models_user  # noqa: F401
 from app.config import settings
 from app.providers import get_provider
 
@@ -65,15 +66,28 @@ def client(db_session, db_engine):
 
     from app import db as app_db
     from app.routers import api_images
+    from app.migrate_multi_user import bootstrap_multi_user
 
     prev_db_session_local = app_db.SessionLocal
     prev_images_session_local = api_images.SessionLocal
     app_db.SessionLocal = TestSessionLocal
     api_images.SessionLocal = TestSessionLocal
 
+    bootstrap_multi_user(db_session)
+    # Login vía API (una sola cookie de dominio) para no dejar cookies huérfanas en TestClient.
+    from app.config import settings as app_settings
+
     app.dependency_overrides[get_db] = override_get_db
     try:
         with TestClient(app) as c:
+            login = c.post(
+                "/api/auth/login",
+                json={
+                    "username": "admin",
+                    "password": app_settings.admin_password or "admin",
+                },
+            )
+            assert login.status_code == 200, login.text
             _orig_request = c.request
 
             def request_and_expire(*args, **kwargs):

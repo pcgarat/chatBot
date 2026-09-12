@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -17,6 +17,7 @@ class Conversation(Base):
     KIND_PROMPT_GENERATOR = "prompt_generator"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(512), nullable=False, default="Nueva conversación")
     auto_title = Column(Boolean, nullable=False, default=False)
     kind = Column(String(32), nullable=False, default=KIND_CHAT)
@@ -48,10 +49,14 @@ class Conversation(Base):
 
 
 class Rule(Base):
-    """Regla reutilizable de la biblioteca. scope=chat (conversación/modelo) o planner (ilustración)."""
+    """Regla reutilizable de la biblioteca. scope=chat (conversación/modelo) o planner (ilustración).
+
+    user_id NULL = catálogo compartido (builtin). user_id set = regla privada del usuario.
+    """
     __tablename__ = "rules"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(512), nullable=False, default="")
     content = Column(Text, nullable=False, default="")
     scope = Column(String(32), nullable=False, default="chat")  # chat | planner
@@ -144,9 +149,11 @@ class WorkspaceProfileRecord(Base):
     """Perfil de workspace: snapshot JSON de modelo, reglas, params e imágenes."""
 
     __tablename__ = "workspace_profiles"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_workspace_profiles_user_name"),)
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    name = Column(String(80), nullable=False, unique=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String(80), nullable=False)
     snapshot_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -156,9 +163,11 @@ class PlannerRulePresetRecord(Base):
     """Preset nombrado de la selección de reglas del planificador."""
 
     __tablename__ = "planner_rule_presets"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_planner_rule_presets_user_name"),)
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    name = Column(String(80), nullable=False, unique=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String(80), nullable=False)
     snapshot_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

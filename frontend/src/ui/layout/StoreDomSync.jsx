@@ -37,7 +37,6 @@ export function StoreDomSync() {
   const plannerLib = useStore(settingsStore, (s) => s.plannerLibraryRules);
   const plannerPresets = useStore(settingsStore, (s) => s.plannerRulePresets);
   const title = useStore(sessionStore, (s) => s.title);
-  const autoTitle = useStore(sessionStore, (s) => s.autoTitle);
   const draft = useStore(sessionStore, (s) => s.composerDraft);
   const instruction = useStore(sessionStore, (s) => s.instructionOverride);
   const kind = useStore(sessionStore, (s) => s.conversationKind);
@@ -104,9 +103,7 @@ export function StoreDomSync() {
   useEffect(() => {
     const t = document.getElementById("conversation-title");
     if (t && t !== document.activeElement) t.value = title || "";
-    const a = document.getElementById("conversation-auto-title");
-    if (a) a.checked = !!autoTitle;
-  }, [title, autoTitle]);
+  }, [title]);
 
   useEffect(() => {
     const ta = document.getElementById("message-input");

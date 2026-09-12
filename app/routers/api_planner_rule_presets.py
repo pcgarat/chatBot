@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth import CurrentUser
 from app.db import get_db
 from app.schemas import (
     PlannerRulePresetCreate,
@@ -19,8 +20,12 @@ from app.services.workspace_profiles.snapshot import SnapshotValidationError
 router = APIRouter(prefix="/api/planner-rule-presets", tags=["planner-rule-presets"])
 
 
-def get_preset_service(db: Session = Depends(get_db)) -> PlannerRulePresetService:
-    return PlannerRulePresetService(SqlAlchemyPlannerRulePresetRepository(db))
+def get_preset_service(
+    user: CurrentUser, db: Session = Depends(get_db)
+) -> PlannerRulePresetService:
+    return PlannerRulePresetService(
+        SqlAlchemyPlannerRulePresetRepository(db, user_id=user.id)
+    )
 
 
 def _to_out(preset) -> PlannerRulePresetOut:

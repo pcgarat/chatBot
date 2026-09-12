@@ -10,10 +10,25 @@ import { RuleEditModal } from "./ui/rules/RuleEditModal.jsx";
 import { bootApp } from "./app/boot.js";
 import { StoreDomSync } from "./ui/layout/StoreDomSync.jsx";
 import { PrefPercentValue, PrefDebugLogValue } from "./ui/layout/PreferenceValues.jsx";
+import { AuthGate } from "./ui/auth/AuthGate.jsx";
+import { AuthStatusBar } from "./ui/auth/AuthStatusBar.jsx";
+import { authStore } from "./store/auth.js";
 
 export default function App() {
-  useEffect(() => { bootApp(); }, []);
+  useEffect(() => {
+    let booted = false;
+    const tryBoot = () => {
+      if (booted) return;
+      if (!authStore.get().user) return;
+      booted = true;
+      bootApp();
+    };
+    const unsub = authStore.subscribe(tryBoot);
+    tryBoot();
+    return unsub;
+  }, []);
   return (
+    <AuthGate>
     <>
     <LayoutEffects />
     <StoreDomSync />
@@ -46,9 +61,6 @@ export default function App() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="M14 12h5"/></svg>
               </button>
               <div className="chat-session-identity">
-                <label className="auto-title-check" title="Título automático: primera frase del último mensaje">
-                  <input type="checkbox" id="conversation-auto-title" aria-label="Título automático" />
-                </label>
                 <input type="text" id="conversation-title" className="session-title conversation-title-input" placeholder="Chat de órdenes" aria-label="Título de la conversación" />
                 <div id="conversation-image-filter-notice" className="chat-image-filter-notice-wrap" hidden aria-live="polite">
                   <button type="button" className="chat-image-filter-notice-open" title="Abrir la galería para cambiar los filtros">Filtros de imágenes activos</button>
@@ -875,6 +887,7 @@ export default function App() {
         <span className="app-status-bar-grip" aria-hidden="true"></span>
         <span id="app-status-text" className="app-status-bar-text">Listo</span>
         <span id="app-status-detail" className="app-status-bar-detail" hidden></span>
+        <AuthStatusBar />
         <div className="app-status-bar-right">
           <div className="status-bar-model-info" aria-label="Modelo activo">
             <span id="connection-status-dot" className="connection-status-dot" aria-hidden="true"></span>
@@ -968,5 +981,6 @@ export default function App() {
         </div>
       </div>
     </>
+    </AuthGate>
   );
 }

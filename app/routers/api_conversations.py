@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app import crud, rag
+from app.auth import CurrentUser
 from app.config import settings
 from app.provider_params import build_extra_body
 from app.providers import get_provider
@@ -17,6 +18,7 @@ from app.slash_commands import parse_slash_command
 from app.db import get_db
 from app.crud import create_rule as crud_create_rule
 from app.crud import get_rule as crud_get_rule
+from app.ownership import require_owned_conversation
 from app.services.workspace_profiles.snapshot import conversation_images_snapshot
 from app.schemas import (
     ConversationCreate,
@@ -139,7 +141,7 @@ def _resolve_instruction_ids(ids: list[str], db) -> list[dict]:
     return out
 
 
-def _instructions_to_ids(rules: list | None, db) -> list[str] | None:
+def _instructions_to_ids(rules: list | None, db, *, user_id: str | None = None) -> list[str] | None:
     """
     Convierte body.system_instructions (list[RuleItem]) en lista de rule_id.
     Si un ítem no tiene rule_id, crea la regla en la biblioteca y usa su id.
@@ -158,7 +160,7 @@ def _instructions_to_ids(rules: list | None, db) -> list[str] | None:
         else:
             title = (d.get("title") or "").strip() or "Regla"
             content = d.get("content") or ""
-            rule = crud_create_rule(db, title=title, content=content)
+            rule = crud_create_rule(db, title=title, content=content, user_id=user_id)
             ids.append(rule.id)
     return ids
 
@@ -282,14 +284,18 @@ def _resolve_send_parent(db, conv, requested_parent_id: str | None) -> str | Non
 
 @router.get("/conversations", response_model=list[ConversationListItem])
 def list_conversations(
+    user: CurrentUser,
     sort: Literal["activity", "created_at"] = Query(default="activity"),
     db: Session = Depends(get_db),
 ):
-    return crud.list_conversations(db, sort=sort)
+    return crud.list_conversations(
+        db, sort=sort, user_id=user.id, include_unowned=bool(user.is_admin)
+    )
 
 
 @router.get("/messages", response_model=MessageHistoryListResponse)
 def list_messages(
+    user: CurrentUser,
     limit: int = Query(
         default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT,
         ge=1,
@@ -300,7 +306,15 @@ def list_messages(
     q: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    page = crud.list_assistant_messages(db, limit=limit, offset=offset, sort=sort, q=q)
+    page = crud.list_assistant_messages(
+        db,
+        limit=limit,
+        offset=offset,
+        sort=sort,
+        q=q,
+        user_id=user.id,
+        include_unowned=bool(user.is_admin),
+    )
     return MessageHistoryListResponse(
         items=[
             MessageHistoryItem(
@@ -322,15 +336,19 @@ def list_messages(
 
 
 @router.get("/conversations/deleted", response_model=list[ConversationListItem])
-def list_deleted_conversations(db: Session = Depends(get_db)):
+def list_deleted_conversations(user: CurrentUser, db: Session = Depends(get_db)):
     """Papelera: conversaciones soft-deleted (recuperables)."""
-    return crud.list_deleted_conversations(db)
+    return crud.list_deleted_conversations(
+        db, user_id=user.id, include_unowned=bool(user.is_admin)
+    )
 
 
 @router.delete("/conversations/deleted", response_model=PurgeDeletedConversationsResponse)
-def purge_deleted_conversations(db: Session = Depends(get_db)):
+def purge_deleted_conversations(user: CurrentUser, db: Session = Depends(get_db)):
     """Vacía la papelera: borrado definitivo de todas las conversaciones soft-deleted."""
-    ids = crud.purge_deleted_conversations(db)
+    ids = crud.purge_deleted_conversations(
+        db, user_id=user.id, include_unowned=bool(user.is_admin)
+    )
     for conversation_id in ids:
         rag.delete_conversation_documents(conversation_id)
     return PurgeDeletedConversationsResponse(deleted=len(ids), ids=ids)
@@ -348,8 +366,14 @@ def _get_resolved_instructions(conv, db) -> list[dict]:
 
 
 @router.post("/conversations", response_model=ConversationOut)
-def create_conversation(body: ConversationCreate, db: Session = Depends(get_db)):
-    instruction_ids = _instructions_to_ids(body.system_instructions, db) if body.system_instructions is not None else None
+def create_conversation(
+    body: ConversationCreate, user: CurrentUser, db: Session = Depends(get_db)
+):
+    instruction_ids = (
+        _instructions_to_ids(body.system_instructions, db, user_id=user.id)
+        if body.system_instructions is not None
+        else None
+    )
     conv = crud.create_conversation(
         db,
         title=body.title,
@@ -361,15 +385,22 @@ def create_conversation(body: ConversationCreate, db: Session = Depends(get_db))
         inject_instruction_every=body.inject_instruction_every,
         images=body.images.model_dump() if body.images is not None else None,
         kind=body.kind,
+        user_id=user.id,
     )
     if body.kind == "prompt_generator":
-        conv = crud.get_conversation(db, conv.id)
+        conv = crud.get_conversation(db, conv.id, user_id=user.id)
     return _conversation_out(conv, db)
 
 
 @router.post("/conversations/{conversation_id}/fork", response_model=ConversationOut)
-def fork_conversation(conversation_id: str, body: ConversationFork, db: Session = Depends(get_db)):
+def fork_conversation(
+    conversation_id: str,
+    body: ConversationFork,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
+):
     """Nueva conversación independiente; el historial se lee del mensaje origen, no se copia."""
+    require_owned_conversation(db, conversation_id, user)
     conv = crud.fork_conversation(db, conversation_id, body.message_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación o mensaje de anclaje no encontrado")
@@ -377,22 +408,30 @@ def fork_conversation(conversation_id: str, body: ConversationFork, db: Session 
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationOut)
-def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+def get_conversation(
+    conversation_id: str, user: CurrentUser, db: Session = Depends(get_db)
+):
+    conv = require_owned_conversation(db, conversation_id, user)
     return _conversation_out(conv, db)
 
 
 @router.put("/conversations/{conversation_id}", response_model=ConversationOut)
 def update_conversation(
-    conversation_id: str, body: ConversationUpdate, db: Session = Depends(get_db)
+    conversation_id: str,
+    body: ConversationUpdate,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
 ):
+    require_owned_conversation(db, conversation_id, user)
     body_set = body.model_dump(exclude_unset=True)
     if "active_leaf_message_id" in body_set and body.active_leaf_message_id:
         if not crud.get_message(db, conversation_id, body.active_leaf_message_id):
             raise HTTPException(status_code=404, detail="Mensaje de intento no encontrado")
-    instruction_ids = _instructions_to_ids(body.system_instructions, db) if body.system_instructions is not None else None
+    instruction_ids = (
+        _instructions_to_ids(body.system_instructions, db, user_id=user.id)
+        if body.system_instructions is not None
+        else None
+    )
     instruction_override_arg = body.instruction_override if "instruction_override" in body_set else crud.INSTRUCTION_OVERRIDE_UNSET
     if "images" in body_set:
         images_arg = body.images.model_dump() if body.images is not None else None
@@ -420,8 +459,11 @@ def update_conversation(
 
 
 @router.delete("/conversations/{conversation_id}", status_code=204)
-def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
+def delete_conversation(
+    conversation_id: str, user: CurrentUser, db: Session = Depends(get_db)
+):
     """Soft-delete: oculta la conversación; no borra mensajes ni Chroma."""
+    require_owned_conversation(db, conversation_id, user)
     ok = crud.delete_conversation(db, conversation_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
@@ -429,8 +471,11 @@ def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/conversations/{conversation_id}/restore", response_model=ConversationOut)
-def restore_conversation(conversation_id: str, db: Session = Depends(get_db)):
+def restore_conversation(
+    conversation_id: str, user: CurrentUser, db: Session = Depends(get_db)
+):
     """Restaura una conversación de la papelera."""
+    require_owned_conversation(db, conversation_id, user, include_deleted=True)
     conv = crud.restore_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada en la papelera")
@@ -438,8 +483,11 @@ def restore_conversation(conversation_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/conversations/{conversation_id}/permanent", status_code=204)
-def permanently_delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
+def permanently_delete_conversation(
+    conversation_id: str, user: CurrentUser, db: Session = Depends(get_db)
+):
     """Elimina de forma definitiva una conversación que ya está en la papelera."""
+    require_owned_conversation(db, conversation_id, user, include_deleted=True)
     ok = crud.hard_delete_conversation(db, conversation_id)
     if not ok:
         raise HTTPException(
@@ -451,14 +499,14 @@ def permanently_delete_conversation(conversation_id: str, db: Session = Depends(
 
 
 @router.delete("/conversations/{conversation_id}/messages/last", status_code=204)
-def delete_last_message(conversation_id: str, db: Session = Depends(get_db)):
+def delete_last_message(
+    conversation_id: str, user: CurrentUser, db: Session = Depends(get_db)
+):
     """Elimina el último mensaje de la conversación (para cancelar envío o deshacer)."""
     from app.services.image_illustration.content_ops import extract_illustrated_filenames
     from app.services.image_illustration.orphan_files import delete_unreferenced_illustrated_files
 
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="No hay mensajes en la conversación")
+    conv = require_owned_conversation(db, conversation_id, user)
     leaf_id = getattr(conv, "active_leaf_message_id", None)
     target = None
     if leaf_id:
@@ -480,14 +528,14 @@ def delete_last_message(conversation_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/conversations/{conversation_id}/messages", status_code=204)
-def clear_conversation_messages(conversation_id: str, db: Session = Depends(get_db)):
+def clear_conversation_messages(
+    conversation_id: str, user: CurrentUser, db: Session = Depends(get_db)
+):
     """Elimina todos los mensajes de una conversación (limpia el historial)."""
     from app.services.image_illustration.content_ops import extract_illustrated_filenames
     from app.services.image_illustration.orphan_files import delete_unreferenced_illustrated_files
 
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    require_owned_conversation(db, conversation_id, user)
     filenames: list[str] = []
     for msg in crud.get_messages(db, conversation_id):
         filenames.extend(extract_illustrated_filenames(msg.content or ""))
@@ -499,11 +547,17 @@ def clear_conversation_messages(conversation_id: str, db: Session = Depends(get_
 
 
 @router.delete("/conversations/{conversation_id}/messages/{message_id}", status_code=204)
-def delete_message(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+def delete_message(
+    conversation_id: str,
+    message_id: str,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
+):
     """Elimina un mensaje del historial de la conversación."""
     from app.services.image_illustration.content_ops import extract_illustrated_filenames
     from app.services.image_illustration.orphan_files import delete_unreferenced_illustrated_files
 
+    require_owned_conversation(db, conversation_id, user)
     msg = crud.get_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
@@ -518,8 +572,14 @@ def delete_message(conversation_id: str, message_id: str, db: Session = Depends(
 
 
 @router.post("/conversations/{conversation_id}/messages/{message_id}/save-to-chromadb", status_code=204)
-def save_message_to_chromadb(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+def save_message_to_chromadb(
+    conversation_id: str,
+    message_id: str,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
+):
     """Guarda un mensaje concreto en ChromaDB (para el icono de guardar bajo cada mensaje)."""
+    require_owned_conversation(db, conversation_id, user)
     msg = crud.get_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
@@ -774,15 +834,16 @@ async def _stream_generator_async(
 
 @router.post("/conversations/{conversation_id}/messages/stream")
 async def send_message_stream(
-    conversation_id: str, body: MessageSend, db: Session = Depends(get_db)
+    conversation_id: str,
+    body: MessageSend,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
 ):
     """Envía el mensaje y devuelve la respuesta en streaming (NDJSON). Al cancelar
     el cliente se cierra la conexión al LLM para liberar el modelo.
     Si el mensaje empieza por /git, /files, etc., se usa ese contexto MCP y el texto
     que se envía al modelo es el resto del mensaje (sin el slash command)."""
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    conv = require_owned_conversation(db, conversation_id, user)
 
     slash = parse_slash_command(body.content)
     user_content = slash.content
@@ -790,9 +851,7 @@ async def send_message_stream(
 
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
-        conv = crud.get_conversation(db, conversation_id)
-        if not conv:
-            raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        conv = require_owned_conversation(db, conversation_id, user)
     parent_id = _resolve_send_parent(db, conv, body.parent_message_id)
     existing = crud.get_resolved_history(db, conv, parent_id)
     rag_ids = {m.conversation_id for m in existing}
@@ -864,11 +923,12 @@ async def send_message_stream(
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse)
 def send_message(
-    conversation_id: str, body: MessageSend, db: Session = Depends(get_db)
+    conversation_id: str,
+    body: MessageSend,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
 ):
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    conv = require_owned_conversation(db, conversation_id, user)
 
     slash = parse_slash_command(body.content)
     user_content = slash.content
@@ -876,9 +936,7 @@ def send_message(
 
     if body.system_instruction_global is not None:
         crud.update_conversation(db, conversation_id, system_instruction_global=body.system_instruction_global)
-        conv = crud.get_conversation(db, conversation_id)
-        if not conv:
-            raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        conv = require_owned_conversation(db, conversation_id, user)
 
     parent_id = _resolve_send_parent(db, conv, body.parent_message_id)
     existing = crud.get_resolved_history(db, conv, parent_id)

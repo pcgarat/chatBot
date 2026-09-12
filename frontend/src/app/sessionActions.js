@@ -32,7 +32,6 @@ export { resetSession };
 const collapsedMessageKeys = new Set();
 const el = {
   conversationTitle: null,
-  conversationAutoTitle: null,
 };
 
 export function scheduleScrollMessagesToBottom() {
@@ -250,53 +249,31 @@ export async function forkConversationFromMessage(messageId) {
 }
 
 export function applyAutoTitleUi(enabled) {
-  const currentAutoTitle = Boolean(enabled);
-  sessionStore.set({ autoTitle: currentAutoTitle });
-  el.conversationTitle = document.getElementById("conversation-title");
-  el.conversationAutoTitle = document.getElementById("conversation-auto-title");
-  if (el.conversationAutoTitle) el.conversationAutoTitle.checked = currentAutoTitle;
-  if (el.conversationTitle) el.conversationTitle.readOnly = currentAutoTitle;
+  sessionStore.set({ autoTitle: Boolean(enabled) });
 }
 
 export async function commitConversationTitle() {
   el.conversationTitle = document.getElementById("conversation-title");
-  const currentAutoTitle = sessionStore.get().autoTitle;
-  if (!el.conversationTitle || currentAutoTitle) return;
+  if (!el.conversationTitle) return;
   const title = el.conversationTitle.value.trim() || getDefaultConversationTitle();
   if (el.conversationTitle.value !== title) el.conversationTitle.value = title;
   const currentConversationId = sessionStore.get().conversationId;
   if (!currentConversationId) return;
   try {
-    await conversationsApi.patchConversation(currentConversationId, JSON.parse(JSON.stringify({ title })));
-    sessionStore.set({ title });
+    await conversationsApi.patchConversation(
+      currentConversationId,
+      JSON.parse(JSON.stringify({ title, auto_title: false })),
+    );
+    sessionStore.set({ title, autoTitle: false });
     refreshLeftHistory();
   } catch (e) {
     showError("Error al guardar el título: " + e.message);
   }
 }
 
-export async function commitAutoTitleFlag() {
-  el.conversationAutoTitle = document.getElementById("conversation-auto-title");
-  if (!el.conversationAutoTitle) return;
-  applyAutoTitleUi(el.conversationAutoTitle.checked);
-  const currentConversationId = sessionStore.get().conversationId;
-  if (!currentConversationId) return;
-  try {
-    const conv = await conversationsApi.patchConversation(currentConversationId, {
-      auto_title: Boolean(el.conversationAutoTitle && el.conversationAutoTitle.checked),
-    });
-    el.conversationTitle = document.getElementById("conversation-title");
-    if (el.conversationTitle && conv && conv.title) el.conversationTitle.value = conv.title;
-    refreshLeftHistory();
-  } catch (e) {
-    showError("Error al guardar el título automático: " + e.message);
-  }
-}
-
 if (typeof document !== "undefined") {
   document.addEventListener("change", (e) => {
     if (e.target && e.target.id === "conversation-title") commitConversationTitle();
-    if (e.target && e.target.id === "conversation-auto-title") commitAutoTitleFlag();
   });
 }
 el.conversationTitle && el.conversationTitle.addEventListener("change", commitConversationTitle);

@@ -5,16 +5,41 @@ import App from "./App.jsx";
 import { settingsStore } from "./store/settings.js";
 import { sessionStore } from "./store/session.js";
 import { imagesStore } from "./store/images.js";
+import { authStore } from "./store/auth.js";
 
 vi.mock("./app/boot.js", () => ({
   bootApp: vi.fn(),
 }));
+
+vi.mock("./store/auth.js", async () => {
+  const { createStore } = await import("./store/createStore.js");
+  const authStore = createStore({
+    ready: true,
+    user: { id: "u1", username: "tester", is_admin: false },
+    error: null,
+  });
+  return {
+    authStore,
+    fetchMe: vi.fn(async () => authStore.get().user),
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    changePassword: vi.fn(),
+    loadUserPreferences: vi.fn(async () => ({ preferences: {} })),
+    saveUserPreferences: vi.fn(),
+  };
+});
 
 describe("shell React", () => {
   beforeEach(() => {
     sessionStore.set({ plannerRules: [] });
     settingsStore.set({ plannerRulePresets: [] });
     imagesStore.set({ prefs: { ...(imagesStore.get().prefs || {}), prompt_system_instructions: [] } });
+    authStore.set({
+      ready: true,
+      user: { id: "u1", username: "tester", is_admin: false },
+      error: null,
+    });
   });
 
   it("pinta el árbol principal con los IDs del contrato de UI", () => {

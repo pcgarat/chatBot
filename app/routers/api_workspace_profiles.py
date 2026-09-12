@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth import CurrentUser
 from app.db import get_db
 from app.schemas import WorkspaceProfileCreate, WorkspaceProfileOut, WorkspaceProfileUpdate
 from app.services.workspace_profiles.service import (
@@ -15,8 +16,12 @@ from app.services.workspace_profiles.storage import SqlAlchemyWorkspaceProfileRe
 router = APIRouter(prefix="/api/workspace-profiles", tags=["workspace-profiles"])
 
 
-def get_profile_service(db: Session = Depends(get_db)) -> WorkspaceProfileService:
-    return WorkspaceProfileService(SqlAlchemyWorkspaceProfileRepository(db))
+def get_profile_service(
+    user: CurrentUser, db: Session = Depends(get_db)
+) -> WorkspaceProfileService:
+    return WorkspaceProfileService(
+        SqlAlchemyWorkspaceProfileRepository(db, user_id=user.id)
+    )
 
 
 def _to_out(profile) -> WorkspaceProfileOut:

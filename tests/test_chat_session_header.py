@@ -14,8 +14,8 @@ def test_chat_panel_header_groups_identity_and_delete_action():
     assert 'class="chat-session-identity"' in html
     assert 'class="chat-session-actions"' in html
     assert 'id="conversation-title"' in html
-    assert 'id="conversation-auto-title"' in html
-    assert "auto-title-check" in html
+    assert 'id="conversation-auto-title"' not in html
+    assert "auto-title-check" not in html
     assert 'id="session-meta-row"' not in html
     assert 'id="session-created-label"' not in html
     assert 'id="btn-clear-memory"' in html
@@ -25,7 +25,7 @@ def test_chat_panel_header_groups_identity_and_delete_action():
     identity_end = html.index('class="chat-session-actions"')
     identity_block = html[identity_start:identity_end]
     assert 'id="conversation-title"' in identity_block
-    assert 'id="conversation-auto-title"' in identity_block
+    assert 'id="conversation-auto-title"' not in identity_block
     assert 'id="conversation-image-filter-notice"' in identity_block
     assert "Filtros de imágenes activos" in identity_block
     assert "conversation-image-filter-notice-dismiss" in identity_block
@@ -39,6 +39,7 @@ def test_chat_panel_header_groups_identity_and_delete_action():
     assert 'id="btn-image-queue"' in actions
     assert 'id="btn-clear-memory"' in actions
     assert actions.index('id="btn-center-chat"') < actions.index('id="btn-image-gallery"') < actions.index('id="btn-image-queue"') < actions.index('id="btn-clear-memory"')
+
 
 def test_chat_panel_header_has_distinct_surface_and_danger_icon_styles():
     css = STYLE_CSS.read_text(encoding="utf-8")
@@ -56,7 +57,7 @@ def test_index_serves_session_header_markup(client):
     r = client.get("/")
     assert r.status_code == 200
     assert 'class="chat-session-identity"' in frontend_markup()
-    assert 'id="conversation-auto-title"' in frontend_markup()
+    assert 'id="conversation-auto-title"' not in frontend_markup()
     assert 'id="btn-clear-memory"' in frontend_markup()
     assert "chat-delete-btn" in frontend_markup()
     assert 'id="btn-center-chat"' in frontend_markup()
@@ -70,15 +71,16 @@ def test_js_persiste_titulo_al_cambiar_el_input():
     assert 'id="btn-save"' not in html
     assert "commitConversationTitle" in js
     assert 'el.conversationTitle.addEventListener("change"' in js
-    assert "JSON.stringify({ title })" in js or "JSON.stringify({ title:" in js
+    assert "auto_title: false" in js
+    assert "title," in js or "title }" in js or "{ title" in js
 
 
-def test_js_titulo_automatico_hace_readonly_el_input():
+def test_js_editar_titulo_desactiva_auto_title_sin_checkbox():
     js = frontend_source()
     css = STYLE_CSS.read_text(encoding="utf-8")
-    assert "commitAutoTitleFlag" in js
+    assert "commitAutoTitleFlag" not in js
     assert "applyAutoTitleUi" in js
-    assert "readOnly = currentAutoTitle" in js
-    assert "auto_title: Boolean(el.conversationAutoTitle && el.conversationAutoTitle.checked)" in js
-    assert ".auto-title-check" in css
-    assert ":read-only" in css
+    assert "readOnly = currentAutoTitle" not in js
+    assert 'id="conversation-auto-title"' not in frontend_markup()
+    assert ".auto-title-check" not in css
+    assert "auto_title: false" in js

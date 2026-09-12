@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
+from app.auth import CurrentUser
 from app.db import get_db
+from app.ownership import require_owned_conversation
 from app.routers.api_conversations import _message_in_chat
 from app.schemas import MessageInChat
 from app.services.prompt_generator.turn import run_turn
@@ -48,8 +50,10 @@ class PromptGeneratorTurnOut(BaseModel):
 def prompt_generator_turn(
     conversation_id: str,
     body: PromptGeneratorTurnIn,
+    user: CurrentUser,
     db: Session = Depends(get_db),
 ):
+    require_owned_conversation(db, conversation_id, user)
     try:
         result = run_turn(
             db,

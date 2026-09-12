@@ -346,10 +346,6 @@ export function onAppChange(e) {
   if (t.id === "dark-mode-toggle") toggleDarkMode(t.checked);
   if (t.id === "render-markdown-toggle") updateLayout({ renderMarkdown: t.checked });
   if (t.id === "auto-scroll-during-generation") updateLayout({ autoScrollDuringGeneration: t.checked });
-  if (t.id === "conversation-auto-title") {
-    sessionStore.set({ autoTitle: t.checked });
-    import("../../app/sessionActions.js").then((m) => m.commitAutoTitleFlag());
-  }
   if (t.id === "conversation-title") {
     sessionStore.set({ title: t.value });
   }

@@ -41,7 +41,21 @@ def get_db():
 
 def init_db():
     from app import models  # noqa: F401
+    from app import models_user  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    # Multi-usuario: columnas user_id
+    with engine.connect() as conn:
+        for table, col_def in (
+            ("conversations", "user_id VARCHAR(36)"),
+            ("rules", "user_id VARCHAR(36)"),
+            ("workspace_profiles", "user_id VARCHAR(36)"),
+            ("planner_rule_presets", "user_id VARCHAR(36)"),
+        ):
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
     # Migración: añadir inject_instruction_every si no existe
     with engine.connect() as conn:
         try:

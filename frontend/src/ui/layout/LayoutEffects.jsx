@@ -4,6 +4,7 @@ import { useStore } from "../../hooks/useStore.js";
 import { initImagesPanel, initImageGallery } from "../../app/imagesPanel.js";
 import { initImageQueuePanel } from "../../app/queueActions.js";
 import { initConversationScrollNav, bindMessageTextContextMenu } from "../messages/MessagesPane.jsx";
+import { initHistoryScrollReveal, initChatScrollReveal } from "../history/historyScrollReveal.js";
 
 export function LayoutEffects() {
   const layout = useStore(layoutStore);
@@ -45,6 +46,8 @@ export function LayoutEffects() {
     initImageGallery();
     initImageQueuePanel();
     initConversationScrollNav();
+    initHistoryScrollReveal();
+    initChatScrollReveal();
     bindMessageTextContextMenu();
     initSidePanelResize();
     initAccordionState();
