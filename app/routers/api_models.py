@@ -6,6 +6,7 @@ Incluye ficha de modelo (provider_info + user_info) y capacidades por proveedor.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.auth import CurrentUser
 from app.crud import get_rule as crud_get_rule
 from app.db import get_db
 from app.model_info import MAX_TAG_LENGTH, MAX_TAGS, get_all_tags, get_model_info, set_model_info, update_user_info
@@ -271,7 +272,11 @@ def get_model_contract(provider_name: str, model_id: str):
     response_model=ModelInfoResponse,
 )
 def put_model_info_route(
-    provider_name: str, model_id: str, body: ModelInfoUpdateRequest, db: Session = Depends(get_db)
+    provider_name: str,
+    model_id: str,
+    body: ModelInfoUpdateRequest,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
 ):
     """Actualiza solo user_info (uncensored, instructions/instruction_ids, tags). Campos opcionales."""
     try:
@@ -304,7 +309,12 @@ def put_model_info_route(
     "/providers/{provider_name}/models/{model_id:path}/info/refresh",
     response_model=ModelInfoResponse,
 )
-def refresh_model_provider_info(provider_name: str, model_id: str, db: Session = Depends(get_db)):
+def refresh_model_provider_info(
+    provider_name: str,
+    model_id: str,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
+):
     """
     Refresca provider_info llamando a la capacidad show_model del proveedor.
     Si falla, no sobrescribe el provider_info existente; devuelve la ficha actual.

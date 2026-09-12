@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.crud import message_content_preview
@@ -36,6 +37,14 @@ class MessageTreeRootsPage:
 
 ROOT_LIMIT_DEFAULT = 50
 ROOT_LIMIT_MAX = 100
+
+
+def _owner_filter(*, user_id: str | None = None, include_unowned: bool = False):
+    if user_id is None:
+        return ()
+    if include_unowned:
+        return (or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)),)
+    return (Conversation.user_id == user_id,)
 
 
 def clamp_root_limit(limit: int | None) -> int:
@@ -109,22 +118,33 @@ def _node_from_message(
     )
 
 
-def _forks_anchored_at(db: Session, anchor_message_id: str) -> list[Conversation]:
-    return (
-        db.query(Conversation)
-        .filter(
-            Conversation.forked_from_message_id == anchor_message_id,
-            *_active_chat_conv_filter(),
-        )
-        .order_by(Conversation.created_at.asc())
-        .all()
+def _forks_anchored_at(
+    db: Session,
+    anchor_message_id: str,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> list[Conversation]:
+    q = db.query(Conversation).filter(
+        Conversation.forked_from_message_id == anchor_message_id,
+        *_active_chat_conv_filter(),
+        *_owner_filter(user_id=user_id, include_unowned=include_unowned),
     )
+    return q.order_by(Conversation.created_at.asc()).all()
 
 
-def _fork_assistant_pairs(db: Session, anchor_message_id: str) -> list[tuple[Message, str]]:
+def _fork_assistant_pairs(
+    db: Session,
+    anchor_message_id: str,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> list[tuple[Message, str]]:
     """Todos los assistants propios de cada fork anclado; mismo nivel entre sí."""
     out: list[tuple[Message, str]] = []
-    for fork in _forks_anchored_at(db, anchor_message_id):
+    for fork in _forks_anchored_at(
+        db, anchor_message_id, user_id=user_id, include_unowned=include_unowned
+    ):
         own = _assistants_in(_messages_by_conversation(db, fork.id))
         if not own:
             continue
@@ -135,30 +155,58 @@ def _fork_assistant_pairs(db: Session, anchor_message_id: str) -> list[tuple[Mes
     return out
 
 
-def _has_fork_children(db: Session, message_id: str) -> bool:
-    for fork in _forks_anchored_at(db, message_id):
+def _has_fork_children(
+    db: Session,
+    message_id: str,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> bool:
+    for fork in _forks_anchored_at(
+        db, message_id, user_id=user_id, include_unowned=include_unowned
+    ):
         if any(m.role == "assistant" for m in _messages_by_conversation(db, fork.id)):
             return True
     return False
 
 
-def get_message_any_active(db: Session, message_id: str) -> Message | None:
+def get_message_any_active(
+    db: Session,
+    message_id: str,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> Message | None:
     """Mensaje cuyo dueño no está en papelera ni es prompt_generator."""
-    return (
+    q = (
         db.query(Message)
         .join(Conversation, Conversation.id == Message.conversation_id)
-        .filter(Message.id == message_id, *_active_chat_conv_filter())
-        .first()
+        .filter(
+            Message.id == message_id,
+            *_active_chat_conv_filter(),
+            *_owner_filter(user_id=user_id, include_unowned=include_unowned),
+        )
     )
+    return q.first()
 
 
-def list_child_nodes(db: Session, message_id: str) -> list[MessageTreeNodeData]:
+def list_child_nodes(
+    db: Session,
+    message_id: str,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> list[MessageTreeNodeData]:
     """Solo forks: un nivel más. Mensajes de la misma conversación no anidan aquí."""
-    msg = get_message_any_active(db, message_id)
+    msg = get_message_any_active(
+        db, message_id, user_id=user_id, include_unowned=include_unowned
+    )
     if msg is None:
         return []
 
-    pairs = _fork_assistant_pairs(db, message_id)
+    pairs = _fork_assistant_pairs(
+        db, message_id, user_id=user_id, include_unowned=include_unowned
+    )
     total = len(pairs)
     nodes: list[MessageTreeNodeData] = []
     for idx, (child, child_title) in enumerate(pairs):
@@ -168,7 +216,9 @@ def list_child_nodes(db: Session, message_id: str) -> list[MessageTreeNodeData]:
                 title=child_title,
                 parent_message_id=message_id,
                 is_fork_edge=True,
-                has_children=_has_fork_children(db, child.id),
+                has_children=_has_fork_children(
+                    db, child.id, user_id=user_id, include_unowned=include_unowned
+                ),
                 sibling_index=idx,
                 sibling_count=total,
             )
@@ -177,20 +227,23 @@ def list_child_nodes(db: Session, message_id: str) -> list[MessageTreeNodeData]:
 
 
 def list_root_nodes(
-    db: Session, limit: int | None = None, offset: int | None = None
+    db: Session,
+    limit: int | None = None,
+    offset: int | None = None,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
 ) -> MessageTreeRootsPage:
     """Assistants de conversaciones raíz, todos al mismo nivel (sin nest intra-hilo)."""
     capped = clamp_root_limit(limit)
     off = clamp_root_offset(offset)
 
-    root_convs = (
-        db.query(Conversation)
-        .filter(
-            *_active_chat_conv_filter(),
-            Conversation.forked_from_conversation_id.is_(None),
-        )
-        .all()
+    q = db.query(Conversation).filter(
+        *_active_chat_conv_filter(),
+        Conversation.forked_from_conversation_id.is_(None),
+        *_owner_filter(user_id=user_id, include_unowned=include_unowned),
     )
+    root_convs = q.all()
     roots: list[MessageTreeNodeData] = []
     for conv in root_convs:
         messages = _messages_by_conversation(db, conv.id)
@@ -201,7 +254,9 @@ def list_root_nodes(
                     title=conv.title or "",
                     parent_message_id=None,
                     is_fork_edge=False,
-                    has_children=_has_fork_children(db, msg.id),
+                    has_children=_has_fork_children(
+                        db, msg.id, user_id=user_id, include_unowned=include_unowned
+                    ),
                     sibling_index=None,
                     sibling_count=None,
                 )

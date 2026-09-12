@@ -19,8 +19,16 @@ import {
 } from "./rulesActions.js";
 import { refreshWorkspaceProfiles, refreshPlannerRulePresets } from "./profilesActions.js";
 import { loadPlannerContract, ensureImagesPromptSelects, hydratePlannerRulesFromImagesPrefs } from "./imagesPanel.js";
+import {
+  hydratePreferencesFromServer,
+  startPreferencesSync,
+} from "../store/userPreferencesSync.js";
 
 export async function bootApp() {
+  try {
+    await hydratePreferencesFromServer();
+  } catch (_) {}
+  startPreferencesSync();
   hydratePlannerRulesFromImagesPrefs();
   applyDocumentLayout(layoutStore.get());
   applyConsultaChrome();

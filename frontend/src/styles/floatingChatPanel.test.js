@@ -87,10 +87,11 @@ describe("layout: conversación flotante sobre lienzo unificado", () => {
     expect(section).toMatch(/color\s*:\s*var\(--muted-foreground\)\s*!important/);
     expect(section).toMatch(/\[aria-pressed="true"\][\s\S]{0,120}color\s*:\s*var\(--accent\)\s*!important/);
     expect(section).toMatch(/\.chat-session-actions \.chat-delete-btn\.icon-btn-danger[\s\S]{0,200}color\s*:\s*var\(--muted-foreground\)\s*!important/);
-    expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}color\s*:\s*var\(--text-secondary\)\s*!important/);
-    expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}background\s*:\s*var\(--accent-light-strong\)\s*!important/);
-    expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}border\s*:\s*none\s*!important/);
-    expect(section).toMatch(/\.column-left \.sidebar-add-btn[\s\S]{0,280}border-radius\s*:\s*var\(--radius-md\)\s*!important/);
+    expect(section).toMatch(/#btn-new-chat[\s\S]{0,280}background\s*:\s*#0078d4\s*!important/);
+    expect(section).toMatch(/#btn-new-chat[\s\S]{0,280}color\s*:\s*#ffffff\s*!important/);
+    expect(section).toMatch(/#btn-prompt-generator[\s\S]{0,280}background\s*:\s*transparent\s*!important/);
+    expect(section).toMatch(/#btn-prompt-generator[\s\S]{0,280}color\s*:\s*#0b5fa5\s*!important/);
+    expect(section).toMatch(/#btn-new-chat,\s*\n?#btn-prompt-generator[\s\S]{0,200}border\s*:\s*none\s*!important/);
   });
 
   it("aplica padding y fade vertical al stream de mensajes", () => {
@@ -109,10 +110,19 @@ describe("layout: conversación flotante sobre lienzo unificado", () => {
       /--history-scroll-thumb\s*:\s*color-mix\(in srgb, var\(--shell-canvas\) 50%, #ffffff\)/
     );
     expect(css).toMatch(
-      /\.column-left \.conversations-list-wrap[\s\S]{0,280}scrollbar-color\s*:\s*var\(--history-scroll-thumb\)/
+      /\.column-left \.conversations-list-wrap\.is-scrollbar-visible[\s\S]{0,120}scrollbar-color\s*:\s*var\(--history-scroll-thumb\)/
     );
     expect(css).toMatch(
-      /\.column-left \.conversations-list-wrap::-webkit-scrollbar-thumb[\s\S]{0,120}var\(--history-scroll-thumb\)/
+      /\.column-left \.conversations-list-wrap\.is-scrollbar-visible::-webkit-scrollbar-thumb[\s\S]{0,120}var\(--history-scroll-thumb\)/
+    );
+  });
+
+  it("usa scrollbar suave sobre el fondo blanco del chat, revelado como el historial", () => {
+    expect(css).toMatch(
+      /--chat-scroll-thumb\s*:\s*color-mix\(in srgb, #000000 12%, transparent\)/
+    );
+    expect(css).toMatch(
+      /#messages-container\.scroll-y-reveal\.is-scrollbar-visible[\s\S]{0,120}scrollbar-color\s*:\s*var\(--chat-scroll-thumb\)/
     );
   });
 

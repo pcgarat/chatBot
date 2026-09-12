@@ -5,13 +5,16 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import db as app_db
+from app import models_user  # noqa: F401 — tablas users/sessions en init_db
 from app.config import sync_env_to_dotenv
 from app.migrate_conversation_rules_to_library import migrate_all as migrate_conversation_rules_to_library
 from app.migrate_fill_instruction_ids import migrate_all as migrate_fill_instruction_ids
 from app.migrate_model_info_rules import migrate_all as migrate_model_info_rules
+from app.migrate_multi_user import bootstrap_multi_user
 from app.services.image_illustration.worker import start_image_generation_worker
 from app.services.rules.seed import seed_builtin_rules
 from app.routers import (
+    api_auth,
     api_conversations,
     api_images,
     api_message_tree,
@@ -25,6 +28,7 @@ from app.routers import (
 
 app = FastAPI(title="Chat IA con Ollama", version="1.0.0")
 
+app.include_router(api_auth.router)
 app.include_router(api_models.router)
 app.include_router(api_conversations.router)
 app.include_router(api_message_tree.router)
@@ -51,6 +55,7 @@ def startup():
         # Rellenar instruction_ids desde system_instructions legado (solo referencias a rules)
         migrate_fill_instruction_ids(db)
         seed_builtin_rules(db)
+        bootstrap_multi_user(db)
     finally:
         db.close()
     start_image_generation_worker()

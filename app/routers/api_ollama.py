@@ -3,12 +3,13 @@
 from fastapi import APIRouter, HTTPException
 
 from app import ollama_client
+from app.auth import AdminUser
 
 router = APIRouter(prefix="/api", tags=["ollama"])
 
 
 @router.post("/ollama/clear-memory")
-def clear_ollama_memory():
+def clear_ollama_memory(_admin: AdminUser):
     """
     Descarga todos los modelos de Ollama de VRAM/RAM (liberar memoria).
     No borra ningún modelo del disco. Cierra las cargas en memoria para que

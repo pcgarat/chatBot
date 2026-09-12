@@ -12,8 +12,10 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app import crud
+from app.auth import AdminUser, CurrentUser
 from app.config import settings
 from app.db import SessionLocal, get_db
+from app.ownership import require_owned_conversation
 from app.provider_params import build_extra_body
 from app.providers import get_provider
 from app.routers.api_conversations import (
@@ -396,15 +398,14 @@ def illustrate_message(
     conversation_id: str,
     message_id: str,
     body: IllustrateRequest,
+    user: CurrentUser,
     db: Session = Depends(get_db),
 ):
     """
     Tras el chat: planifica escenas, genera con Forge (ReplayLastGeneration)
     y emite NDJSON (status|log|placeholder|image|error|done|llm_debug).
     """
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    conv = require_owned_conversation(db, conversation_id, user)
     msg = crud.get_visible_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
@@ -467,6 +468,7 @@ def illustrate_at_paragraph(
     conversation_id: str,
     message_id: str,
     body: IllustrateAtRequest,
+    user: CurrentUser,
     db: Session = Depends(get_db),
 ):
     """
@@ -475,9 +477,7 @@ def illustrate_at_paragraph(
     """
     from app.services.image_illustration.coverage import analyze_coverage
 
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    conv = require_owned_conversation(db, conversation_id, user)
     msg = crud.get_visible_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
@@ -545,13 +545,14 @@ def generate_remaining_images(
     conversation_id: str,
     message_id: str,
     body: GenerateRemainingRequest,
+    user: CurrentUser,
     db: Session = Depends(get_db),
 ):
     """
     Regenera placeholders/errores con prompt recuperable (sin re-planificar LLM).
     Emite el mismo NDJSON que illustrate.
     """
-    msg = _require_assistant_message(db, conversation_id, message_id)
+    msg = _require_assistant_message(db, conversation_id, message_id, user)
     owner_conversation_id = msg.conversation_id
     text = _content_without_missing_files(db, owner_conversation_id, message_id, msg.content or "")
     orch = _build_forge_orchestrator()
@@ -595,10 +596,8 @@ def _content_without_missing_files(
     return text
 
 
-def _require_assistant_message(db: Session, conversation_id: str, message_id: str):
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+def _require_assistant_message(db: Session, conversation_id: str, message_id: str, user):
+    require_owned_conversation(db, conversation_id, user)
     msg = crud.get_visible_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
@@ -611,9 +610,14 @@ def _require_assistant_message(db: Session, conversation_id: str, message_id: st
     "/conversations/{conversation_id}/messages/{message_id}/illustrations/clear-photos",
     response_model=MessageContentUpdateResponse,
 )
-def clear_message_photos(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+def clear_message_photos(
+    conversation_id: str,
+    message_id: str,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
+):
     """Borra para siempre las fotos generadas de la respuesta (ficheros + tags img)."""
-    msg = _require_assistant_message(db, conversation_id, message_id)
+    msg = _require_assistant_message(db, conversation_id, message_id, user)
     new_content, filenames = remove_all_photos(msg.content or "")
     deleted = 0
     for name in filenames:
@@ -633,9 +637,14 @@ def clear_message_photos(conversation_id: str, message_id: str, db: Session = De
     "/conversations/{conversation_id}/messages/{message_id}/illustrations/prune-orphans",
     response_model=MessageContentUpdateResponse,
 )
-def prune_orphan_anchors(conversation_id: str, message_id: str, db: Session = Depends(get_db)):
+def prune_orphan_anchors(
+    conversation_id: str,
+    message_id: str,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
+):
     """Elimina anclas huérfanas (marcadores, placeholders y errores sin imagen)."""
-    msg = _require_assistant_message(db, conversation_id, message_id)
+    msg = _require_assistant_message(db, conversation_id, message_id, user)
     new_content = remove_orphan_anchors(msg.content or "")
     updated = crud.update_message_content(db, msg.conversation_id, message_id, new_content)
     return MessageContentUpdateResponse(
@@ -765,6 +774,7 @@ def _gallery_filter_kwargs(
     response_model=IllustratedImageListResponse,
 )
 def list_illustrated_images(
+    user: CurrentUser,
     filters: dict = Depends(_gallery_filter_kwargs),
     limit: int = Query(default=24, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -776,6 +786,8 @@ def list_illustrated_images(
         **filters,
         limit=limit,
         offset=offset,
+        user_id=user.id,
+        include_unowned=bool(user.is_admin),
     )
     return IllustratedImageListResponse(
         items=[_list_item(row, msg, conv) for row, msg, conv in rows],
@@ -790,6 +802,7 @@ def list_illustrated_images(
     response_model=IllustratedImageFacetsResponse,
 )
 def get_illustrated_image_facets(
+    user: CurrentUser,
     conversation_id: str | None = Query(default=None),
     message_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -800,6 +813,8 @@ def get_illustrated_image_facets(
             db,
             conversation_id=(conversation_id or "").strip() or None,
             message_id=(message_id or "").strip() or None,
+            user_id=user.id,
+            include_unowned=bool(user.is_admin),
         )
     )
 
@@ -809,6 +824,7 @@ def get_illustrated_image_facets(
     response_model=IllustratedImageFilenameListResponse,
 )
 def list_matching_illustrated_filenames(
+    user: CurrentUser,
     filters: dict = Depends(_gallery_filter_kwargs),
     db: Session = Depends(get_db),
 ):
@@ -816,11 +832,11 @@ def list_matching_illustrated_filenames(
     conv_id = filters["conversation_id"]
     if not conv_id:
         raise HTTPException(status_code=422, detail="conversation_id es obligatorio")
-    conv = crud.get_conversation(db, conv_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    require_owned_conversation(db, conv_id, user)
     return IllustratedImageFilenameListResponse(
-        filenames=crud.list_illustrated_image_filenames(db, **filters)
+        filenames=crud.list_illustrated_image_filenames(
+            db, **filters, user_id=user.id, include_unowned=bool(user.is_admin)
+        )
     )
 
 
@@ -829,13 +845,12 @@ def list_matching_illustrated_filenames(
     response_model=IllustratedImageMessageListResponse,
 )
 def list_illustrated_image_messages(
+    user: CurrentUser,
     conversation_id: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
 ):
     """Mensajes con imágenes de una conversación, para el selector de la galería."""
-    conv = crud.get_conversation(db, conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    require_owned_conversation(db, conversation_id, user)
     items = crud.list_illustrated_message_summaries(db, conversation_id)
     return IllustratedImageMessageListResponse(items=items)
 
@@ -844,7 +859,7 @@ def list_illustrated_image_messages(
     "/illustrated-images/orphans",
     response_model=IllustratedImageOrphansResponse,
 )
-def list_orphan_illustrated_files(db: Session = Depends(get_db)):
+def list_orphan_illustrated_files(user: CurrentUser, db: Session = Depends(get_db)):
     """Cuenta ficheros en disco no incrustados en ningún mensaje."""
     return IllustratedImageOrphansResponse(count=len(collect_orphan_filenames(db)))
 
@@ -853,7 +868,7 @@ def list_orphan_illustrated_files(db: Session = Depends(get_db)):
     "/illustrated-images/orphans/purge",
     response_model=IllustratedImageOrphansPurgeResponse,
 )
-def purge_orphan_illustrated_files(db: Session = Depends(get_db)):
+def purge_orphan_illustrated_files(_admin: AdminUser, db: Session = Depends(get_db)):
     """Borra del disco las ilustraciones que no están incrustadas en ningún mensaje."""
     deleted_files, deleted_meta = purge_orphan_files(db)
     return IllustratedImageOrphansPurgeResponse(
@@ -866,14 +881,20 @@ def purge_orphan_illustrated_files(db: Session = Depends(get_db)):
     "/illustrated-images/{filename}/meta",
     response_model=IllustratedImageMetaResponse,
 )
-def get_illustrated_image_meta(filename: str, db: Session = Depends(get_db)):
+def get_illustrated_image_meta(
+    filename: str, user: CurrentUser, db: Session = Depends(get_db)
+):
     """Devuelve prompt y parámetros Forge con los que se generó la imagen."""
+    from app.ownership import owns_or_admin_legacy
+
     row = crud.get_illustrated_image_meta(db, filename)
     if not row:
         raise HTTPException(status_code=404, detail="Metadatos no encontrados")
-    params = _params_dict(row.params_json)
     msg = row.message
     conv = msg.conversation if msg else None
+    if not conv or not owns_or_admin_legacy(user, conv.user_id):
+        raise HTTPException(status_code=404, detail="Metadatos no encontrados")
+    params = _params_dict(row.params_json)
     prompt_provider, prompt_model = _prompt_llm_fields(row, params)
     return IllustratedImageMetaResponse(
         filename=row.filename,
@@ -893,7 +914,7 @@ def get_illustrated_image_meta(filename: str, db: Session = Depends(get_db)):
     "/forge/last-generation-params",
     response_model=ForgeLastGenerationParamsResponse,
 )
-def get_forge_last_generation_params():
+def get_forge_last_generation_params(_user: CurrentUser):
     """
     Params del último gen de Forge (steps/width/height/seed) para autorrellenar el panel.
     No falla duro: available=false si Forge/data no están listos.
@@ -924,7 +945,7 @@ def get_forge_last_generation_params():
     "/forge/reactor-defaults",
     response_model=ReactorDefaultsResponse,
 )
-def get_forge_reactor_defaults():
+def get_forge_reactor_defaults(_user: CurrentUser):
     """Defaults ReActor desde .env para placeholders del panel Imágenes."""
     defaults = reactor_env_defaults().to_panel_dict()
     return ReactorDefaultsResponse(defaults=defaults)
@@ -935,6 +956,7 @@ def get_forge_reactor_defaults():
     response_model=ImageGenerationJobListResponse,
 )
 def list_image_generation_queue(
+    user: CurrentUser,
     status: str | None = Query(
         default=None,
         description="Estados separados por coma: pending, generating, completed, failed",
@@ -952,9 +974,15 @@ def list_image_generation_queue(
         statuses=statuses,
         limit=limit,
         offset=offset,
+        user_id=user.id,
+        include_unowned=bool(user.is_admin),
     )
-    active_count = crud.count_active_image_generation_jobs(db)
-    batch_progress = crud.summarize_active_image_generation_batches(db)
+    active_count = crud.count_active_image_generation_jobs(
+        db, user_id=user.id, include_unowned=bool(user.is_admin)
+    )
+    batch_progress = crud.summarize_active_image_generation_batches(
+        db, user_id=user.id, include_unowned=bool(user.is_admin)
+    )
     return ImageGenerationJobListResponse(
         items=[ImageGenerationJobListItem(**item) for item in items],
         total=total,
@@ -970,7 +998,7 @@ def list_image_generation_queue(
     "/image-generation-queue/pause",
     response_model=ImageGenerationQueueRunStateResponse,
 )
-def pause_image_generation_queue_endpoint():
+def pause_image_generation_queue_endpoint(_admin: AdminUser):
     """Pausa el worker: no se encolan nuevas generaciones Forge."""
     pause_image_generation_queue()
     return ImageGenerationQueueRunStateResponse(paused=True)
@@ -980,7 +1008,7 @@ def pause_image_generation_queue_endpoint():
     "/image-generation-queue/resume",
     response_model=ImageGenerationQueueRunStateResponse,
 )
-def resume_image_generation_queue_endpoint():
+def resume_image_generation_queue_endpoint(_admin: AdminUser):
     """Reanuda el worker de la cola de imágenes."""
     resume_image_generation_queue()
     return ImageGenerationQueueRunStateResponse(paused=False)
@@ -990,9 +1018,13 @@ def resume_image_generation_queue_endpoint():
     "/image-generation-queue/cancel-active",
     response_model=ImageGenerationJobDeleteResponse,
 )
-def cancel_active_image_generation_queue_jobs(db: Session = Depends(get_db)):
+def cancel_active_image_generation_queue_jobs(
+    user: CurrentUser, db: Session = Depends(get_db)
+):
     """Cancela todos los trabajos pending y generating, sin tocar completed/failed."""
-    deleted, ids = cancel_active_image_generation_jobs(db)
+    deleted, ids = cancel_active_image_generation_jobs(
+        db, user_id=user.id, include_unowned=bool(user.is_admin)
+    )
     return ImageGenerationJobDeleteResponse(deleted=deleted, ids=ids)
 
 
@@ -1002,17 +1034,29 @@ def cancel_active_image_generation_queue_jobs(db: Session = Depends(get_db)):
 )
 def delete_image_generation_queue_jobs(
     body: ImageGenerationJobDeleteRequest,
+    user: CurrentUser,
     db: Session = Depends(get_db),
 ):
     """Elimina trabajos de la cola; cancela placeholders en mensajes no completados."""
-    deleted, ids = delete_image_generation_jobs(db, body.ids)
+    deleted, ids = delete_image_generation_jobs(
+        db, body.ids, user_id=user.id, include_unowned=bool(user.is_admin)
+    )
     if not deleted:
         raise HTTPException(status_code=404, detail="Ningún trabajo encontrado")
     return ImageGenerationJobDeleteResponse(deleted=deleted, ids=ids)
 
 
 @router.get("/illustrated-images/{filename}")
-def get_illustrated_image(filename: str):
+def get_illustrated_image(
+    filename: str, user: CurrentUser, db: Session = Depends(get_db)
+):
+    from app.ownership import owns_or_admin_legacy
+
+    row = crud.get_illustrated_image_meta(db, filename)
+    if row is not None:
+        conv = row.message.conversation if row.message else None
+        if not conv or not owns_or_admin_legacy(user, conv.user_id):
+            raise HTTPException(status_code=404, detail="Imagen no encontrada")
     path = resolve_illustrated_path(filename)
     if path is None:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")

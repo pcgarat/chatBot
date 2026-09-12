@@ -22,10 +22,16 @@ IMAGES_UNSET = object()
 
 
 # ----- Rules (biblioteca) -----
-def create_rule(db: Session, title: str = "", content: str = "", scope: str = SCOPE_CHAT) -> Rule:
+def create_rule(
+    db: Session,
+    title: str = "",
+    content: str = "",
+    scope: str = SCOPE_CHAT,
+    user_id: str | None = None,
+) -> Rule:
     if scope not in RULE_SCOPES:
         raise ValueError(f"scope inválido: {scope}")
-    rule = Rule(title=title, content=content, scope=scope)
+    rule = Rule(title=title, content=content, scope=scope, user_id=user_id)
     db.add(rule)
     db.commit()
     db.refresh(rule)
@@ -36,13 +42,25 @@ def get_rule(db: Session, rule_id: str) -> Rule | None:
     return db.query(Rule).filter(Rule.id == rule_id).first()
 
 
-def list_rules(db: Session, scope: str = SCOPE_CHAT) -> list[Rule]:
-    return db.query(Rule).filter(Rule.scope == scope).order_by(Rule.updated_at.desc()).all()
+def list_rules(db: Session, scope: str = SCOPE_CHAT, user_id: str | None = None) -> list[Rule]:
+    q = db.query(Rule).filter(Rule.scope == scope)
+    if user_id is not None:
+        q = q.filter(or_(Rule.user_id.is_(None), Rule.user_id == user_id))
+    return q.order_by(Rule.updated_at.desc()).all()
 
 
-def update_rule(db: Session, rule_id: str, title: str | None = None, content: str | None = None) -> Rule | None:
+def update_rule(
+    db: Session,
+    rule_id: str,
+    title: str | None = None,
+    content: str | None = None,
+    *,
+    user_id: str | None = None,
+) -> Rule | None:
     rule = get_rule(db, rule_id)
     if not rule:
+        return None
+    if user_id is not None and rule.user_id != user_id:
         return None
     if title is not None:
         rule.title = title
@@ -54,9 +72,11 @@ def update_rule(db: Session, rule_id: str, title: str | None = None, content: st
     return rule
 
 
-def delete_rule(db: Session, rule_id: str) -> bool:
+def delete_rule(db: Session, rule_id: str, *, user_id: str | None = None) -> bool:
     rule = get_rule(db, rule_id)
     if not rule:
+        return False
+    if user_id is not None and rule.user_id != user_id:
         return False
     db.delete(rule)
     db.commit()
@@ -95,6 +115,7 @@ def create_conversation(
     kind: str = "chat",
     prompt_brief: dict | None = None,
     seed_prompt_generator_template: bool = True,
+    user_id: str | None = None,
 ) -> Conversation:
     resolved_kind = kind if kind in ("chat", "prompt_generator") else "chat"
     resolved_title = title
@@ -107,6 +128,7 @@ def create_conversation(
         if resolved_brief is None:
             resolved_brief = empty_brief().to_dict()
     conv = Conversation(
+        user_id=user_id,
         title=resolved_title,
         auto_title=bool(auto_title),
         model_id=model_id,
@@ -133,11 +155,17 @@ def create_conversation(
 
 
 def get_conversation(
-    db: Session, conversation_id: str, *, include_deleted: bool = False
+    db: Session,
+    conversation_id: str,
+    *,
+    include_deleted: bool = False,
+    user_id: str | None = None,
 ) -> Conversation | None:
     q = db.query(Conversation).filter(Conversation.id == conversation_id)
     if not include_deleted:
         q = q.filter(Conversation.deleted_at.is_(None))
+    if user_id is not None:
+        q = q.filter(Conversation.user_id == user_id)
     return q.first()
 
 
@@ -161,8 +189,19 @@ def normalize_message_history_sort(sort: str | None) -> str:
     return MESSAGE_HISTORY_SORT_MESSAGE
 
 
-def list_conversations(db: Session, sort: str | None = None) -> list[Conversation]:
+def list_conversations(
+    db: Session,
+    sort: str | None = None,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> list[Conversation]:
     q = db.query(Conversation).filter(Conversation.deleted_at.is_(None))
+    if user_id is not None:
+        if include_unowned:
+            q = q.filter(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            q = q.filter(Conversation.user_id == user_id)
     if normalize_conversation_sort(sort) == CONVERSATION_SORT_CREATED_AT:
         return q.order_by(Conversation.created_at.desc()).all()
     return q.order_by(
@@ -170,14 +209,17 @@ def list_conversations(db: Session, sort: str | None = None) -> list[Conversatio
     ).all()
 
 
-def list_deleted_conversations(db: Session) -> list[Conversation]:
+def list_deleted_conversations(
+    db: Session, *, user_id: str | None = None, include_unowned: bool = False
+) -> list[Conversation]:
     """Conversaciones en papelera (soft-deleted), más recientes primero."""
-    return (
-        db.query(Conversation)
-        .filter(Conversation.deleted_at.isnot(None))
-        .order_by(Conversation.deleted_at.desc())
-        .all()
-    )
+    q = db.query(Conversation).filter(Conversation.deleted_at.isnot(None))
+    if user_id is not None:
+        if include_unowned:
+            q = q.filter(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            q = q.filter(Conversation.user_id == user_id)
+    return q.order_by(Conversation.deleted_at.desc()).all()
 
 
 MESSAGE_HISTORY_PREVIEW_LEN = 80
@@ -254,18 +296,30 @@ def _filter_assistant_history_search(
     return body_hits, "content"
 
 
-def _assistant_history_owner_filters():
-    return (
+def _assistant_history_owner_filters(*, user_id: str | None = None, include_unowned: bool = False):
+    filters = [
         Message.role == "assistant",
         Conversation.deleted_at.is_(None),
         Conversation.kind != Conversation.KIND_PROMPT_GENERATOR,
-    )
+    ]
+    if user_id is not None:
+        if include_unowned:
+            filters.append(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            filters.append(Conversation.user_id == user_id)
+    return tuple(filters)
 
 
 def _query_assistant_history_rows(
     db: Session,
     sort: str | None = None,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
 ) -> list[tuple]:
+    owner_filters = _assistant_history_owner_filters(
+        user_id=user_id, include_unowned=include_unowned
+    )
     if normalize_message_history_sort(sort) == MESSAGE_HISTORY_SORT_IMAGE:
         latest_image = (
             db.query(
@@ -279,7 +333,7 @@ def _query_assistant_history_rows(
             db.query(Message, Conversation.title, latest_image.c.latest_image_at)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .outerjoin(latest_image, latest_image.c.message_id == Message.id)
-            .filter(*_assistant_history_owner_filters())
+            .filter(*owner_filters)
             .order_by(
                 latest_image.c.latest_image_at.is_(None),
                 latest_image.c.latest_image_at.desc(),
@@ -290,7 +344,7 @@ def _query_assistant_history_rows(
     return (
         db.query(Message, Conversation.title)
         .join(Conversation, Conversation.id == Message.conversation_id)
-        .filter(*_assistant_history_owner_filters())
+        .filter(*owner_filters)
         .order_by(Message.created_at.desc())
         .all()
     )
@@ -311,11 +365,18 @@ def list_assistant_messages(
     offset: int | None = None,
     sort: str | None = None,
     q: str | None = None,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
 ) -> MessageHistoryPage:
     """Respuestas assistant únicas (texto sin artefactos de ilustración), paginadas."""
     capped = clamp_message_history_limit(limit)
     off = clamp_message_history_offset(offset)
-    rows = _unique_assistant_history_rows(_query_assistant_history_rows(db, sort=sort))
+    rows = _unique_assistant_history_rows(
+        _query_assistant_history_rows(
+            db, sort=sort, user_id=user_id, include_unowned=include_unowned
+        )
+    )
     search_in = None
     needle = _normalize_message_history_query(q)
     if needle:
@@ -446,9 +507,16 @@ def hard_delete_conversation(db: Session, conversation_id: str) -> bool:
     return True
 
 
-def purge_deleted_conversations(db: Session) -> list[str]:
+def purge_deleted_conversations(
+    db: Session, *, user_id: str | None = None, include_unowned: bool = False
+) -> list[str]:
     """Hard-delete de toda la papelera. Devuelve los ids eliminados."""
-    ids = [c.id for c in list_deleted_conversations(db)]
+    ids = [
+        c.id
+        for c in list_deleted_conversations(
+            db, user_id=user_id, include_unowned=include_unowned
+        )
+    ]
     deleted: list[str] = []
     for conversation_id in ids:
         if hard_delete_conversation(db, conversation_id):
@@ -573,6 +641,7 @@ def fork_conversation(db: Session, view_conversation_id: str, message_id: str) -
         kind=getattr(view, "kind", None) or "chat",
         prompt_brief=fork_brief,
         seed_prompt_generator_template=False,
+        user_id=getattr(view, "user_id", None),
     )
     child.model_params = view.model_params
     child.images = view.images
@@ -787,7 +856,13 @@ def gallery_visible_message_ids(db: Session, conversation_id: str) -> list[str]:
     return [m.id for m in get_resolved_history(db, conv, None)]
 
 
-def _illustrated_gallery_base_query(db: Session, *, require_active_owner: bool = True):
+def _illustrated_gallery_base_query(
+    db: Session,
+    *,
+    require_active_owner: bool = True,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+):
     q = (
         db.query(IllustratedImage, Message, Conversation)
         .join(Message, IllustratedImage.message_id == Message.id)
@@ -795,6 +870,11 @@ def _illustrated_gallery_base_query(db: Session, *, require_active_owner: bool =
     )
     if require_active_owner:
         q = q.filter(Conversation.deleted_at.is_(None))
+    if user_id is not None:
+        if include_unowned:
+            q = q.filter(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            q = q.filter(Conversation.user_id == user_id)
     return q
 
 
@@ -896,10 +976,17 @@ def list_illustrated_images(
     batch_ids: list[str] | None = None,
     limit: int = 24,
     offset: int = 0,
+    user_id: str | None = None,
+    include_unowned: bool = False,
 ) -> tuple[list[tuple[IllustratedImage, Message, Conversation]], int]:
     """Galería: imágenes de conversaciones activas, más recientes primero."""
     q = _apply_illustrated_gallery_filters(
-        _illustrated_gallery_base_query(db, require_active_owner=not bool(conversation_id)),
+        _illustrated_gallery_base_query(
+            db,
+            require_active_owner=not bool(conversation_id),
+            user_id=user_id,
+            include_unowned=include_unowned,
+        ),
         db=db,
         prompt_provider=prompt_provider,
         prompt_model=prompt_model,
@@ -939,10 +1026,17 @@ def list_illustrated_image_filenames(
     conversation_id: str | None = None,
     message_id: str | None = None,
     batch_ids: list[str] | None = None,
+    user_id: str | None = None,
+    include_unowned: bool = False,
 ) -> list[str]:
     """Filenames que pasan los mismos filtros que la galería, sin paginar."""
     q = _apply_illustrated_gallery_filters(
-        _illustrated_gallery_base_query(db, require_active_owner=not bool(conversation_id)),
+        _illustrated_gallery_base_query(
+            db,
+            require_active_owner=not bool(conversation_id),
+            user_id=user_id,
+            include_unowned=include_unowned,
+        ),
         db=db,
         prompt_provider=prompt_provider,
         prompt_model=prompt_model,
@@ -972,6 +1066,8 @@ def illustrated_image_facets(
     *,
     conversation_id: str | None = None,
     message_id: str | None = None,
+    user_id: str | None = None,
+    include_unowned: bool = False,
 ) -> dict:
     """Valores distintos para los filtros cerrados de la galería."""
     q = db.query(IllustratedImage).join(Message, IllustratedImage.message_id == Message.id).join(
@@ -979,6 +1075,11 @@ def illustrated_image_facets(
     )
     if not conversation_id:
         q = q.filter(Conversation.deleted_at.is_(None))
+    if user_id is not None:
+        if include_unowned:
+            q = q.filter(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            q = q.filter(Conversation.user_id == user_id)
     q = _apply_illustrated_gallery_filters(
         q,
         db=db,
@@ -1252,36 +1353,54 @@ def fail_image_generation_job(
     return job
 
 
-def count_active_image_generation_jobs(db: Session) -> int:
-    return (
-        db.query(ImageGenerationJob)
-        .filter(ImageGenerationJob.status.in_(("pending", "generating")))
-        .count()
-    )
+def count_active_image_generation_jobs(
+    db: Session, *, user_id: str | None = None, include_unowned: bool = False
+) -> int:
+    q = db.query(ImageGenerationJob).filter(ImageGenerationJob.status.in_(("pending", "generating")))
+    if user_id is not None:
+        q = q.join(Conversation, Conversation.id == ImageGenerationJob.conversation_id)
+        if include_unowned:
+            q = q.filter(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            q = q.filter(Conversation.user_id == user_id)
+    return q.count()
 
 
-def summarize_active_image_generation_batches(db: Session) -> list[dict]:
+def summarize_active_image_generation_batches(
+    db: Session, *, user_id: str | None = None, include_unowned: bool = False
+) -> list[dict]:
     """Progreso completed/total por batch_id con jobs aún pendientes o en curso."""
-    active_batch_ids = {
-        row[0]
-        for row in db.query(ImageGenerationJob.batch_id)
-        .filter(
-            ImageGenerationJob.batch_id.isnot(None),
-            ImageGenerationJob.batch_id != "",
-            ImageGenerationJob.status.in_(("pending", "generating")),
+    active_q = db.query(ImageGenerationJob.batch_id).filter(
+        ImageGenerationJob.batch_id.isnot(None),
+        ImageGenerationJob.batch_id != "",
+        ImageGenerationJob.status.in_(("pending", "generating")),
+    )
+    if user_id is not None:
+        active_q = active_q.join(
+            Conversation, Conversation.id == ImageGenerationJob.conversation_id
         )
-        .distinct()
-        .all()
-        if row[0]
-    }
+        if include_unowned:
+            active_q = active_q.filter(
+                or_(Conversation.user_id == user_id, Conversation.user_id.is_(None))
+            )
+        else:
+            active_q = active_q.filter(Conversation.user_id == user_id)
+    active_batch_ids = {row[0] for row in active_q.distinct().all() if row[0]}
     if not active_batch_ids:
         return []
 
-    rows = (
-        db.query(ImageGenerationJob)
-        .filter(ImageGenerationJob.batch_id.in_(active_batch_ids))
-        .all()
-    )
+    rows_q = db.query(ImageGenerationJob).filter(ImageGenerationJob.batch_id.in_(active_batch_ids))
+    if user_id is not None:
+        rows_q = rows_q.join(
+            Conversation, Conversation.id == ImageGenerationJob.conversation_id
+        )
+        if include_unowned:
+            rows_q = rows_q.filter(
+                or_(Conversation.user_id == user_id, Conversation.user_id.is_(None))
+            )
+        else:
+            rows_q = rows_q.filter(Conversation.user_id == user_id)
+    rows = rows_q.all()
     by_batch: dict[str, dict] = {}
     for job in rows:
         bid = job.batch_id
@@ -1317,12 +1436,19 @@ def summarize_active_image_generation_batches(db: Session) -> list[dict]:
     return result
 
 
-def list_active_image_generation_job_ids(db: Session) -> list[str]:
-    rows = (
-        db.query(ImageGenerationJob.id)
-        .filter(ImageGenerationJob.status.in_(("pending", "generating")))
-        .all()
+def list_active_image_generation_job_ids(
+    db: Session, *, user_id: str | None = None, include_unowned: bool = False
+) -> list[str]:
+    q = db.query(ImageGenerationJob.id).filter(
+        ImageGenerationJob.status.in_(("pending", "generating"))
     )
+    if user_id is not None:
+        q = q.join(Conversation, Conversation.id == ImageGenerationJob.conversation_id)
+        if include_unowned:
+            q = q.filter(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            q = q.filter(Conversation.user_id == user_id)
+    rows = q.all()
     return [row[0] for row in rows]
 
 
@@ -1369,8 +1495,16 @@ def list_image_generation_jobs(
     statuses: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
+    user_id: str | None = None,
+    include_unowned: bool = False,
 ) -> tuple[list[dict], int]:
     q = db.query(ImageGenerationJob)
+    if user_id is not None:
+        q = q.join(Conversation, Conversation.id == ImageGenerationJob.conversation_id)
+        if include_unowned:
+            q = q.filter(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            q = q.filter(Conversation.user_id == user_id)
     if statuses:
         cleaned = [s.strip() for s in statuses if (s or "").strip()]
         if cleaned:
