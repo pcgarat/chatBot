@@ -1,4 +1,4 @@
-import { updateLayout, layoutStore } from "../../store/layout.js";
+import { updateLayout, layoutStore, LAYOUT_KEYS } from "../../store/layout.js";
 import { setLeftCollapsed, setComposerCollapsed, toggleDarkMode, toggleChatFullscreen, nudgeFont, applySideResize, beginSideResize } from "./LayoutEffects.jsx";
 import { newConversation, newPromptGeneratorConversation, saveConversationMeta, resetSession } from "../../app/sessionActions.js";
 import * as conversationsApi from "../../api/conversations.js";
@@ -28,6 +28,38 @@ import { decodeJsonPath } from "../../lib/debugJsonTree.js";
 
 let drag = null;
 
+/** Share del panel de chat a partir del arrastre vertical del splitter central. */
+export function computeCenterPanelShare({
+  startShare,
+  startY,
+  clientY,
+  stackHeight,
+  shareMin = LAYOUT_KEYS.SHARE_MIN,
+  shareMax = LAYOUT_KEYS.SHARE_MAX,
+}) {
+  if (!(stackHeight > 0) || !Number.isFinite(clientY) || !Number.isFinite(startY)) {
+    return startShare;
+  }
+  const next = startShare + (clientY - startY) / stackHeight;
+  return Math.max(shareMin, Math.min(shareMax, next));
+}
+
+function measureCenterSplitStackHeight() {
+  const chat = document.querySelector(".column-center > .chat-column");
+  const gallery = document.getElementById("image-gallery-panel");
+  const queue = document.getElementById("image-queue-panel");
+  const bottom =
+    gallery && !gallery.hidden
+      ? gallery
+      : queue && !queue.hidden
+        ? queue
+        : null;
+  if (!chat || !bottom) return 0;
+  const top = chat.getBoundingClientRect().top;
+  const bottomEdge = bottom.getBoundingClientRect().bottom;
+  return Math.max(0, bottomEdge - top);
+}
+
 export function onAppPointerDown(e) {
   const handle = e.target.closest("#sidebar-left-splitter, #sidebar-right-splitter, #center-panels-splitter");
   if (!handle) return;
@@ -36,19 +68,35 @@ export function onAppPointerDown(e) {
   const layout = layoutStore.get();
   if (handle.id === "sidebar-left-splitter") {
     drag = beginSideResize("left", e.clientX, layout.leftWidthPx);
+    document.body.classList.add("side-panels-resizing");
   } else if (handle.id === "sidebar-right-splitter") {
     drag = beginSideResize("right", e.clientX, layout.rightWidthPx);
+    document.body.classList.add("side-panels-resizing");
   } else {
-    drag = { side: "center", startX: e.clientX, startShare: layout.centerChatGalleryShare };
+    drag = {
+      side: "center",
+      startY: e.clientY,
+      startShare: layout.centerChatGalleryShare,
+      stackHeight: measureCenterSplitStackHeight(),
+    };
+    document.body.classList.add("center-panels-resizing");
   }
-  document.body.classList.add("side-panels-resizing");
+  if (typeof handle.setPointerCapture === "function" && e.pointerId != null) {
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch (_) {}
+  }
 }
 
 export function onAppPointerMove(e) {
   if (!drag) return;
   if (drag.side === "center") {
-    const dx = (e.clientX - drag.startX) / 400;
-    const share = Math.max(0.28, Math.min(0.72, drag.startShare + dx));
+    const share = computeCenterPanelShare({
+      startShare: drag.startShare,
+      startY: drag.startY,
+      clientY: e.clientY,
+      stackHeight: drag.stackHeight,
+    });
     updateLayout({ centerChatGalleryShare: share });
     return;
   }
@@ -59,6 +107,7 @@ export function onAppPointerUp() {
   if (!drag) return;
   drag = null;
   document.body.classList.remove("side-panels-resizing");
+  document.body.classList.remove("center-panels-resizing");
 }
 
 export async function onAppClick(e) {

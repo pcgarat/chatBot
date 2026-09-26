@@ -7,6 +7,7 @@ cd "$ROOT"
 
 PORT="${PORT:-8000}"
 VITE_PORT="${VITE_PORT:-5173}"
+VITE_HOST="${VITE_HOST:-0.0.0.0}"
 PIDFILE="${PIDFILE:-.server.pid}"
 VITE_PIDFILE="${VITE_PIDFILE:-.vite.pid}"
 VERBOSE="${VERBOSE:-1}"
@@ -62,6 +63,14 @@ free_port() {
     kill $pids 2>/dev/null || true
     sleep 0.3
   fi
+}
+
+print_lan_url() {
+  [[ "$VITE_HOST" == "0.0.0.0" ]] || return 0
+  local ip
+  ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')"
+  [[ -n "$ip" ]] || return 0
+  echo "  En red:   http://${ip}:${VITE_PORT}"
 }
 
 cmd_stop() {
@@ -125,6 +134,7 @@ cmd_start() {
   echo ""
   echo "  Frontend: http://localhost:${VITE_PORT}"
   echo "  Backend:  http://localhost:${PORT}"
+  print_lan_url
   echo ""
   echo "Abre el Frontend. Ctrl+C para parar ambos."
   echo ""
@@ -133,7 +143,7 @@ cmd_start() {
   backend_pid=$!
   echo "$backend_pid" > "$PIDFILE"
 
-  (cd frontend && npm run dev -- --port "$VITE_PORT" --host 127.0.0.1) &
+  (cd frontend && npm run dev -- --port "$VITE_PORT" --host "$VITE_HOST") &
   vite_pid=$!
   echo "$vite_pid" > "$VITE_PIDFILE"
 
@@ -141,6 +151,7 @@ cmd_start() {
   echo ""
   echo "  Frontend: http://localhost:${VITE_PORT}"
   echo "  Backend:  http://localhost:${PORT}"
+  print_lan_url
   echo ""
 
   wait -n "$backend_pid" "$vite_pid" || true

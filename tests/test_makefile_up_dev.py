@@ -39,6 +39,12 @@ def test_start_and_up_dev_print_frontend_and_backend_urls():
     assert ".vite.pid" in SCRIPT
 
 
+def test_vite_listens_on_all_interfaces():
+    assert 'VITE_HOST="${VITE_HOST:-0.0.0.0}"' in SCRIPT
+    assert '--host "$VITE_HOST"' in SCRIPT
+    assert "--host 127.0.0.1" not in SCRIPT
+
+
 def test_obsolete_make_targets_are_gone():
     help_start = MAKEFILE.split("\nhelp:")[1].split("\n# Valor por defecto")[0]
     for dead in (

@@ -21,7 +21,7 @@ endif
 PYTHON_CMD := python$(PYTHON_VERSION)
 
 .PHONY: help up down up-dev start stop reload test test-e2e coverage-html mutation-test status clean setup
-.PHONY: frontend-install frontend-build frontend-test print-app-urls
+.PHONY: frontend-install frontend-build frontend-publish frontend-test print-app-urls
 .PHONY: chroma-up chroma-down chroma-logs chroma-status chroma-clean chroma-ping ingest venv312
 .PHONY: overlay overlay-batch
 
@@ -29,10 +29,10 @@ help:
 	@echo "Chat IA con Ollama - Comandos disponibles:"
 	@echo ""
 	@echo "  App (no tocan el contenedor Docker de Chroma):"
-	@echo "  make up       venv + deps + API en segundo plano (sirve el SPA publicado en app/static)"
+	@echo "  make up       venv + deps + recompila el SPA React + API en segundo plano (:$(PORT))"
 	@echo "  make up-dev   venv + deps + API --reload (:$(PORT)) + Vite HMR (:$(VITE_PORT)). Ctrl+C para ambos"
 	@echo "  make down     Detener procesos y borrar el entorno virtual"
-	@echo "  make start    Solo API (:$(PORT)). VERBOSE=1 para stderr de LLM/Forge"
+	@echo "  make start    Recompila el SPA React + API (:$(PORT)). VERBOSE=1 para stderr de LLM/Forge"
 	@echo "  make stop     Detener API y Vite"
 	@echo "  make reload   make down + make up"
 	@echo "  make frontend-build  Publicar el SPA React en app/static (lo que sirve make up)"
@@ -143,7 +143,7 @@ setup:
 up: setup
 	@$(MAKE) start
 
-up-dev: setup
+up-dev: setup frontend-publish
 	@command -v npm >/dev/null || { echo "up-dev necesita npm (Node 20+)."; exit 1; }
 	@echo "Stack de desarrollo: API :$(PORT) (reload) + Vite :$(VITE_PORT) (HMR)"
 	@PORT=$(PORT) VITE_PORT=$(VITE_PORT) PIDFILE=$(PIDFILE) VITE_PIDFILE=$(VITE_PIDFILE) \
@@ -159,7 +159,7 @@ down:
 	@rm -rf $(VENV)
 	@echo "Entorno eliminado."
 
-start: $(VENV)/bin/uvicorn
+start: $(VENV)/bin/uvicorn frontend-publish
 	@if [ -f $(PIDFILE) ]; then \
 		pid=$$(cat $(PIDFILE)); \
 		if kill -0 $$pid 2>/dev/null; then \
@@ -187,6 +187,17 @@ frontend-install:
 
 frontend-build: frontend-install
 	cd frontend && npm run build
+
+# Paso previo a arrancar la API: evita que el puerto $(PORT) sirva un build desfasado.
+# Sin npm se conserva el build ya publicado en app/static (está versionado en git).
+frontend-publish:
+	@if command -v npm >/dev/null; then \
+		[ -d frontend/node_modules ] || (cd frontend && npm install); \
+		echo "Publicando el SPA React en app/static..."; \
+		cd frontend && npm run build; \
+	else \
+		echo "npm no encontrado: se sirve el build ya publicado en app/static."; \
+	fi
 
 frontend-test:
 	cd frontend && npm test
