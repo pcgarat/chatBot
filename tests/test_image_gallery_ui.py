@@ -105,6 +105,10 @@ def test_gallery_js_loads_list_and_opens_lightbox():
     assert "btn-image-gallery" in js
     assert "btn-center-chat" in js
     assert "ArrowLeft" in js
+    assert "gallery-page-input" in js
+    assert "goToGalleryPage" in js
+    assert "galleryOffsetForPage" in js
+    assert "galleryTotalPages" in js
 
 
 def test_open_conversation_does_not_close_gallery():
@@ -130,6 +134,8 @@ def test_gallery_css_toggles_panels_independently():
     assert ".image-gallery-msg-chip" in css
     assert ".image-gallery-families" in css
     assert ".image-gallery-filter-batches" in css
+    assert ".image-gallery-page-input" in css
+    assert ".image-gallery-pager-jump" in css
     assert ".chat-image-filter-notice-wrap" in css
     assert ".chat-image-filter-notice-dismiss" in css
     assert ".chat-illustration-frame.is-gallery-filter-hidden" in css

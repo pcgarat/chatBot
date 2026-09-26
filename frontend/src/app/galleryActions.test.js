@@ -7,10 +7,16 @@ import {
   clearGalleryToolbarFilters,
   loadGalleryPage,
   renderGalleryLightbox,
+  renderGalleryGrid,
   fillGalleryBatchSelect,
   highlightIllustrationInConversation,
   closeGalleryLightbox,
   handleGalleryLightboxOverlayClick,
+  galleryTotalPages,
+  galleryCurrentPage,
+  galleryOffsetForPage,
+  goToGalleryPage,
+  GALLERY_PAGE_SIZE,
 } from "./galleryActions.js";
 
 const openConversationAtIllustration = vi.fn();
@@ -375,5 +381,130 @@ describe("galería", () => {
     expect(modal.hidden).toBe(false);
     expect(imagesStore.get().galleryLightboxIndex).toBe(0);
     closeGalleryLightbox();
+  });
+
+  it("galleryTotalPages y galleryOffsetForPage calculan y limitan el salto", () => {
+    expect(galleryTotalPages(0)).toBe(0);
+    expect(galleryTotalPages(24)).toBe(1);
+    expect(galleryTotalPages(25)).toBe(2);
+    expect(galleryTotalPages(100, GALLERY_PAGE_SIZE)).toBe(5);
+    expect(galleryCurrentPage(0)).toBe(1);
+    expect(galleryCurrentPage(24)).toBe(2);
+    expect(galleryOffsetForPage(1, 100)).toBe(0);
+    expect(galleryOffsetForPage(3, 100)).toBe(48);
+    expect(galleryOffsetForPage(99, 100)).toBe(96);
+    expect(galleryOffsetForPage(0, 100)).toBe(0);
+    expect(galleryOffsetForPage(-2, 100)).toBe(0);
+    expect(galleryOffsetForPage("x", 100)).toBe(0);
+  });
+
+  it("renderGalleryGrid muestra input de página y goToGalleryPage salta de offset", async () => {
+    document.body.innerHTML = `
+      <div id="image-gallery-grid"></div>
+      <div id="image-gallery-pager"></div>
+    `;
+    const item = {
+      filename: "a.png",
+      url: "/api/illustrated-images/a.png",
+      prompt: "gato",
+      conversation_title: "c",
+    };
+    imagesStore.set({
+      galleryItems: Array.from({ length: 24 }, (_, i) => ({ ...item, filename: `a${i}.png` })),
+      galleryOffset: 0,
+      galleryTotal: 60,
+      galleryLightboxIndex: -1,
+    });
+    renderGalleryGrid();
+    const input = document.getElementById("gallery-page-input");
+    expect(input).toBeTruthy();
+    expect(input.value).toBe("1");
+    expect(input.max).toBe("3");
+    expect(document.querySelector(".image-gallery-pager-jump")).toBeTruthy();
+    expect(document.getElementById("image-gallery-pager").textContent).toContain("de 3");
+
+    const urls = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url) => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: Array.from({ length: 12 }, (_, i) => ({ ...item, filename: `b${i}.png` })),
+          total: 60,
+          prompt_models: [],
+          prompt_providers: [],
+          forge_models: [],
+          steps: [],
+          sizes: [],
+          modes: [],
+          seeds: [],
+        }),
+      };
+    }));
+    goToGalleryPage(3);
+    expect(imagesStore.get().galleryOffset).toBe(48);
+    await vi.waitFor(() => {
+      expect(urls.some((u) => u.includes("offset=48"))).toBe(true);
+    });
+  });
+
+  it("Enter en el input de página salta y hace clamp fuera de rango", async () => {
+    document.body.innerHTML = `
+      <div id="image-gallery-grid"></div>
+      <div id="image-gallery-pager"></div>
+    `;
+    const item = {
+      filename: "a.png",
+      url: "/api/illustrated-images/a.png",
+      prompt: "gato",
+      conversation_title: "c",
+    };
+    imagesStore.set({
+      galleryItems: Array.from({ length: 24 }, (_, i) => ({ ...item, filename: `a${i}.png` })),
+      galleryOffset: 0,
+      galleryTotal: 50,
+      galleryLightboxIndex: -1,
+      galleryScopeAll: true,
+      galleryMessageId: null,
+      galleryFilters: {
+        promptModel: "",
+        promptProvider: "",
+        forgeModel: "",
+        steps: "",
+        size: "",
+        mode: "",
+        seed: "",
+        promptQ: "",
+        batchIds: [],
+      },
+    });
+    renderGalleryGrid();
+    const urls = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url) => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: Array.from({ length: 2 }, (_, i) => ({ ...item, filename: `z${i}.png` })),
+          total: 50,
+          prompt_models: [],
+          prompt_providers: [],
+          forge_models: [],
+          steps: [],
+          sizes: [],
+          modes: [],
+          seeds: [],
+        }),
+      };
+    }));
+    const input = document.getElementById("gallery-page-input");
+    input.value = "99";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(imagesStore.get().galleryOffset).toBe(48);
+    await vi.waitFor(() => {
+      expect(urls.some((u) => u.includes("offset=48"))).toBe(true);
+    });
   });
 });
