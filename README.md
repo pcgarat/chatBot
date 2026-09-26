@@ -1,6 +1,6 @@
 <div align="center">
 
-# chatBot
+# PlotBench
 
 **Estación de trabajo *local-first* para inferencia LLM, recuperación vectorial e ilustración generativa anclada a relato.**
 
