@@ -628,24 +628,38 @@ export function renderGalleryGrid() {
   if (!pager) return;
   const from = galleryOffset + 1;
   const to = galleryOffset + galleryItems.length;
+  const totalPages = galleryTotalPages(galleryTotal);
+  const currentPage = galleryCurrentPage(galleryOffset);
   const prevDisabled = galleryOffset <= 0 ? " disabled" : "";
   const nextDisabled = galleryOffset + galleryItems.length >= galleryTotal ? " disabled" : "";
+  const jumpDisabled = totalPages <= 1 ? " disabled" : "";
   pager.innerHTML =
     '<button type="button" class="btn btn-secondary btn-small" id="gallery-page-prev"' +
     prevDisabled +
     ">Anterior</button>" +
-    "<span>" +
+    '<span class="image-gallery-pager-range">' +
     from +
     "–" +
     to +
     " de " +
     galleryTotal +
     "</span>" +
+    '<label class="image-gallery-pager-jump" for="gallery-page-input">Pág. ' +
+    '<input type="number" id="gallery-page-input" class="image-gallery-page-input" min="1" max="' +
+    totalPages +
+    '" value="' +
+    currentPage +
+    '" inputmode="numeric"' +
+    jumpDisabled +
+    " /> de " +
+    totalPages +
+    "</label>" +
     '<button type="button" class="btn btn-secondary btn-small" id="gallery-page-next"' +
     nextDisabled +
     ">Siguiente</button>";
   const prev = document.getElementById("gallery-page-prev");
   const next = document.getElementById("gallery-page-next");
+  const pageInput = document.getElementById("gallery-page-input");
   if (prev) {
     prev.addEventListener("click", function () {
       imagesStore.set({ galleryOffset: Math.max(0, galleryOffset - GALLERY_PAGE_SIZE) });
@@ -658,6 +672,66 @@ export function renderGalleryGrid() {
       loadGalleryPage();
     });
   }
+  if (pageInput) {
+    const commitPageJump = function () {
+      const raw = pageInput.value.trim();
+      if (!raw) {
+        pageInput.value = String(galleryCurrentPage(imagesStore.get().galleryOffset));
+        return;
+      }
+      const page = parseInt(raw, 10);
+      if (!Number.isFinite(page)) {
+        pageInput.value = String(galleryCurrentPage(imagesStore.get().galleryOffset));
+        return;
+      }
+      goToGalleryPage(page);
+      pageInput.value = String(
+        galleryCurrentPage(imagesStore.get().galleryOffset, GALLERY_PAGE_SIZE)
+      );
+    };
+    pageInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitPageJump();
+        pageInput.blur();
+      }
+    });
+    pageInput.addEventListener("change", commitPageJump);
+    pageInput.addEventListener("wheel", function (event) {
+      event.preventDefault();
+    }, { passive: false });
+  }
+}
+
+export function galleryTotalPages(total, pageSize = GALLERY_PAGE_SIZE) {
+  const count = Math.max(0, Number(total) || 0);
+  const size = Math.max(1, Number(pageSize) || GALLERY_PAGE_SIZE);
+  if (count <= 0) return 0;
+  return Math.ceil(count / size);
+}
+
+export function galleryCurrentPage(offset, pageSize = GALLERY_PAGE_SIZE) {
+  const from = Math.max(0, Number(offset) || 0);
+  const size = Math.max(1, Number(pageSize) || GALLERY_PAGE_SIZE);
+  return Math.floor(from / size) + 1;
+}
+
+export function galleryOffsetForPage(page, total, pageSize = GALLERY_PAGE_SIZE) {
+  const totalPages = galleryTotalPages(total, pageSize);
+  if (totalPages <= 0) return 0;
+  const size = Math.max(1, Number(pageSize) || GALLERY_PAGE_SIZE);
+  let target = Math.trunc(Number(page));
+  if (!Number.isFinite(target)) return 0;
+  target = Math.min(Math.max(1, target), totalPages);
+  return (target - 1) * size;
+}
+
+export function goToGalleryPage(page) {
+  const state = imagesStore.get();
+  const nextOffset = galleryOffsetForPage(page, state.galleryTotal);
+  if (nextOffset === state.galleryOffset) return;
+  imagesStore.set({ galleryOffset: nextOffset });
+  loadGalleryPage();
 }
 
 export function galleryPageOffsetForAbsolute(absoluteIndex) {

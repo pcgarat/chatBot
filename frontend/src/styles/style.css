@@ -8041,10 +8041,43 @@ body.center-panels-resizing img {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 10px;
   flex-shrink: 0;
   font-size: 0.75rem;
   color: var(--muted-foreground);
+}
+
+.image-gallery-pager-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  cursor: default;
+}
+
+.image-gallery-page-input {
+  width: 3.25rem;
+  min-height: 1.75rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--stroke-control, #8a8a8a);
+  border-radius: 4px;
+  background: var(--layer-alt, #fff);
+  color: var(--text-primary, #1a1a1a);
+  font: inherit;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.image-gallery-page-input::-webkit-outer-spin-button,
+.image-gallery-page-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.image-gallery-page-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .image-gallery-lightbox .image-gallery-lightbox-content {
